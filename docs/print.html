@@ -36,10 +36,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-123f3020.js";
+            window.path_to_searchindex_js = "searchindex-a36715f8.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-3792cc5d.js"></script>
+        <script src="toc-cf3b2378.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -365,8 +365,8 @@ calrs sync --full
 <li>On <strong>confirmation</strong>: calrs generates an ICS event and PUTs it to <code>{calendar-href}/{booking-uid}.ics</code></li>
 <li>On <strong>cancellation</strong>: calrs DELETEs the event from the same path</li>
 <li>The booking tracks which calendar it was pushed to, so cancellation always targets the right calendar</li>
-<li>If no write calendar is configured, write-back is silently skipped (emails still work)</li>
-<li>Write-back works for individual bookings, group round-robin bookings, and pending-then-confirmed bookings</li>
+<li>If no write calendar is configured, write-back is skipped and a warning is logged (emails still work)</li>
+<li>Write-back works for individual bookings, team bookings (the assigned member’s calendar for round-robin, every eligible member’s for collective), and pending-then-confirmed bookings</li>
 </ul>
 <h2 id="managing-sources"><a class="header" href="#managing-sources">Managing sources</a></h2>
 <pre><code class="language-bash"># List all sources
@@ -498,6 +498,10 @@ calrs source remove &lt;id-prefix&gt;
 <p>When you have multiple CalDAV calendars, you can choose <strong>which calendars block availability</strong> for each event type. For example, a “Work meeting” event type can check only the work calendar, while a “Personal chat” checks only the personal calendar.</p>
 <p>From the dashboard form, select the calendars under the <strong>Calendars</strong> section. Only calendars marked as “busy” (<code>is_busy=1</code>) appear.</p>
 <p><strong>Default behavior:</strong> If no calendars are selected, all busy calendars are checked — same as before. This is fully backward-compatible.</p>
+<h2 id="required-resources"><a class="header" href="#required-resources">Required resources</a></h2>
+<p>Event types can require <a href="#shared-resources">shared resources</a> (a demo lab, a meeting room). A busy resource blocks booking slots, and confirmed bookings can reserve the resource in its own CalDAV calendar.</p>
+<p>Whether a busy resource blocks a slot depends on the resource scheduling mode: in <strong>all</strong> mode every attached resource must be free, while in <strong>round-robin</strong> mode the slot survives as long as at least one attached resource is free.</p>
+<p>The <strong>Required resources</strong> section of the event type form is visible to global admins, and to team admins on team event types when their team is allowlisted for a resource. See <a href="#shared-resources">Shared Resources</a> for the full behavior, including the “all” vs “round-robin” scheduling modes.</p>
 <h2 id="availability-schedule"><a class="header" href="#availability-schedule">Availability schedule</a></h2>
 <p>Each event type has its own availability rules. By default: Monday–Friday, 09:00–17:00.</p>
 <p>From the dashboard form, you can set:</p>
@@ -550,6 +554,7 @@ calrs source remove &lt;id-prefix&gt;
 <li>Generating candidate slots from availability rules (day of week + time range)</li>
 <li>Filtering out slots that overlap with calendar events (from CalDAV sync)</li>
 <li>Filtering out slots that overlap with confirmed bookings</li>
+<li>Filtering out slots blocked by required <a href="#shared-resources">shared resources</a> (all mode: any busy resource blocks; round-robin mode: blocked only when every resource is busy)</li>
 <li>Applying buffer times (before and after each slot)</li>
 <li>Removing slots that violate minimum notice (too close to now)</li>
 <li>If “one slot per day” is enabled, keeping only the earliest slot per day</li>
@@ -788,9 +793,9 @@ calrs event-type slots intro --days 14
 <li><strong>Buffer times</strong> — the buffer before/after is included in the conflict window</li>
 <li><strong>Minimum notice</strong> — slots too close to the current time are rejected</li>
 </ul>
-<p>Additionally, a database-level unique index prevents two bookings from occupying the same slot, even if two guests submit simultaneously.</p>
+<p>Additionally, a database-level unique index prevents two bookings from occupying the same slot, even if two guests submit simultaneously. On round-robin team event types the uniqueness is per assigned member, so two guests can book the same time as long as different members take the bookings.</p>
 <h2 id="caldav-write-back-2"><a class="header" href="#caldav-write-back-2">CalDAV write-back</a></h2>
-<p>When a booking is confirmed (either directly or via approval), calrs can push the event to the host’s CalDAV calendar. See <a href="#caldav-write-back">CalDAV Integration &gt; Write-back</a> for setup.</p>
+<p>When a booking is confirmed (either directly or via approval), calrs can push the event to the host’s CalDAV calendar. For team event types the host is the assigned member (round-robin), or every eligible member (collective: enabled members with a non-zero per-event-type weight, the same set the slot grid checks). See <a href="#caldav-write-back">CalDAV Integration &gt; Write-back</a> for setup.</p>
 <h2 id="email-notifications"><a class="header" href="#email-notifications">Email notifications</a></h2>
 <p>If SMTP is configured, calrs sends emails at these moments:</p>
 <div class="table-wrapper">
@@ -989,6 +994,98 @@ calrs event-type slots intro --days 14
 <li>Global admins see all teams and can create new ones</li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
+<h1 id="shared-resources"><a class="header" href="#shared-resources">Shared Resources</a></h1>
+<p>Shared resources are instance-level bookable assets: a demo lab, a meeting room, a shared piece of equipment. Each resource is backed by a read-only ICS publish feed (a BlueMind “calendar address”, a Nextcloud public link, or any URL serving an iCalendar file). Once a resource is attached to an event type, a busy resource blocks booking slots the same way a busy calendar does.</p>
+<p>The feature is opt-in. With no resources configured, nothing changes anywhere in the booking flow.</p>
+<h2 id="how-it-fits-together"><a class="header" href="#how-it-fits-together">How it fits together</a></h2>
+<ol>
+<li>A global admin adds a resource in the admin panel, pointing at its ICS feed.</li>
+<li>The resource is attached to one or more event types (“Required resources” on the event type form).</li>
+<li>When guests view the slot picker, times where the resource is busy are hidden.</li>
+<li>When a booking is confirmed, calrs can write a reservation event into the resource’s own CalDAV calendar, so other tools (and other calrs event types) see it as busy too.</li>
+<li>When the booking is cancelled or rescheduled, the reservation is released.</li>
+</ol>
+<p>Even without CalDAV write-back, two event types sharing a resource cannot double-book it: calrs merges the feed events with its own confirmed bookings when computing busy times.</p>
+<h2 id="adding-a-resource"><a class="header" href="#adding-a-resource">Adding a resource</a></h2>
+<p>Go to <strong>Dashboard &gt; Admin &gt; Resources</strong> and click <strong>Add resource</strong>:</p>
+<ul>
+<li><strong>Feed URL</strong> (required) is the read-only ICS publish URL. It is validated and synced immediately on create, and the resource name is auto-filled from the feed’s <code>X-WR-CALNAME</code> if present.</li>
+<li><strong>CalDAV URL</strong> (optional) is the writable CalDAV collection for reservation write-back. For BlueMind publish URLs, calrs can derive it automatically, so you can usually leave it blank.</li>
+<li><strong>Service account</strong> (optional) is a username and password with write access to the CalDAV collection. The password is encrypted at rest (AES-256-GCM, same as other stored credentials). When editing, leaving the password field empty keeps the current value.</li>
+</ul>
+<p>Per-resource actions:</p>
+<ul>
+<li><strong>Sync now</strong> forces an immediate feed re-sync.</li>
+<li><strong>Test write</strong> verifies write-back end to end: it PUTs a temporary event 24 hours out, checks it exists, then deletes it.</li>
+<li><strong>Edit</strong> and <strong>Delete</strong> work as expected. Deleting a resource detaches it from all event types.</li>
+</ul>
+<h3 id="feed-sync-and-failures"><a class="header" href="#feed-sync-and-failures">Feed sync and failures</a></h3>
+<p>Feeds are cached and re-synced automatically when older than 5 minutes, on demand as slots are computed. The feed is authoritative: events that disappear from the feed are removed from the cache.</p>
+<p>If a feed fetch fails, the admin panel shows a sync failure indicator with the last error. Failed fetches still update the sync timestamp so dead feeds back off instead of being retried on every request. A successful sync clears the error.</p>
+<h2 id="attaching-resources-to-event-types"><a class="header" href="#attaching-resources-to-event-types">Attaching resources to event types</a></h2>
+<p>The event type form gains a <strong>Required resources</strong> section listing the resources you may attach, plus a scheduling mode selector.</p>
+<ul>
+<li><strong>Personal event types:</strong> only global admins see and edit the section.</li>
+<li><strong>Team event types:</strong> global admins always can. Team admins can too, if their team is on the resource’s allowlist (see <a href="#team-allowlist">Team allowlist</a> below).</li>
+</ul>
+<h2 id="scheduling-modes-1"><a class="header" href="#scheduling-modes-1">Scheduling modes</a></h2>
+<p>When an event type has more than one required resource, the <strong>Resource scheduling</strong> mode controls how they combine:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Mode</th><th>Slot is available when</th><th>At booking time</th></tr>
+</thead>
+<tbody>
+<tr><td><strong>All</strong> (default)</td><td>Every attached resource is free</td><td>The booking blocks all attached resources</td></tr>
+<tr><td><strong>Round-robin</strong></td><td>At least one attached resource is free</td><td>The least-loaded free resource is picked and assigned to the booking</td></tr>
+</tbody>
+</table>
+</div>
+<p>Use <strong>all</strong> when a meeting genuinely needs every resource (a room and a projector). Use <strong>round-robin</strong> when any one of several interchangeable resources will do (three identical demo labs). In round-robin mode, the assigned resource is stored on the booking and shown on the host’s bookings dashboard and in host-facing emails. Guests never see resource names.</p>
+<h2 id="how-busy-resources-block-slots"><a class="header" href="#how-busy-resources-block-slots">How busy resources block slots</a></h2>
+<p>For each candidate slot, calrs merges, per resource:</p>
+<ul>
+<li>Feed events, including expanded recurring events, skipping cancelled and transparent (free) ones</li>
+<li>calrs’ own confirmed bookings that hold that resource</li>
+</ul>
+<p>In <strong>all</strong> mode, the union of busy intervals blocks the slot. In <strong>round-robin</strong> mode, only the intersection blocks it (the slot survives as long as one resource is free). Pending bookings do not block resources; both approval paths re-check resource availability before confirming, so an approval fails cleanly if the resource was taken in the meantime.</p>
+<p>The <strong>Troubleshoot</strong> view shows resource conflicts as <code>resource_busy</code> intervals, alongside calendar events and bookings.</p>
+<h2 id="reservation-write-back"><a class="header" href="#reservation-write-back">Reservation write-back</a></h2>
+<p>When a booking is confirmed, calrs PUTs a reservation event into the resource’s CalDAV collection under the booking’s own UID:</p>
+<ul>
+<li>In <strong>all</strong> mode, into every attached resource.</li>
+<li>In <strong>round-robin</strong> mode, only into the assigned resource.</li>
+</ul>
+<p>When a confirmed booking is cancelled or rescheduled, the reservation is deleted. The targets are derived from the stored assignment, so a resource that was detached from the event type after booking still gets released. Declined pending bookings need no cleanup, since reservations are only pushed on confirmation.</p>
+<p>Write failure is never fatal: the booking still succeeds, the DB-side busy check keeps blocking the resource, and the failure is logged.</p>
+<h3 id="credentials-for-write-back"><a class="header" href="#credentials-for-write-back">Credentials for write-back</a></h3>
+<p>calrs tries credentials in trust order:</p>
+<ol>
+<li>The resource’s <strong>service account</strong>, if configured. This is always preferred.</li>
+<li>Members who opted in to <strong>credential lending</strong> and have a CalDAV source on the same scheme, host, and port as the resource’s CalDAV URL. The booking’s assigned host is preferred among them.</li>
+</ol>
+<p>Members opt in from <strong>Profile &amp; Settings</strong>. Note that lending grants writes to any collection on that origin that the member’s own server-side ACL allows, so a dedicated service account is the safer setup.</p>
+<h2 id="team-allowlist"><a class="header" href="#team-allowlist">Team allowlist</a></h2>
+<p>By default, only global admins can attach resources to event types. To delegate this to team admins, configure the allowlist on each resource:</p>
+<ol>
+<li>In <strong>Dashboard &gt; Admin &gt; Resources</strong>, edit a resource and set <strong>Teams allowed to use this resource</strong>.</li>
+<li>Team admins of an allowlisted team then see the <strong>Required resources</strong> section on their team event type forms, restricted to the resources allowlisted for their team, and can attach or detach them.</li>
+</ol>
+<p>Attachment is validated server-side against the allowlist, not just hidden in the UI. An empty allowlist keeps the old behavior (global admins only). Personal event types remain global-admin only regardless of allowlists.</p>
+<p>The allowlist controls <strong>attachment only</strong>. Availability evaluation is unchanged: once a resource is attached, it blocks slots for everyone booking that event type.</p>
+<h2 id="cli"><a class="header" href="#cli">CLI</a></h2>
+<p>Probe a resource URL before adding it, to check what calrs can do with it:</p>
+<pre><code class="language-bash"># Probe an ICS publish feed or CalDAV collection
+calrs resource probe --url https://mail.example.com/api/calendars/publish/...
+
+# Authenticated CalDAV probe (password prompted)
+calrs resource probe --url https://mail.example.com/dav/... --username svc-resources
+
+# Also run a write test (PUT a temporary event, verify, delete)
+calrs resource probe --url https://... --username svc-resources --write-test
+</code></pre>
+<p><code>calrs event-type slots</code> consults attached resources, so the printed slots match the web booking page. <code>calrs booking cancel</code> releases the booking’s resource reservation on cancellation. See the <a href="#cli-reference">CLI Reference</a> for details.</p>
+<div style="break-before: page; page-break-before: always;"></div>
 <h1 id="authentication"><a class="header" href="#authentication">Authentication</a></h1>
 <p>calrs supports two authentication methods: local accounts and OIDC (OpenID Connect) SSO.</p>
 <p><img src="images/login.png" alt="Login page"></p>
@@ -1137,6 +1234,8 @@ calrs config show
 <li><strong>Client secret</strong> — update the secret (current value is never displayed)</li>
 <li><strong>Auto-register</strong> — automatically create users on first OIDC login</li>
 </ul>
+<h2 id="resources"><a class="header" href="#resources">Resources</a></h2>
+<p>The <strong>Resources</strong> card manages <a href="#shared-resources">shared bookable resources</a> (demo lab, meeting rooms): add a resource from its ICS feed URL, edit its optional CalDAV write-back settings and team allowlist, force a sync with <strong>Sync now</strong>, and verify write access with <strong>Test write</strong>. A failed feed sync is flagged here with the last error. See <a href="#shared-resources">Shared Resources</a> for details.</p>
 <h2 id="smtp-status"><a class="header" href="#smtp-status">SMTP status</a></h2>
 <p>Shows whether SMTP is configured and the current sender address. SMTP is configured via CLI (<code>calrs config smtp</code>) or by editing the database directly.</p>
 <div style="break-before: page; page-break-before: always;"></div>
@@ -1352,6 +1451,7 @@ calrs event-type list
 calrs event-type slots &lt;SLUG&gt; [OPTIONS]
     --days &lt;DAYS&gt;    Number of days to show (default: 7)
 </code></pre>
+<p><code>slots</code> consults any <a href="#shared-resources">shared resources</a> attached to the event type: slots where a required resource is busy are not printed, matching the web booking page.</p>
 <h3 id="calrs-booking"><a class="header" href="#calrs-booking"><code>calrs booking</code></a></h3>
 <p>Manage bookings.</p>
 <pre><code>calrs booking create &lt;SLUG&gt; [OPTIONS]
@@ -1367,6 +1467,7 @@ calrs booking list [OPTIONS]
 
 calrs booking cancel &lt;ID&gt;    Cancel a booking (ID prefix match)
 </code></pre>
+<p><code>cancel</code> marks the booking cancelled, sends the cancellation emails, deletes the event from the host’s CalDAV write-back calendar, and releases any <a href="#shared-resources">shared resource</a> reservation from the resource’s CalDAV calendar(s).</p>
 <h3 id="calrs-config"><a class="header" href="#calrs-config"><code>calrs config</code></a></h3>
 <p>Configure SMTP, authentication, and OIDC.</p>
 <pre><code>calrs config smtp [OPTIONS]
@@ -1391,6 +1492,14 @@ calrs config oidc [OPTIONS]
     --enabled &lt;BOOL&gt;          Enable/disable OIDC
     --auto-register &lt;BOOL&gt;    Auto-create users on first login
 </code></pre>
+<h3 id="calrs-resource"><a class="header" href="#calrs-resource"><code>calrs resource</code></a></h3>
+<p>Probe resource calendar URLs before adding them as <a href="#shared-resources">shared resources</a>.</p>
+<pre><code>calrs resource probe [OPTIONS]
+    --url &lt;URL&gt;           Resource calendar URL (ICS publish feed or CalDAV collection)
+    --username &lt;USERNAME&gt; Username for authenticated CalDAV access (password prompted)
+    --write-test          Write test: PUT a temporary event, verify it exists, then delete it
+</code></pre>
+<p>For CalDAV URLs the probe runs the full RFC 4791 discovery fallback. The write test confirms that reservation write-back will work with the given credentials.</p>
 <h3 id="calrs-user"><a class="header" href="#calrs-user"><code>calrs user</code></a></h3>
 <p>Manage users (admin operations).</p>
 <pre><code>calrs user create [OPTIONS]

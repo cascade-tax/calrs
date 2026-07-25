@@ -35,10 +35,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-123f3020.js";
+            window.path_to_searchindex_js = "searchindex-a36715f8.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-3792cc5d.js"></script>
+        <script src="toc-cf3b2378.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -261,8 +261,8 @@ calrs sync --full
 <li>On <strong>confirmation</strong>: calrs generates an ICS event and PUTs it to <code>{calendar-href}/{booking-uid}.ics</code></li>
 <li>On <strong>cancellation</strong>: calrs DELETEs the event from the same path</li>
 <li>The booking tracks which calendar it was pushed to, so cancellation always targets the right calendar</li>
-<li>If no write calendar is configured, write-back is silently skipped (emails still work)</li>
-<li>Write-back works for individual bookings, group round-robin bookings, and pending-then-confirmed bookings</li>
+<li>If no write calendar is configured, write-back is skipped and a warning is logged (emails still work)</li>
+<li>Write-back works for individual bookings, team bookings (the assigned member’s calendar for round-robin, every eligible member’s for collective), and pending-then-confirmed bookings</li>
 </ul>
 <h2 id="managing-sources"><a class="header" href="#managing-sources">Managing sources</a></h2>
 <pre><code class="language-bash"># List all sources

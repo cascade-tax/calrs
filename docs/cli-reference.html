@@ -35,10 +35,10 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-123f3020.js";
+            window.path_to_searchindex_js = "searchindex-a36715f8.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-3792cc5d.js"></script>
+        <script src="toc-cf3b2378.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -225,6 +225,7 @@ calrs event-type list
 calrs event-type slots &lt;SLUG&gt; [OPTIONS]
     --days &lt;DAYS&gt;    Number of days to show (default: 7)
 </code></pre>
+<p><code>slots</code> consults any <a href="./resources.html">shared resources</a> attached to the event type: slots where a required resource is busy are not printed, matching the web booking page.</p>
 <h3 id="calrs-booking"><a class="header" href="#calrs-booking"><code>calrs booking</code></a></h3>
 <p>Manage bookings.</p>
 <pre><code>calrs booking create &lt;SLUG&gt; [OPTIONS]
@@ -240,6 +241,7 @@ calrs booking list [OPTIONS]
 
 calrs booking cancel &lt;ID&gt;    Cancel a booking (ID prefix match)
 </code></pre>
+<p><code>cancel</code> marks the booking cancelled, sends the cancellation emails, deletes the event from the host’s CalDAV write-back calendar, and releases any <a href="./resources.html">shared resource</a> reservation from the resource’s CalDAV calendar(s).</p>
 <h3 id="calrs-config"><a class="header" href="#calrs-config"><code>calrs config</code></a></h3>
 <p>Configure SMTP, authentication, and OIDC.</p>
 <pre><code>calrs config smtp [OPTIONS]
@@ -264,6 +266,14 @@ calrs config oidc [OPTIONS]
     --enabled &lt;BOOL&gt;          Enable/disable OIDC
     --auto-register &lt;BOOL&gt;    Auto-create users on first login
 </code></pre>
+<h3 id="calrs-resource"><a class="header" href="#calrs-resource"><code>calrs resource</code></a></h3>
+<p>Probe resource calendar URLs before adding them as <a href="./resources.html">shared resources</a>.</p>
+<pre><code>calrs resource probe [OPTIONS]
+    --url &lt;URL&gt;           Resource calendar URL (ICS publish feed or CalDAV collection)
+    --username &lt;USERNAME&gt; Username for authenticated CalDAV access (password prompted)
+    --write-test          Write test: PUT a temporary event, verify it exists, then delete it
+</code></pre>
+<p>For CalDAV URLs the probe runs the full RFC 4791 discovery fallback. The write test confirms that reservation write-back will work with the given credentials.</p>
 <h3 id="calrs-user"><a class="header" href="#calrs-user"><code>calrs user</code></a></h3>
 <p>Manage users (admin operations).</p>
 <pre><code>calrs user create [OPTIONS]
