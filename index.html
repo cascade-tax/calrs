@@ -481,7 +481,7 @@
       <img src="assets/calrs.png" alt="Cal.rs" class="hero-logo">
       <div class="brand-name"><span class="brand-cal">Cal</span><span class="brand-dot">.</span><span class="brand-rs">rs</span></div>
     </div>
-    <div class="hero-badge">One Rust binary &middot; Fully self-hostable &middot; No external requests &middot; Open source</div>
+    <div class="hero-badge"><span class="dot"></span>v1.14.0 &middot; One Rust binary &middot; Fully self-hostable &middot; No external requests &middot; Open source</div>
     <h1>
       Scheduling that<br><span class="gradient">respects your stack</span>
     </h1>
@@ -557,6 +557,11 @@
         <p>Designate a team as watchers on an event type. When a booking lands, watchers are emailed with a tokenized link to <strong>claim</strong> it — first-come wins, no double-assignment. Claimed bookings show up on the watcher's dashboard. Perfect for support rotations and account-management teams.</p>
       </div>
       <div class="feature-card">
+        <div class="feature-icon">&#127970;</div>
+        <h3>Shared bookable resources</h3>
+        <p>Attach instance-wide resources like a demo lab or meeting room to your event types, backed by a read-only ICS feed (BlueMind, Nextcloud). A busy resource blocks the slot. <strong>All</strong> mode requires every resource to be free; <strong>round-robin</strong> picks the least-loaded one and shows the assignment on the booking. Confirmed bookings are reserved in the resource's own CalDAV calendar, so two event types sharing a room can never double-book it.</p>
+      </div>
+      <div class="feature-card">
         <div class="feature-icon">&#128275;</div>
         <h3>Three-level visibility</h3>
         <p><strong>Public</strong> — listed on your profile, anyone can book. <strong>Internal</strong> — any authenticated colleague generates single-use invite links from the Invite Links page. <strong>Private</strong> — only you send invite links. Works for both personal and team event types. One-click link generation with clipboard copy.</p>
@@ -605,6 +610,11 @@
         <div class="feature-icon">&#128230;</div>
         <h3>Single binary, zero external requests</h3>
         <p>No runtime dependencies. SQLite storage in a single WAL-mode file. Ships as one binary — deploy with Docker, systemd, or just run it. Fonts are bundled — no Google Fonts CDN, no third-party requests. Fully GDPR-compliant out of the box.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">&#128295;</div>
+        <h3>Configure from the admin panel</h3>
+        <p>SMTP settings, the public base URL, and the private-host allowlist are all editable from the admin UI and stored in the database. No restart, no config file edits. Environment variables still take priority when set, and the effective source is shown explicitly, so containerized deployments keep working unchanged.</p>
       </div>
       <div class="feature-card">
         <div class="feature-icon">&#128736;</div>
