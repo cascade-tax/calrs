@@ -1,0 +1,26 @@
+steps:
+  - name: gcr.io/cloud-builders/docker
+    id: build-and-push
+    entrypoint: bash
+    args:
+      - -ceu
+      - |
+        docker buildx create --driver docker-container --name calrs-builder --use
+        docker buildx inspect --bootstrap
+        docker buildx build \
+          --push \
+          --tag "${_LOCATION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_IMAGE}:${_TAG}" \
+          --cache-from "type=registry,ref=${_LOCATION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_IMAGE}:build-cache" \
+          --cache-to "type=registry,ref=${_LOCATION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_IMAGE}:build-cache,mode=max,compression=zstd" \
+          .
+
+substitutions:
+  _LOCATION: us-west1
+  _REPOSITORY: calrs
+  _IMAGE: calrs
+  _TAG: dev
+
+options:
+  machineType: E2_HIGHCPU_8
+
+timeout: 1800s

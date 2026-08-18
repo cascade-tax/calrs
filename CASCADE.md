@@ -18,3 +18,19 @@ branch is based on the production release pinned by
 The deployment repository's weekly upstream review compares this branch with
 `olivierlambert/calrs`, reviews new releases and security changes, and reports
 whether these commits apply cleanly before any production update.
+
+## Cascade image builds
+
+`cloudbuild.yaml` stores BuildKit's complete multi-stage cache in Artifact
+Registry. The cache preserves compiled Rust dependencies and intermediate
+builder layers across Cloud Build workers. Build release images with:
+
+```bash
+gcloud builds submit . \
+  --project cascade-calendar-prod \
+  --config cloudbuild.yaml \
+  --substitutions _TAG=1.15.1-cascade.N
+```
+
+The `build-cache` tag is build infrastructure, not a deployable release. Pin
+production to the immutable digest of the versioned image tag.
