@@ -23,6 +23,18 @@
     if (dark) document.documentElement.classList.add('dark');
   })();
   </script>
+  <script>
+  // Page templates execute inside the content block, so shared helpers must
+  // be defined in the head before any page-level script can call them.
+  window.calrsFormat12h = function(time24) {
+    var parts = time24.split(':');
+    var h = parseInt(parts[0], 10);
+    var m = parts[1];
+    var suffix = h >= 12 ? 'PM' : 'AM';
+    h = h % 12 || 12;
+    return h + ':' + m + ' ' + suffix;
+  };
+  </script>
   <style>
     @font-face {
       font-family: 'Inter';
@@ -634,16 +646,6 @@
     if (el) calrsLoader.show();
   });
 })();
-</script>
-<script>
-window.calrsFormat12h = function(time24) {
-  var parts = time24.split(':');
-  var h = parseInt(parts[0], 10);
-  var m = parts[1];
-  var suffix = h >= 12 ? 'PM' : 'AM';
-  h = h % 12 || 12;
-  return h + ':' + m + ' ' + suffix;
-};
 </script>
 {% if embed %}
 <script>

@@ -15440,6 +15440,19 @@ async fn troubleshoot(
     .unwrap_or_default();
 
     if event_types.is_empty() {
+        let has_team_event_types: bool = sqlx::query_scalar::<_, i64>(
+            "SELECT EXISTS(
+                SELECT 1
+                FROM event_types et
+                JOIN team_members tm ON tm.team_id = et.team_id
+                WHERE tm.user_id = ? AND et.enabled = 1
+            )",
+        )
+        .bind(&user.id)
+        .fetch_one(&state.pool)
+        .await
+        .unwrap_or(0)
+            != 0;
         let tmpl = match state.templates.get_template("troubleshoot.html") {
             Ok(t) => t,
             Err(e) => return internal_error_html("template render", &e),
@@ -15449,6 +15462,7 @@ async fn troubleshoot(
             tmpl.render(context! {
                 user_name => &user.name,
                 no_event_types => true,
+                has_team_event_types => has_team_event_types,
                 sidebar => sidebar_context(&auth_user, "troubleshoot"),
                 lang => auth_user.lang,
                 impersonating => impersonating,
@@ -27837,6 +27851,16 @@ mod tests {
         // Cascade installation contract: the slot picker always renders a
         // 12-hour clock and both week-view builders anchor on Sunday.
         assert!(rendered.contains("return calrsFormat12h(t);"));
+        let formatter_definition = rendered
+            .find("window.calrsFormat12h = function")
+            .expect("shared 12-hour formatter should be defined");
+        let formatter_call = rendered
+            .find("return calrsFormat12h(t);")
+            .expect("slot picker should call the shared formatter");
+        assert!(
+            formatter_definition < formatter_call,
+            "shared helpers must load before page-level scripts execute"
+        );
         assert!(!rendered.contains("calrs_time_format"));
         assert!(rendered.contains("['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']"));
         assert_eq!(
@@ -28877,6 +28901,43 @@ mod tests {
             body.contains("Troubleshoot"),
             "Troubleshoot page should render"
         );
+    }
+
+    #[tokio::test]
+    async fn troubleshoot_explains_team_only_event_types() {
+        let (app, pool, session, _) = setup_test_app().await;
+        let user_id: String =
+            sqlx::query_scalar("SELECT id FROM users WHERE username = 'testuser'")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        sqlx::query(
+            "INSERT INTO teams (id, name, slug, visibility, created_by) VALUES ('team-only', 'Team Only', 'team-only', 'public', ?)",
+        )
+        .bind(&user_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO team_members (team_id, user_id, role, source) VALUES ('team-only', ?, 'admin', 'direct')",
+        )
+        .bind(&user_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query("UPDATE event_types SET team_id = 'team-only'")
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        let response = app
+            .oneshot(get_authed("/dashboard/troubleshoot", &session))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), 200);
+        let body = body_string(response).await;
+        assert!(body.contains("supports personal event types only"));
+        assert!(!body.contains("No event types found"));
     }
 
     #[tokio::test]

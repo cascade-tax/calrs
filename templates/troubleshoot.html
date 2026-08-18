@@ -6,7 +6,11 @@
 {% if no_event_types %}
 <div class="card">
   <h1>{{ t("troubleshoot-heading") }}</h1>
+  {% if has_team_event_types %}
+  <p class="empty">{{ t("troubleshoot-empty-team-only") }}</p>
+  {% else %}
   <p class="empty">{{ t("troubleshoot-empty", link='<a href="/dashboard/event-types/new" style="color: var(--accent); text-decoration: none;">' ~ (t("troubleshoot-empty-link-label") | escape) ~ '</a>') | safe }}</p>
+  {% endif %}
 </div>
 {% else %}
 <div class="card">
