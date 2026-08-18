@@ -812,6 +812,18 @@ fn format_time_from_dt(dt_str: &str) -> String {
     }
 }
 
+/// Format either a stored datetime or an `HH:MM` value for display.
+/// Machine-facing calendar and form values remain 24-hour strings.
+fn format_time_12h(value: &str) -> String {
+    if let Some(ndt) = parse_booking_datetime(value) {
+        return ndt.time().format("%-I:%M %p").to_string();
+    }
+    if let Ok(time) = NaiveTime::parse_from_str(value, "%H:%M") {
+        return time.format("%-I:%M %p").to_string();
+    }
+    value.to_string()
+}
+
 /// Extract HH:MM (24-hour) from a booking datetime for ICS generation.
 /// format_time_from_dt returns 12-hour display format ("2:00 PM") which
 /// convert_to_utc cannot parse. This function returns "14:00" format.
@@ -986,25 +998,11 @@ impl EmbedParams {
         matches!(self.embed.as_deref(), Some("1") | Some("true"))
     }
 
-    /// Full set of accent CSS variable declarations derived from `brand`,
-    /// suitable for inlining inside a `:root, html.dark { … }` rule. Returns
-    /// None if `brand` is missing, empty, or not 3/6 hex digits — we never pass
-    /// raw user input into CSS to avoid breaking out of the rule.
-    ///
-    /// Besides `--accent`/`--accent-hover` (the brand hex), we derive the rgba
-    /// variants `--accent-subtle`/`--accent-border`/`--accent-muted` from the
-    /// same color so slot pills, borders and muted states pick up the brand
-    /// too — otherwise those would keep the org accent and render half-themed.
+    /// Cascade embeds always inherit the installation palette. Ignoring the
+    /// generic `brand` parameter prevents an embed URL from bypassing the
+    /// Ocean-first light/dark theme.
     fn brand_css(&self) -> Option<String> {
-        let raw = self.brand.as_deref()?.trim_start_matches('#');
-        let (r, g, b) = hex_to_rgb(raw)?;
-        Some(format!(
-            "--accent: #{hex}; --accent-hover: #{hex}; \
-             --accent-subtle: rgba({r},{g},{b},0.12); \
-             --accent-border: rgba({r},{g},{b},0.3); \
-             --accent-muted: rgba({r},{g},{b},0.5);",
-            hex = raw
-        ))
+        None
     }
 
     /// "?embed=1&layout=month&theme=dark&brand=ff0000" — used to keep params
@@ -1251,6 +1249,7 @@ pub async fn create_router(pool: SqlitePool, data_dir: PathBuf, secret_key: [u8;
     let mut env = Environment::new();
     env.set_undefined_behavior(minijinja::UndefinedBehavior::Lenient);
     env.set_loader(minijinja::path_loader("templates"));
+    env.add_filter("time12h", format_time_12h);
     crate::i18n::register(&mut env);
 
     // Populate the process-global runtime-settings cache (base URL, private-host
@@ -7988,8 +7987,8 @@ async fn overrides_page(
                 id => id,
                 date => date,
                 date_label => date_label,
-                start_time => start_time,
-                end_time => end_time,
+                start_time => start_time.as_deref().map(format_time_12h),
+                end_time => end_time.as_deref().map(format_time_12h),
                 is_blocked => *is_blocked != 0,
             }
         })
@@ -13426,7 +13425,7 @@ fn frequency_period_range(dt: NaiveDateTime, period: &str) -> (NaiveDateTime, Na
             (start, end)
         }
         "week" => {
-            let weekday = date.weekday().num_days_from_monday();
+            let weekday = date.weekday().num_days_from_sunday();
             let week_start = date - Duration::days(weekday as i64);
             let start = week_start.and_hms_opt(0, 0, 0).unwrap();
             let end = (week_start + Duration::days(7))
@@ -13813,8 +13812,8 @@ fn build_month_params(
         _ => Some(format!("{}-{:02}", ny, nm)),
     };
 
-    // Monday = 0 for the grid
-    let first_weekday = month_start.weekday().num_days_from_monday();
+    // Sunday = 0 for the Cascade calendar grid.
+    let first_weekday = month_start.weekday().num_days_from_sunday();
     let today_date = today_guest.format("%Y-%m-%d").to_string();
 
     (
@@ -14200,6 +14199,38 @@ fn custom_theme_css(
     // would read the wrong nibbles and silently emit rgba(0,0,0,..).
     let (accent, accent_hover) = (accent.trim(), accent_hover.trim());
     let (bg, surface, text) = (bg.trim(), surface.trim(), text.trim());
+
+    // Cascade's design system defines paired light and dark palettes rather
+    // than deriving one from the other. Preserve those exact semantic colors
+    // when the installation's configured light palette identifies Cascade.
+    let cascade_palette = [
+        (accent, "#1A3A4A"),
+        (accent_hover, "#2A5A6A"),
+        (bg, "#F5F3F0"),
+        (surface, "#FFFFFF"),
+        (text, "#22201D"),
+    ]
+    .iter()
+    .all(|(actual, expected)| actual.eq_ignore_ascii_case(expected));
+    if cascade_palette {
+        return concat!(
+            ":root{--bg:#F5F3F0;--surface:#FFFFFF;--surface-hover:#FAFAF9;",
+            "--text:#22201D;--text-secondary:#6A6866;--text-muted:#706E6C;",
+            "--border:#E8E6E3;--border-hover:#D5D3D0;",
+            "--accent:#1A3A4A;--accent-hover:#2A5A6A;--accent-subtle:#E8F0F3;",
+            "--btn-primary-bg:#1A3A4A;--btn-primary-bg-hover:#2A5A6A;",
+            "--accent-border:rgba(42,90,106,0.3);--accent-muted:rgba(26,58,74,0.5);",
+            "--success:#2D6A4F;--error-bg:#FDECEA;--error-text:#C0392B}",
+            " html.dark{--bg:#161B22;--surface:#1C2330;--surface-hover:#232A38;",
+            "--text:#E2DFD8;--text-secondary:#9B9890;--text-muted:#8E8A82;",
+            "--border:rgba(255,255,255,0.08);--border-hover:rgba(255,255,255,0.12);",
+            "--accent:#4296AE;--accent-hover:#4AA3BD;--accent-subtle:rgba(66,150,174,0.12);",
+            "--btn-primary-bg:#2E6577;--btn-primary-bg-hover:#38758A;",
+            "--accent-border:rgba(66,150,174,0.3);--accent-muted:rgba(66,150,174,0.5);",
+            "--success:#4ADE80;--error-bg:rgba(248,113,113,0.1);--error-text:#F87171}"
+        )
+        .to_string();
+    }
 
     // Parse accent for subtle/border/muted derivations
     let r = u8::from_str_radix(&accent[1..3], 16).unwrap_or(0);
@@ -15939,8 +15970,8 @@ async fn troubleshoot(
         .iter()
         .map(|b| {
             context! {
-                start => b.start.format("%H:%M").to_string(),
-                end => b.end.format("%H:%M").to_string(),
+                start => b.start.format("%-I:%M %p").to_string(),
+                end => b.end.format("%-I:%M %p").to_string(),
                 status => &b.status,
                 label => &b.label,
                 detail => &b.detail,
@@ -15957,7 +15988,9 @@ async fn troubleshoot(
         let min_offset = (h - display_start_hour) as f64 * 60.0;
         let left_pct = min_offset / total_minutes * 100.0;
         hour_markers.push(context! {
-            label => format!("{:02}:00", h),
+            label => NaiveTime::from_hms_opt(h % 24, 0, 0)
+                .map(|time| time.format("%-I %p").to_string())
+                .unwrap_or_default(),
             left_pct => format!("{:.2}", left_pct),
         });
         h += 1;
@@ -15983,8 +16016,8 @@ async fn troubleshoot(
                 _ => b.status.clone(),
             };
             context! {
-                start => b.start.format("%H:%M").to_string(),
-                end => b.end.format("%H:%M").to_string(),
+                start => b.start.format("%-I:%M %p").to_string(),
+                end => b.end.format("%-I:%M %p").to_string(),
                 status => &b.status,
                 reason => reason,
                 detail => &b.detail,
@@ -17709,18 +17742,16 @@ async fn admin_update_captcha(
         {
             tracing::error!(error = %e, "failed to save captcha config");
         }
-    } else {
-        if let Err(e) = sqlx::query(
-            "UPDATE auth_config SET captcha_instance_url = ?, captcha_site_key = ?, captcha_widget_url = ?, updated_at = datetime('now') WHERE id = 'singleton'",
-        )
-        .bind(&instance_url)
-        .bind(&site_key)
-        .bind(&widget_url)
-        .execute(&state.pool)
-        .await
-        {
-            tracing::error!(error = %e, "failed to save captcha config");
-        }
+    } else if let Err(e) = sqlx::query(
+        "UPDATE auth_config SET captcha_instance_url = ?, captcha_site_key = ?, captcha_widget_url = ?, updated_at = datetime('now') WHERE id = 'singleton'",
+    )
+    .bind(&instance_url)
+    .bind(&site_key)
+    .bind(&widget_url)
+    .execute(&state.pool)
+    .await
+    {
+        tracing::error!(error = %e, "failed to save captcha config");
     }
 
     let new_config = captcha::load_captcha_config(&state.pool, &state.secret_key).await;
@@ -18811,8 +18842,8 @@ async fn approve_booking_form(
     };
 
     let date_label = format_date_label(&start_at, lang);
-    let start_time = extract_time_24h(&start_at);
-    let end_time = extract_time_24h(&end_at);
+    let start_time = format_time_12h(&start_at);
+    let end_time = format_time_12h(&end_at);
 
     let tmpl = match state.templates.get_template("booking_approve_form.html") {
         Ok(t) => t,
@@ -19093,6 +19124,8 @@ async fn approve_booking_by_token(
         Ok(t) => t,
         Err(e) => return internal_error_response("internal", &e),
     };
+    let start_time = format_time_12h(&start_time);
+    let end_time = format_time_12h(&end_time);
     let rendered = tmpl
         .render(context! {
             event_title,
@@ -19140,8 +19173,8 @@ async fn decline_booking_form(
 
     let date_label = format_date_label(&start_at, lang);
     let date = start_at.get(..10).unwrap_or(&start_at).to_string();
-    let start_time = extract_time_24h(&start_at);
-    let end_time = extract_time_24h(&end_at);
+    let start_time = format_time_12h(&start_at);
+    let end_time = format_time_12h(&end_at);
 
     let tmpl = match state.templates.get_template("booking_decline_form.html") {
         Ok(t) => t,
@@ -19264,6 +19297,8 @@ async fn decline_booking_by_token(
         Ok(t) => t,
         Err(e) => return internal_error_response("internal", &e),
     };
+    let start_time = format_time_12h(&start_time);
+    let end_time = format_time_12h(&end_time);
     let rendered = tmpl
         .render(context! {
             event_title,
@@ -19545,8 +19580,8 @@ async fn guest_cancel_form(
 
     let date_label = format_date_label(&start_at, lang);
     let date = start_at.get(..10).unwrap_or(&start_at).to_string();
-    let start_time = extract_time_24h(&start_at);
-    let end_time = extract_time_24h(&end_at);
+    let start_time = format_time_12h(&start_at);
+    let end_time = format_time_12h(&end_at);
 
     let tmpl = match state.templates.get_template("booking_cancel_form.html") {
         Ok(t) => t,
@@ -19718,6 +19753,8 @@ async fn guest_cancel_booking(
         Ok(t) => t,
         Err(e) => return internal_error_response("internal", &e),
     };
+    let start_time = format_time_12h(&start_time);
+    let end_time = format_time_12h(&end_time);
     let rendered = tmpl
         .render(context! {
             event_title,
@@ -19881,8 +19918,8 @@ async fn guest_reschedule_slots(
     let host = reschedule_host_profile(&state.pool, &hosts, &et_id).await;
 
     let old_date_label = format_date_label(&start_at, lang);
-    let old_start_time = extract_time_24h(&start_at);
-    let old_end_time = extract_time_24h(&end_at);
+    let old_start_time = format_time_12h(&start_at);
+    let old_end_time = format_time_12h(&end_at);
     let old_date = start_at.get(..10).unwrap_or(&start_at).to_string();
 
     // If date + time + tz are present, show confirmation page
@@ -19904,8 +19941,8 @@ async fn guest_reschedule_slots(
         };
         let new_end = new_date.and_time(new_time) + Duration::minutes(duration as i64);
         let new_date_label = crate::i18n::format_long_date(new_date, lang);
-        let new_start_time_str = new_time.format("%H:%M").to_string();
-        let new_end_time_str = new_end.time().format("%H:%M").to_string();
+        let new_start_time_str = new_time.format("%-I:%M %p").to_string();
+        let new_end_time_str = new_end.time().format("%-I:%M %p").to_string();
 
         let back_url = format!("/booking/reschedule/{}?tz={}", token, guest_tz.name());
 
@@ -20684,8 +20721,8 @@ async fn host_reschedule_slots(
     };
 
     let date_label = format_date_label(&start_at, lang);
-    let start_time = extract_time_24h(&start_at);
-    let end_time = extract_time_24h(&end_at);
+    let start_time = format_time_12h(&start_at);
+    let end_time = format_time_12h(&end_at);
 
     let tmpl = match state.templates.get_template("booking_host_reschedule.html") {
         Ok(t) => t,
@@ -22103,8 +22140,8 @@ async fn claim_booking_form(
     };
 
     let date_label = format_date_label(&start_at, lang);
-    let start_time = extract_time_24h(&start_at);
-    let end_time = extract_time_24h(&end_at);
+    let start_time = format_time_12h(&start_at);
+    let end_time = format_time_12h(&end_at);
 
     let tmpl = match state.templates.get_template("booking_claim_form.html") {
         Ok(t) => t,
@@ -22408,6 +22445,8 @@ async fn claim_booking(
 
     // Render success page
     let date_label = format_date_label(&start_at, lang);
+    let start_time = format_time_12h(&start_time);
+    let end_time = format_time_12h(&end_time);
     let tmpl = match state.templates.get_template("booking_claimed.html") {
         Ok(t) => t,
         Err(e) => return internal_error_response("internal", &e),
@@ -26223,6 +26262,28 @@ mod tests {
         );
     }
 
+    #[test]
+    fn month_grid_uses_sunday_as_first_day() {
+        // August 1, 2026 is a Saturday: its Sunday-first grid offset is 6.
+        let params = build_month_params(2026, 8, chrono_tz::UTC, chrono_tz::UTC, "en");
+        assert_eq!(params.5, 6);
+
+        // November 1, 2026 is a Sunday and therefore starts at column 0.
+        let params = build_month_params(2026, 11, chrono_tz::UTC, chrono_tz::UTC, "en");
+        assert_eq!(params.5, 0);
+    }
+
+    #[test]
+    fn weekly_booking_limits_use_sunday_boundaries() {
+        let monday = NaiveDate::from_ymd_opt(2026, 8, 17)
+            .unwrap()
+            .and_hms_opt(12, 0, 0)
+            .unwrap();
+        let (start, end) = frequency_period_range(monday, "week");
+        assert_eq!(start.date(), NaiveDate::from_ymd_opt(2026, 8, 16).unwrap());
+        assert_eq!(end.date(), NaiveDate::from_ymd_opt(2026, 8, 23).unwrap());
+    }
+
     // --- format_time_from_dt tests ---
 
     #[test]
@@ -26622,6 +26683,21 @@ mod tests {
     }
 
     #[test]
+    fn custom_theme_uses_cascade_design_system_palettes() {
+        let css = custom_theme_css("#1A3A4A", "#2A5A6A", "#F5F3F0", "#FFFFFF", "#22201D");
+        let (light, dark) = theme_blocks(&css);
+        assert_eq!(css_var(&light, "--accent"), "#1A3A4A");
+        assert_eq!(css_var(&light, "--surface"), "#FFFFFF");
+        assert_eq!(css_var(&light, "--text"), "#22201D");
+        assert_eq!(css_var(&dark, "--bg"), "#161B22");
+        assert_eq!(css_var(&dark, "--surface"), "#1C2330");
+        assert_eq!(css_var(&dark, "--accent"), "#4296AE");
+        assert_eq!(css_var(&dark, "--btn-primary-bg"), "#2E6577");
+        assert_eq!(css_var(&dark, "--btn-primary-bg-hover"), "#38758A");
+        assert_eq!(css_var(&dark, "--text"), "#E2DFD8");
+    }
+
+    #[test]
     fn custom_theme_derives_for_a_mid_tone_background() {
         // A background at mid lightness is still a light palette when the text
         // is darker than it; an absolute lightness threshold would miss this.
@@ -26705,31 +26781,12 @@ mod tests {
     }
 
     #[test]
-    fn brand_css_derives_rgba_variants() {
+    fn embed_brand_cannot_override_cascade_palette() {
         let p = EmbedParams {
             brand: Some("ff0000".to_string()),
             ..Default::default()
         };
-        let css = p.brand_css().expect("valid hex yields css");
-        assert!(css.contains("--accent: #ff0000"), "{}", css);
-        assert!(
-            css.contains("--accent-subtle: rgba(255,0,0,0.12)"),
-            "{}",
-            css
-        );
-        assert!(
-            css.contains("--accent-border: rgba(255,0,0,0.3)"),
-            "{}",
-            css
-        );
-        assert!(css.contains("--accent-muted: rgba(255,0,0,0.5)"), "{}", css);
-
-        // Invalid input yields no CSS (never inject raw user input).
-        let bad = EmbedParams {
-            brand: Some("red; } body{display:none".to_string()),
-            ..Default::default()
-        };
-        assert!(bad.brand_css().is_none());
+        assert!(p.brand_css().is_none());
     }
 
     #[test]
@@ -27776,6 +27833,18 @@ mod tests {
             !rendered.contains(r#"href="{"#),
             "Slot hrefs must not start with opening brace"
         );
+
+        // Cascade installation contract: the slot picker always renders a
+        // 12-hour clock and both week-view builders anchor on Sunday.
+        assert!(rendered.contains("return calrsFormat12h(t);"));
+        assert!(!rendered.contains("calrs_time_format"));
+        assert!(rendered.contains("['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']"));
+        assert_eq!(
+            rendered
+                .matches("startDate.setDate(startDate.getDate() - dow")
+                .count(),
+            2
+        );
     }
 
     /// Render slots.html WITH reschedule context and verify slot links
@@ -27804,7 +27873,7 @@ mod tests {
                 reschedule_info => context! {
                     event_title => "Intro Call",
                     old_date => "2026-03-15",
-                    old_time => "10:00",
+                    old_time => "10:00 AM",
                 },
                 days => vec![
                     context! {
@@ -27837,6 +27906,7 @@ mod tests {
             rendered.contains("Rescheduling:"),
             "Reschedule banner should be visible"
         );
+        assert!(rendered.contains("10:00 AM"));
 
         // Banner must be OUTSIDE slots-outer (not a flex child of the 3-column layout).
         // Search in the HTML body, skipping the <style> block where CSS class names also appear.
@@ -28765,6 +28835,9 @@ mod tests {
             body.contains("Test Meeting"),
             "Should show event type title"
         );
+        assert!(body.contains("9:00 AM"));
+        assert!(body.contains("5:00 PM"));
+        assert!(!body.contains("type=\"time\""));
     }
 
     #[tokio::test]
@@ -29131,6 +29204,11 @@ mod tests {
             "Booking should succeed, got {}",
             status
         );
+        if status == 200 {
+            let response_body = body_string(response).await;
+            assert!(response_body.contains("10:00 AM"));
+            assert!(!response_body.contains("class=\"book-time\""));
+        }
 
         let count: (i64,) =
             sqlx::query_as("SELECT COUNT(*) FROM bookings WHERE guest_email = 'jane@example.com'")
@@ -29445,8 +29523,8 @@ mod tests {
         let body = body_string(response).await;
 
         assert!(
-            body.contains("16:00") && body.contains("16:30"),
-            "Approval page should render times in the guest's tz (Europe/Paris: 16:00 – 16:30), got body fragment: {}",
+            body.contains("4:00 PM") && body.contains("4:30 PM"),
+            "Approval page should render 12-hour times in the guest's tz (Europe/Paris: 4:00 PM – 4:30 PM), got body fragment: {}",
             &body[..body.len().min(2000)]
         );
         assert!(
@@ -29555,8 +29633,8 @@ mod tests {
         let body = body_string(response).await;
 
         assert!(
-            body.contains("16:00") && body.contains("16:30"),
-            "Cancellation page should render times in the guest's tz (Europe/Paris: 16:00 – 16:30)"
+            body.contains("4:00 PM") && body.contains("4:30 PM"),
+            "Cancellation page should render 12-hour times in the guest's tz (Europe/Paris: 4:00 PM – 4:30 PM)"
         );
         assert!(
             !body.contains("10:00") && !body.contains("10:30"),
@@ -31604,6 +31682,9 @@ mod tests {
         let body = body_string(response).await;
         assert!(body.contains("Test Meeting"));
         assert!(body.contains("Confirm booking") || body.contains("confirm"));
+        assert!(body.contains("10:00 AM"));
+        assert!(body.contains("value=\"10:00\""));
+        assert!(!body.contains("class=\"book-time\""));
     }
 
     // --- Legacy book form ---
@@ -32153,7 +32234,7 @@ mod tests {
             host_tz.name(),
         );
         assert_eq!(host_date, "2026-05-26");
-        assert_eq!(time_display, "16:00 \u{2013} 16:30 (Europe/Paris)");
+        assert_eq!(time_display, "4:00 PM \u{2013} 4:30 PM (Europe/Paris)");
     }
 
     #[test]

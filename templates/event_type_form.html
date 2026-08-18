@@ -235,7 +235,7 @@
     transition: all 0.15s ease;
   }
   .priority-btn:hover { background: var(--surface-hover); }
-  .priority-btn.active-high { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .priority-btn.active-high { background: var(--btn-primary-bg); color: #fff; border-color: var(--btn-primary-bg); }
   .priority-btn.active-medium { background: var(--text-muted); color: #fff; border-color: var(--text-muted); }
   .priority-btn.active-low { background: var(--surface-hover); color: var(--text-secondary); border-color: var(--border); font-style: italic; }
 </style>
@@ -1174,7 +1174,7 @@ function sub(tpl, a, b) {
             var w = schedule[enabledDays[i]];
             if (w.length !== 1 || w[0].start !== first[0].start || w[0].end !== first[0].end) { allSame = false; break; }
           }
-          if (allSame) commonWindow = ' ' + first[0].start + '\u2013' + first[0].end;
+          if (allSame) commonWindow = ' ' + calrsFormat12h(first[0].start) + '\u2013' + calrsFormat12h(first[0].end);
         } else { allSame = false; }
       }
       hint.textContent = dayStr + commonWindow;
@@ -1185,7 +1185,7 @@ function sub(tpl, a, b) {
       for (var h = 0; h < 24; h++) {
         for (var m = 0; m < 60; m += 30) {
           var t = (h < 10 ? '0' : '') + h + ':' + (m < 10 ? '0' : '') + m;
-          opts += '<option value="' + t + '"' + (t === val ? ' selected' : '') + '>' + t + '</option>';
+          opts += '<option value="' + t + '"' + (t === val ? ' selected' : '') + '>' + calrsFormat12h(t) + '</option>';
         }
       }
       return '<select class="' + cls + '" style="padding:0.4rem 0.5rem;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);color:var(--text);font-family:inherit;font-size:0.85rem;min-width:90px;">' + opts + '</select>';
@@ -1627,7 +1627,7 @@ function sub(tpl, a, b) {
         var tag = document.createElement('span');
         tag.style.cssText = 'display:inline-flex;align-items:center;gap:0.375rem;padding:0.25rem 0.5rem;background:var(--surface-hover);border-radius:var(--radius);font-size:0.8rem;';
         var av = document.createElement('span');
-        av.style.cssText = 'width:20px;height:20px;border-radius:50%;background:var(--accent);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:0.5rem;font-weight:600;flex-shrink:0;overflow:hidden;';
+        av.style.cssText = 'width:20px;height:20px;border-radius:50%;background:var(--btn-primary-bg);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:0.5rem;font-weight:600;flex-shrink:0;overflow:hidden;';
         if (u.hasAvatar) {
           av.innerHTML = '<img src="/avatar/' + u.id + '" style="width:100%;height:100%;object-fit:cover;">';
         } else {
@@ -1668,7 +1668,7 @@ function sub(tpl, a, b) {
         row.onmouseenter = function() { row.style.background = 'var(--surface-hover)'; };
         row.onmouseleave = function() { row.style.background = ''; };
         var av = document.createElement('span');
-        av.style.cssText = 'width:24px;height:24px;border-radius:50%;background:var(--accent);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:0.55rem;font-weight:600;flex-shrink:0;overflow:hidden;';
+        av.style.cssText = 'width:24px;height:24px;border-radius:50%;background:var(--btn-primary-bg);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:0.55rem;font-weight:600;flex-shrink:0;overflow:hidden;';
         if (u.hasAvatar) {
           av.innerHTML = '<img src="/avatar/' + u.id + '" style="width:100%;height:100%;object-fit:cover;">';
         } else {

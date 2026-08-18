@@ -1,5 +1,5 @@
 use anyhow::{bail, Result};
-use chrono::NaiveDateTime;
+use chrono::{NaiveDateTime, NaiveTime};
 use chrono_tz::Tz;
 use fluent_bundle::{FluentArgs, FluentValue};
 use lettre::message::header::ContentType;
@@ -438,6 +438,27 @@ fn convert_time_between_tz(
     ))
 }
 
+/// Format a stored `HH:MM` value for human-facing email copy. Keep the stored
+/// value unchanged everywhere else (notably ICS generation and timezone math).
+fn display_time(value: &str) -> String {
+    NaiveTime::parse_from_str(value, "%H:%M")
+        .map(|time| time.format("%-I:%M %p").to_string())
+        .unwrap_or_else(|_| value.to_string())
+}
+
+fn display_time_range(start_time: &str, end_time: &str, timezone: &str) -> String {
+    let range = format!(
+        "{} \u{2013} {}",
+        display_time(start_time),
+        display_time(end_time)
+    );
+    if timezone.is_empty() {
+        range
+    } else {
+        format!("{} ({})", range, timezone)
+    }
+}
+
 /// Build the date + time strings to display in a host-targeted email.
 ///
 /// When `host_timezone` is set and differs from `guest_timezone`, the times are
@@ -457,7 +478,7 @@ pub(crate) fn host_time_display(
         {
             return (
                 host_date,
-                format!("{} \u{2013} {} ({})", host_start, host_end, host_timezone),
+                display_time_range(&host_start, &host_end, host_timezone),
             );
         }
     }
@@ -470,11 +491,7 @@ pub(crate) fn host_time_display(
         ""
     };
 
-    let time_display = if tz_label.is_empty() {
-        format!("{} \u{2013} {}", start_time, end_time)
-    } else {
-        format!("{} \u{2013} {} ({})", start_time, end_time, tz_label)
-    };
+    let time_display = display_time_range(start_time, end_time, tz_label);
 
     (date.to_string(), time_display)
 }
@@ -669,9 +686,10 @@ pub async fn send_guest_confirmation_ex(
 
     let to = format!("{} <{}>", details.guest_name, details.guest_email).parse()?;
 
-    let time_display = format!(
-        "{} \u{2013} {} ({})",
-        details.start_time, details.end_time, details.guest_timezone
+    let time_display = display_time_range(
+        &details.start_time,
+        &details.end_time,
+        &details.guest_timezone,
     );
 
     let greeting = ta(
@@ -866,8 +884,8 @@ pub async fn send_guest_confirmation_ex(
              \u{2014} calrs",
             details.event_title,
             details.date,
-            details.start_time,
-            details.end_time,
+            display_time(&details.start_time),
+            display_time(&details.end_time),
             details.guest_timezone,
             details.host_name,
             details.guest_name,
@@ -888,9 +906,10 @@ pub async fn send_guest_confirmation_ex(
                 },
                 EmailRow {
                     label: "Time".to_string(),
-                    value: format!(
-                        "{} \u{2013} {} ({})",
-                        details.start_time, details.end_time, details.guest_timezone
+                    value: display_time_range(
+                        &details.start_time,
+                        &details.end_time,
+                        &details.guest_timezone,
                     ),
                 },
                 EmailRow {
@@ -1137,9 +1156,10 @@ pub async fn send_guest_reminder(
     let lang = guest_lang(details);
     let to = format!("{} <{}>", details.guest_name, details.guest_email).parse()?;
 
-    let time_display = format!(
-        "{} \u{2013} {} ({})",
-        details.start_time, details.end_time, details.guest_timezone
+    let time_display = display_time_range(
+        &details.start_time,
+        &details.end_time,
+        &details.guest_timezone,
     );
 
     let greeting = ta(
@@ -1228,12 +1248,13 @@ pub async fn send_guest_reminder(
 
     let body = build_multipart_body(&plain, &html);
 
+    let start_time_display = display_time(&details.start_time);
     let subject = ta(
         lang,
         "email-reminder-subject",
         [
             ("event", &details.event_title),
-            ("time", &details.start_time),
+            ("time", &start_time_display),
         ],
     );
     let email = Message::builder()
@@ -1337,14 +1358,11 @@ pub async fn send_guest_cancellation(
 
     let to = format!("{} <{}>", details.guest_name, details.guest_email).parse()?;
 
-    let time_display = if details.guest_timezone.is_empty() {
-        format!("{} \u{2013} {}", details.start_time, details.end_time)
-    } else {
-        format!(
-            "{} \u{2013} {} ({})",
-            details.start_time, details.end_time, details.guest_timezone
-        )
-    };
+    let time_display = display_time_range(
+        &details.start_time,
+        &details.end_time,
+        &details.guest_timezone,
+    );
 
     let greeting = ta(
         lang,
@@ -1574,9 +1592,10 @@ pub async fn send_guest_pending_notice_ex(
 ) -> Result<()> {
     let to = format!("{} <{}>", details.guest_name, details.guest_email).parse()?;
 
-    let time_display = format!(
-        "{} \u{2013} {} ({})",
-        details.start_time, details.end_time, details.guest_timezone
+    let time_display = display_time_range(
+        &details.start_time,
+        &details.end_time,
+        &details.guest_timezone,
     );
 
     // Don't include location in pending emails — it should only be revealed
@@ -1822,14 +1841,11 @@ pub async fn send_guest_decline_notice(
 ) -> Result<()> {
     let to = format!("{} <{}>", details.guest_name, details.guest_email).parse()?;
 
-    let time_display = if details.guest_timezone.is_empty() {
-        format!("{} \u{2013} {}", details.start_time, details.end_time)
-    } else {
-        format!(
-            "{} \u{2013} {} ({})",
-            details.start_time, details.end_time, details.guest_timezone
-        )
-    };
+    let time_display = display_time_range(
+        &details.start_time,
+        &details.end_time,
+        &details.guest_timezone,
+    );
     let reason_text = details
         .reason
         .as_ref()
@@ -2346,9 +2362,10 @@ pub async fn send_guest_pick_new_time(
     let from = config.mailbox_from()?;
     let to = format!("{} <{}>", details.guest_name, details.guest_email).parse()?;
 
-    let time_display = format!(
-        "{} \u{2013} {} ({})",
-        details.start_time, details.end_time, details.guest_timezone
+    let time_display = display_time_range(
+        &details.start_time,
+        &details.end_time,
+        &details.guest_timezone,
     );
 
     let plain = format!(
@@ -2432,9 +2449,15 @@ pub async fn send_guest_reschedule_notification(
     cancel_url: Option<&str>,
     reschedule_url: Option<&str>,
 ) -> Result<()> {
-    let new_time_display = format!(
-        "{} \u{2013} {} ({})",
-        details.new_start_time, details.new_end_time, details.guest_timezone
+    let new_time_display = display_time_range(
+        &details.new_start_time,
+        &details.new_end_time,
+        &details.guest_timezone,
+    );
+    let old_time_display = display_time_range(
+        &details.old_start_time,
+        &details.old_end_time,
+        &details.guest_timezone,
     );
 
     let booking_details = BookingDetails {
@@ -2462,7 +2485,7 @@ pub async fn send_guest_reschedule_notification(
         "Hi {},\n\n\
          Your booking has been rescheduled by {}.\n\n\
          Event: {}\n\
-         Previous: {} at {} \u{2013} {}\n\
+         Previous: {} at {}\n\
          New: {} at {}\n\
          {}\
          An updated calendar invite is attached.\n\
@@ -2472,8 +2495,7 @@ pub async fn send_guest_reschedule_notification(
         details.host_name,
         details.event_title,
         details.old_date,
-        details.old_start_time,
-        details.old_end_time,
+        old_time_display,
         details.new_date,
         new_time_display,
         details
@@ -2496,10 +2518,7 @@ pub async fn send_guest_reschedule_notification(
         },
         EmailRow {
             label: "Previous".to_string(),
-            value: format!(
-                "{} at {} \u{2013} {}",
-                details.old_date, details.old_start_time, details.old_end_time
-            ),
+            value: format!("{} at {}", details.old_date, old_time_display),
         },
         EmailRow {
             label: "New date".to_string(),
@@ -2710,7 +2729,11 @@ pub async fn send_watcher_claim_notification(
 ) -> Result<()> {
     let to = format!("{} <{}>", watcher_name, watcher_email).parse()?;
 
-    let time_display = format!("{} \u{2013} {}", details.start_time, details.end_time);
+    let time_display = display_time_range(
+        &details.start_time,
+        &details.end_time,
+        &details.guest_timezone,
+    );
 
     let plain = format!(
         "New booking available to claim!\n\n\
@@ -2802,7 +2825,11 @@ pub async fn send_claim_confirmation(
 ) -> Result<()> {
     let to = format!("{} <{}>", claimant_name, claimant_email).parse()?;
 
-    let time_display = format!("{} \u{2013} {}", details.start_time, details.end_time);
+    let time_display = display_time_range(
+        &details.start_time,
+        &details.end_time,
+        &details.guest_timezone,
+    );
 
     let plain = format!(
         "You claimed this booking!\n\n\
@@ -4293,7 +4320,7 @@ mod tests {
             "Europe/Paris",
         );
         assert_eq!(date, "2026-05-26");
-        assert_eq!(time_display, "16:00 \u{2013} 16:30 (Europe/Paris)");
+        assert_eq!(time_display, "4:00 PM \u{2013} 4:30 PM (Europe/Paris)");
     }
 
     // When host_timezone is empty (legacy callers / no users.timezone set),
@@ -4304,7 +4331,10 @@ mod tests {
         let (date, time_display) =
             host_time_display("2026-05-26", "07:00", "07:30", "America/Los_Angeles", "");
         assert_eq!(date, "2026-05-26");
-        assert_eq!(time_display, "07:00 \u{2013} 07:30 (America/Los_Angeles)");
+        assert_eq!(
+            time_display,
+            "7:00 AM \u{2013} 7:30 AM (America/Los_Angeles)"
+        );
     }
 
     // When both TZ values match, display the original time without conversion
@@ -4319,7 +4349,15 @@ mod tests {
             "Europe/Paris",
         );
         assert_eq!(date, "2026-05-26");
-        assert_eq!(time_display, "14:00 \u{2013} 14:30 (Europe/Paris)");
+        assert_eq!(time_display, "2:00 PM \u{2013} 2:30 PM (Europe/Paris)");
+    }
+
+    #[test]
+    fn display_time_uses_twelve_hour_clock_and_preserves_invalid_input() {
+        assert_eq!(display_time("00:00"), "12:00 AM");
+        assert_eq!(display_time("12:00"), "12:00 PM");
+        assert_eq!(display_time("23:15"), "11:15 PM");
+        assert_eq!(display_time("not-a-time"), "not-a-time");
     }
 
     // --- ICS location field regression test ---
@@ -4663,8 +4701,13 @@ mod tests {
             EmailRow {
                 label: "Previous".to_string(),
                 value: format!(
-                    "{} at {} \u{2013} {}",
-                    details.old_date, details.old_start_time, details.old_end_time
+                    "{} at {}",
+                    details.old_date,
+                    display_time_range(
+                        &details.old_start_time,
+                        &details.old_end_time,
+                        &details.guest_timezone,
+                    )
                 ),
             },
             EmailRow {
@@ -4673,9 +4716,10 @@ mod tests {
             },
             EmailRow {
                 label: "New time".to_string(),
-                value: format!(
-                    "{} \u{2013} {} ({})",
-                    details.new_start_time, details.new_end_time, details.guest_timezone
+                value: display_time_range(
+                    &details.new_start_time,
+                    &details.new_end_time,
+                    &details.guest_timezone,
                 ),
             },
             EmailRow {
@@ -4696,8 +4740,8 @@ mod tests {
         assert!(html.contains("30min call"), "Should contain event title");
         assert!(html.contains("2026-03-16"), "Should contain old date");
         assert!(html.contains("2026-03-17"), "Should contain new date");
-        assert!(html.contains("10:00"), "Should contain old start time");
-        assert!(html.contains("14:00"), "Should contain new start time");
+        assert!(html.contains("10:00 AM"), "Should contain old start time");
+        assert!(html.contains("2:00 PM"), "Should contain new start time");
         assert!(
             html.contains("#d97706"),
             "Should use orange accent for reschedule"
@@ -5358,9 +5402,10 @@ mod tests {
         let cancel_url = Some("https://cal.rs/booking/cancel/tok1");
         let reschedule_url = Some("https://cal.rs/booking/reschedule/tok2");
 
-        let time_display = format!(
-            "{} \u{2013} {} ({})",
-            details.start_time, details.end_time, details.guest_timezone
+        let time_display = display_time_range(
+            &details.start_time,
+            &details.end_time,
+            &details.guest_timezone,
         );
 
         let mut rows = vec![
@@ -5423,7 +5468,7 @@ mod tests {
         assert!(html.contains("Your booking has been confirmed!"));
         assert!(html.contains("30min Intro"));
         assert!(html.contains("2026-04-10"));
-        assert!(html.contains("14:00"));
+        assert!(html.contains("2:00 PM"));
         assert!(html.contains("Alice Smith"));
         assert!(html.contains("https://meet.example.com/room"));
         assert!(html.contains("Discuss project roadmap"));
@@ -5437,9 +5482,10 @@ mod tests {
         // Mirrors send_guest_pending_notice_ex — location should NOT be included
         let details = sample_booking_details();
 
-        let time_display = format!(
-            "{} \u{2013} {} ({})",
-            details.start_time, details.end_time, details.guest_timezone
+        let time_display = display_time_range(
+            &details.start_time,
+            &details.end_time,
+            &details.guest_timezone,
         );
 
         let mut rows = vec![
@@ -5491,7 +5537,11 @@ mod tests {
         // Mirrors send_host_notification body
         let details = sample_booking_details();
 
-        let time_display = format!("{} \u{2013} {}", details.start_time, details.end_time);
+        let time_display = display_time_range(
+            &details.start_time,
+            &details.end_time,
+            &details.guest_timezone,
+        );
 
         let mut rows = vec![
             EmailRow {
@@ -5943,9 +5993,10 @@ mod tests {
         let reschedule_url = "https://cal.rs/booking/reschedule/tok";
         let cancel_url = Some("https://cal.rs/booking/cancel/tok");
 
-        let time_display = format!(
-            "{} \u{2013} {} ({})",
-            details.start_time, details.end_time, details.guest_timezone
+        let time_display = display_time_range(
+            &details.start_time,
+            &details.end_time,
+            &details.guest_timezone,
         );
 
         let rows = vec![
@@ -6000,7 +6051,11 @@ mod tests {
         // Mirrors send_host_booking_confirmed body construction
         let details = sample_booking_details();
 
-        let time_display = format!("{} \u{2013} {}", details.start_time, details.end_time);
+        let time_display = display_time_range(
+            &details.start_time,
+            &details.end_time,
+            &details.guest_timezone,
+        );
 
         let mut rows = vec![
             EmailRow {

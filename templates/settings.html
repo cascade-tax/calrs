@@ -43,7 +43,7 @@
   <div style="margin-top: 1.25rem; margin-bottom: 1.5rem;">
     <label style="display: block; font-weight: 500; margin-bottom: 0.5rem; font-size: 0.875rem;">{{ t("settings-avatar") }}</label>
     <div style="display: flex; align-items: center; gap: 1rem;">
-      <div style="width: 64px; height: 64px; border-radius: 50%; background: var(--accent); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 1.25rem; flex-shrink: 0; overflow: hidden;">
+      <div style="width: 64px; height: 64px; border-radius: 50%; background: var(--btn-primary-bg); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 1.25rem; flex-shrink: 0; overflow: hidden;">
         {% if has_avatar %}
           <img src="/avatar/{{ user_id }}" alt="" style="width: 100%; height: 100%; object-fit: cover;">
         {% else %}
@@ -260,7 +260,7 @@
     for (var h = 0; h < 24; h++) {
       for (var m = 0; m < 60; m += 30) {
         var t = (h < 10 ? '0' : '') + h + ':' + (m < 10 ? '0' : '') + m;
-        opts += '<option value="' + t + '"' + (t === val ? ' selected' : '') + '>' + t + '</option>';
+        opts += '<option value="' + t + '"' + (t === val ? ' selected' : '') + '>' + calrsFormat12h(t) + '</option>';
       }
     }
     return '<select class="' + cls + '" style="padding:0.4rem 0.5rem;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);color:var(--text);font-family:inherit;font-size:0.85rem;min-width:90px;">' + opts + '</select>';

@@ -47,7 +47,7 @@
     width: 40px;
     height: 40px;
     border-radius: 50%;
-    background: var(--accent);
+    background: var(--btn-primary-bg);
     color: #fff;
     display: flex;
     align-items: center;
@@ -138,27 +138,6 @@
     color: var(--text);
     width: 100%;
   }
-  .time-format-toggle {
-    display: inline-flex;
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    overflow: hidden;
-    align-self: flex-start;
-  }
-  .time-format-toggle button {
-    padding: 0.3rem 0.625rem;
-    border: none;
-    border-left: 1px solid var(--border);
-    cursor: pointer;
-    font-family: inherit;
-    font-size: 0.775rem;
-    font-weight: 500;
-    transition: all 0.15s ease;
-  }
-  .time-format-toggle button:first-child {
-    border-left: none;
-  }
-
   .slots-layout {
     display: flex;
     gap: 1.5rem;
@@ -256,7 +235,7 @@
     background: var(--accent-subtle);
   }
   .cal-cell.selected {
-    background: var(--accent) !important;
+    background: var(--btn-primary-bg) !important;
     color: #fff !important;
   }
   .cal-cell.today:not(.selected) {
@@ -474,7 +453,7 @@
     color: var(--text);
   }
   .view-toggle button.active {
-    background: var(--accent);
+    background: var(--btn-primary-bg);
     color: #fff;
   }
   .view-toggle button svg {
@@ -705,7 +684,7 @@
         {% if team_members is defined and team_members %}
         <div style="display: flex; align-items: center; margin-top: 0.25rem;">
           {% for m in team_members %}{% if loop.index0 < 6 %}
-          <span title="{{ m.name }}" style="width: 24px; height: 24px; border-radius: 50%; background: var(--accent); color: #fff; display: inline-flex; align-items: center; justify-content: center; font-size: 0.55rem; font-weight: 600; flex-shrink: 0; overflow: hidden; border: 2px solid var(--surface);{% if loop.index0 > 0 %} margin-left: -6px;{% endif %}">
+          <span title="{{ m.name }}" style="width: 24px; height: 24px; border-radius: 50%; background: var(--btn-primary-bg); color: #fff; display: inline-flex; align-items: center; justify-content: center; font-size: 0.55rem; font-weight: 600; flex-shrink: 0; overflow: hidden; border: 2px solid var(--surface);{% if loop.index0 > 0 %} margin-left: -6px;{% endif %}">
             {% if m.has_avatar %}<img src="/avatar/{{ m.id }}" alt="" style="width:100%;height:100%;object-fit:cover;">{% else %}{{ m.initials }}{% endif %}
           </span>
           {% endif %}{% endfor %}
@@ -720,7 +699,7 @@
     <div style="display: flex; flex-direction: column; gap: 0.5rem;">
       <div style="display: flex; align-items: center;">
         {% for m in dg_members %}{% if loop.index0 < 4 %}
-        <span title="{{ m.name }}" style="width: 36px; height: 36px; border-radius: 50%; background: var(--accent); color: #fff; display: inline-flex; align-items: center; justify-content: center; font-size: 0.7rem; font-weight: 600; flex-shrink: 0; overflow: hidden; border: 2px solid var(--surface);{% if loop.index0 > 0 %} margin-left: -10px;{% endif %}">
+        <span title="{{ m.name }}" style="width: 36px; height: 36px; border-radius: 50%; background: var(--btn-primary-bg); color: #fff; display: inline-flex; align-items: center; justify-content: center; font-size: 0.7rem; font-weight: 600; flex-shrink: 0; overflow: hidden; border: 2px solid var(--surface);{% if loop.index0 > 0 %} margin-left: -10px;{% endif %}">
           {% if m.has_avatar %}<img src="/avatar/{{ m.id }}" alt="" style="width:100%;height:100%;object-fit:cover;">{% else %}{{ m.initials }}{% endif %}
         </span>
         {% endif %}{% endfor %}
@@ -781,13 +760,6 @@
             <option value="{{ tz.value }}" {% if tz.selected %}selected{% endif %}>{{ tz.label }}</option>
           {% endfor %}
         </select>
-      </div>
-      <div class="slots-info-setting">
-        <label class="slots-info-setting-label">&#128336; {{ t("slots-time-format-label") }}</label>
-        <div id="time-format-toggle" class="time-format-toggle">
-          <button type="button" data-format="24">24h</button>
-          <button type="button" data-format="12">12h</button>
-        </div>
       </div>
     </div>
     {% endif %}
@@ -881,13 +853,13 @@
       <!-- Month calendar panel -->
       <div class="cal-panel">
         <div class="cal-weekdays">
+          <div class="cal-weekday"><span class="cal-weekday-full">{{ t("slots-weekday-sun") }}</span><span class="cal-weekday-short">{{ t("slots-weekday-sun-short") }}</span></div>
           <div class="cal-weekday"><span class="cal-weekday-full">{{ t("slots-weekday-mon") }}</span><span class="cal-weekday-short">{{ t("slots-weekday-mon-short") }}</span></div>
           <div class="cal-weekday"><span class="cal-weekday-full">{{ t("slots-weekday-tue") }}</span><span class="cal-weekday-short">{{ t("slots-weekday-tue-short") }}</span></div>
           <div class="cal-weekday"><span class="cal-weekday-full">{{ t("slots-weekday-wed") }}</span><span class="cal-weekday-short">{{ t("slots-weekday-wed-short") }}</span></div>
           <div class="cal-weekday"><span class="cal-weekday-full">{{ t("slots-weekday-thu") }}</span><span class="cal-weekday-short">{{ t("slots-weekday-thu-short") }}</span></div>
           <div class="cal-weekday"><span class="cal-weekday-full">{{ t("slots-weekday-fri") }}</span><span class="cal-weekday-short">{{ t("slots-weekday-fri-short") }}</span></div>
           <div class="cal-weekday"><span class="cal-weekday-full">{{ t("slots-weekday-sat") }}</span><span class="cal-weekday-short">{{ t("slots-weekday-sat-short") }}</span></div>
-          <div class="cal-weekday"><span class="cal-weekday-full">{{ t("slots-weekday-sun") }}</span><span class="cal-weekday-short">{{ t("slots-weekday-sun-short") }}</span></div>
         </div>
 
         <div class="cal-grid" id="cal-grid"></div>
@@ -947,43 +919,16 @@
   // non-clickable spans — used for logged-in team members viewing private/
   // internal team event types in availability-only mode.
   var canBook = {{ 'true' if can_book is not defined or can_book else 'false' }} || !!rescheduleBase;
-  // Embed mode threads ?embed=1&layout=...&theme=...&brand=... through every
+  // Embed mode threads ?embed=1&layout=...&theme=... through every
   // navigation so slot clicks, month nav, and the book form stay in the
   // chrome-stripped embed flow.
   var embedSuffix = decHtml("{{ embed_qs_amp | default('') }}");
 
-  var format = localStorage.getItem('calrs_time_format') || '24';
   var i18n = calData.i18n || {};
   var dayLabels = i18n.weekdays || ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
   function formatTime(t) {
-    return format === '12' ? calrsFormat12h(t) : t;
-  }
-
-  // Time format toggle
-  var toggle = document.getElementById('time-format-toggle');
-  if (toggle) {
-    var btns = toggle.querySelectorAll('button');
-    function applyToggleStyle() {
-      btns.forEach(function(b) {
-        if (b.dataset.format === format) {
-          b.style.background = 'var(--accent)';
-          b.style.color = '#fff';
-        } else {
-          b.style.background = 'var(--surface)';
-          b.style.color = 'var(--text)';
-        }
-      });
-    }
-    btns.forEach(function(b) {
-      b.addEventListener('click', function() {
-        format = b.dataset.format;
-        localStorage.setItem('calrs_time_format', format);
-        applyToggleStyle();
-        if (selectedDate) selectDay(selectedDate);
-      });
-    });
-    applyToggleStyle();
+    return calrsFormat12h(t);
   }
 
   // Timezone auto-detect + change
@@ -1316,10 +1261,9 @@
       startDate = new Date(year, month - 1, 1);
     }
 
-    // Go back to Monday
+    // Go back to Sunday
     var dow = startDate.getDay();
-    var mondayOffset = dow === 0 ? -6 : 1 - dow;
-    startDate.setDate(startDate.getDate() + mondayOffset);
+    startDate.setDate(startDate.getDate() - dow);
 
     var dates = [];
     for (var i = 0; i < 7; i++) {
@@ -1454,10 +1398,9 @@
       startDate = new Date(year, month - 1, 1);
     }
 
-    // Go to Monday of that week
+    // Go to Sunday of that week
     var dow = startDate.getDay();
-    var mondayOffset = dow === 0 ? -6 : 1 - dow;
-    startDate.setDate(startDate.getDate() + mondayOffset + weekOffset);
+    startDate.setDate(startDate.getDate() - dow + weekOffset);
 
     var dates = [];
     for (var i = 0; i < 7; i++) {

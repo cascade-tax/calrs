@@ -50,7 +50,7 @@
     background: var(--surface); color: var(--accent); cursor: pointer;
   }
   .embed-copy-btn:hover { border-color: var(--accent); }
-  .embed-copy-btn.copied { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .embed-copy-btn.copied { background: var(--btn-primary-bg); color: #fff; border-color: var(--btn-primary-bg); }
 
   .embed-preview-frame {
     background:
@@ -118,18 +118,6 @@
           <option value="light">Light</option>
           <option value="dark">Dark</option>
         </select>
-      </div>
-
-      <div class="form-row">
-        <label>Brand color</label>
-        <div class="color-row">
-          <input type="color" id="cfg-brand">
-          <input type="text" id="cfg-brand-hex" maxlength="7" style="flex:1;" placeholder="#2563eb">
-        </div>
-        <div class="check-row" style="margin-top: 0.4rem;">
-          <input type="checkbox" id="cfg-use-org" checked>
-          <label for="cfg-use-org" style="font-size: 0.8rem; font-weight: 500; margin: 0;">Use organization color</label>
-        </div>
       </div>
 
       <!-- Floating-button-only -->
@@ -207,7 +195,6 @@
     variant: 'inline',
     layout: defaultLayout || 'month',
     theme: 'auto',
-    useOrgColor: true,
     brand: orgAccent || '#2563eb',
     buttonText: 'Book a meeting',
     buttonPosition: 'bottom-right',
@@ -229,7 +216,6 @@
   function buildConfigJs() {
     var parts = ['"layout":"' + state.layout + '"'];
     parts.push('"theme":"' + state.theme + '"');
-    parts.push('"brand":"' + state.brand + '"');
     return '{' + parts.join(', ') + '}';
   }
 
@@ -296,8 +282,7 @@
   function buildIframeSrc() {
     var url = snippetBase + calPath + '?embed=1' +
       '&layout=' + encodeURIComponent(state.layout) +
-      '&theme='  + encodeURIComponent(state.theme) +
-      '&brand='  + encodeURIComponent(state.brand.replace(/^#/, ''));
+      '&theme='  + encodeURIComponent(state.theme);
     return url;
   }
 
@@ -428,10 +413,6 @@
   // Init fields from state
   setVal('cfg-layout', state.layout);
   setVal('cfg-theme', state.theme);
-  setVal('cfg-brand', state.brand);
-  setVal('cfg-brand-hex', state.brand);
-  $('cfg-brand').disabled = state.useOrgColor;
-  $('cfg-brand-hex').disabled = state.useOrgColor;
   setVal('cfg-button-text', state.buttonText);
   setVal('cfg-button-position', state.buttonPosition);
   setVal('cfg-button-bg', state.buttonBg);
@@ -444,27 +425,6 @@
   // Wire change handlers
   $('cfg-layout').addEventListener('change', function (e) { state.layout = e.target.value; refresh(); });
   $('cfg-theme').addEventListener('change', function (e) { state.theme = e.target.value; refresh(); });
-  $('cfg-use-org').addEventListener('change', function (e) {
-    state.useOrgColor = e.target.checked;
-    $('cfg-brand').disabled = state.useOrgColor;
-    $('cfg-brand-hex').disabled = state.useOrgColor;
-    if (state.useOrgColor) {
-      state.brand = orgAccent;
-      state.buttonBg = orgAccent;
-      setVal('cfg-brand', state.brand);
-      setVal('cfg-brand-hex', state.brand);
-      setVal('cfg-button-bg', state.buttonBg);
-    }
-    refresh();
-  });
-  $('cfg-brand').addEventListener('input', function (e) {
-    var v = hexNorm(e.target.value); if (!v) return;
-    state.brand = v; setVal('cfg-brand-hex', v); refresh();
-  });
-  $('cfg-brand-hex').addEventListener('input', function (e) {
-    var v = hexNorm(e.target.value); if (!v) return;
-    state.brand = v; setVal('cfg-brand', v); refresh();
-  });
   $('cfg-button-text').addEventListener('input', function (e) { state.buttonText = e.target.value; refresh(); });
   $('cfg-button-position').addEventListener('change', function (e) { state.buttonPosition = e.target.value; refresh(); });
   $('cfg-button-bg').addEventListener('input', function (e) {
