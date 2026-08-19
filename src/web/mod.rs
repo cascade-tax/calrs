@@ -6287,7 +6287,7 @@ async fn delete_event_type(
 struct SourceForm {
     _csrf: Option<String>,
     provider: Option<String>,
-    /// Backend protocol: "caldav" (default) or "ews".
+    /// Backend protocol: CalDAV, EWS, or a read-only published ICS feed.
     #[serde(default)]
     provider_type: Option<String>,
     name: String,
@@ -6308,6 +6308,7 @@ fn parse_provider_type(raw: Option<&str>) -> Result<String, String> {
     match value {
         crate::providers::factory::kinds::CALDAV => Ok("caldav".to_string()),
         crate::providers::factory::kinds::EWS => Ok("ews".to_string()),
+        crate::providers::factory::kinds::PUBLISHED_ICS => Ok("published_ics".to_string()),
         other => Err(format!("Unknown provider type '{}'", other)),
     }
 }
@@ -6319,6 +6320,12 @@ fn parse_provider_type(raw: Option<&str>) -> Result<String, String> {
 fn caldav_providers() -> Vec<(&'static str, &'static str, &'static str, &'static str)> {
     vec![
         ("google", "Google Calendar", "", "caldav"),
+        (
+            "published_ics",
+            "Published calendar / free-busy (ICS)",
+            "",
+            "published_ics",
+        ),
         (
             "microsoft",
             "Microsoft 365 / Office 365",
@@ -6453,38 +6460,77 @@ async fn create_source(
         }
     };
 
-    let url = form.url.trim().to_string();
-    let username = form.username.trim().to_string();
-    let name = form.name.trim().to_string();
-
-    if url.is_empty() || username.is_empty() || name.is_empty() || form.password.is_empty() {
-        return render_source_form_error(
-            &state,
-            &auth_user,
-            &crate::i18n::translate(auth_user.lang, "form-error-all-fields-required", None),
-            &form,
-        )
-        .into_response();
-    }
-
     let provider_type = match parse_provider_type(form.provider_type.as_deref()) {
         Ok(p) => p,
         Err(msg) => {
             return render_source_form_error(&state, &auth_user, &msg, &form).into_response();
         }
     };
+    let is_published = provider_type == crate::providers::factory::kinds::PUBLISHED_ICS;
+    let submitted_url = form.url.trim().to_string();
+    let submitted_username = form.username.trim().to_string();
+    let name = form.name.trim().to_string();
 
-    // Validate URL against SSRF (HTTPS-only, no private targets) for both
-    // CalDAV and EWS — the validator is shared.
-    if let Err(e) = crate::providers::factory::validate_url(&provider_type, &url) {
+    let missing_required = name.is_empty()
+        || submitted_url.is_empty()
+        || (!is_published && (submitted_username.is_empty() || form.password.is_empty()));
+    if missing_required {
+        let message = if is_published {
+            "Display name and published calendar URL are required."
+        } else {
+            "All fields are required."
+        };
+        return render_source_form_error(&state, &auth_user, message, &form).into_response();
+    }
+
+    let normalized_url = if is_published {
+        match crate::providers::published_ics::validate_subscription_url(&submitted_url) {
+            Ok(url) => url,
+            Err(e) => {
+                return render_source_form_error(&state, &auth_user, &e.to_string(), &form)
+                    .into_response()
+            }
+        }
+    } else {
+        submitted_url
+    };
+
+    // Validate URL against SSRF (HTTPS-only, no private targets).
+    if !is_published
+        && let Err(e) = crate::providers::factory::validate_url(&provider_type, &normalized_url)
+    {
         return render_source_form_error(&state, &auth_user, &e.to_string(), &form).into_response();
     }
+
+    // A published URL is itself the bearer credential. Encrypt it in the
+    // credential column and persist only a harmless sentinel in the ordinary
+    // URL field so listings, exports, and logs cannot disclose it.
+    let provider_secret = if is_published {
+        normalized_url.clone()
+    } else {
+        form.password.clone()
+    };
+    let stored_url = if is_published {
+        crate::providers::published_ics::PRIVATE_URL_SENTINEL.to_string()
+    } else {
+        normalized_url.clone()
+    };
+    let stored_username = if is_published {
+        String::new()
+    } else {
+        submitted_username
+    };
 
     // Test connection unless skip requested
     let skip_test = form.no_test.as_deref() == Some("on");
     if !skip_test {
         let client =
-            match crate::providers::build_provider(&provider_type, &url, &username, &form.password)
+            match crate::providers::build_provider(
+                &provider_type,
+                &stored_url,
+                &stored_username,
+                &provider_secret,
+            )
             {
                 Ok(c) => c,
                 Err(e) => {
@@ -6495,19 +6541,23 @@ async fn create_source(
         match client.check_connection().await {
             Ok(_) => {} // fine, even if features not explicitly advertised
             Err(e) => {
-                let msg = tr1(
-                    auth_user.lang,
-                    "form-error-connection-failed",
-                    "error",
-                    &e.to_string(),
-                );
+                let msg = if is_published {
+                    format!("Feed check failed: {}. Check that this is the ICS subscription link.", e)
+                } else {
+                    tr1(
+                        auth_user.lang,
+                        "form-error-connection-failed",
+                        "error",
+                        &e.to_string(),
+                    )
+                };
                 return render_source_form_error(&state, &auth_user, &msg, &form).into_response();
             }
         }
     }
 
     let id = uuid::Uuid::new_v4().to_string();
-    let password_enc = match crate::crypto::encrypt_password(&state.secret_key, &form.password) {
+    let password_enc = match crate::crypto::encrypt_password(&state.secret_key, &provider_secret) {
         Ok(enc) => enc,
         Err(_) => {
             return render_error_page(
@@ -6521,35 +6571,50 @@ async fn create_source(
         }
     };
 
-    let _ = sqlx::query(
-        "INSERT INTO caldav_sources (id, account_id, name, url, username, password_enc, provider_type) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    if let Err(e) = sqlx::query(
+        "INSERT INTO caldav_sources (id, account_id, name, url, username, password_enc, auth_type, provider_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
     )
     .bind(&id)
     .bind(&account_id)
     .bind(&name)
-    .bind(&url)
-    .bind(&username)
+    .bind(&stored_url)
+    .bind(&stored_username)
     .bind(&password_enc)
+    .bind(if is_published { "published_ics" } else { "basic" })
     .bind(&provider_type)
     .execute(&state.pool)
-    .await;
+    .await
+    {
+        return render_error_page(
+            &state,
+            &headers,
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            "Something went wrong",
+            &format!("Could not store calendar source: {}", e),
+        )
+        .into_response();
+    }
 
     tracing::info!(source_name = %name, provider = %provider_type, user = %auth_user.user.email, "calendar source added");
 
     // Auto-sync immediately after creating the source, then redirect to
     // write-back setup if calendars were found.
-    let (messages, calendar_count) = run_sync(
-        &state.pool,
-        &state.secret_key,
-        &id,
-        &provider_type,
-        &url,
-        &username,
-        &form.password,
-    )
-    .await;
+    let (messages, calendar_count) = if is_published && skip_test {
+        (Vec::new(), 0)
+    } else {
+        run_sync(
+            &state.pool,
+            &state.secret_key,
+            &id,
+            &provider_type,
+            &stored_url,
+            &stored_username,
+            &provider_secret,
+        )
+        .await
+    };
 
-    if calendar_count > 0 {
+    if crate::providers::factory::supports_write_back(&provider_type) && calendar_count > 0 {
         let joined_messages = messages.join("\n");
         let encoded_messages = urlencoding::encode(&joined_messages);
         return Redirect::to(&format!(
@@ -6605,6 +6670,7 @@ fn render_source_edit_form(
     name: &str,
     url: &str,
     username: &str,
+    provider_type: &str,
     error: &str,
 ) -> Html<String> {
     let tmpl = match state.templates.get_template("source_form.html") {
@@ -6623,7 +6689,8 @@ fn render_source_edit_form(
             editing => true,
             source_id => source_id,
             providers => providers,
-            form_provider => "other",
+            form_provider => if provider_type == crate::providers::factory::kinds::PUBLISHED_ICS { "published_ics" } else { "other" },
+            form_provider_type => provider_type,
             form_name => name,
             form_url => url,
             form_username => username,
@@ -6644,8 +6711,8 @@ async fn edit_source_form(
 ) -> impl IntoResponse {
     let user = &auth_user.user;
     // Verify ownership and load current values.
-    let source: Option<(String, String, String, Option<String>)> = sqlx::query_as(
-        "SELECT cs.name, cs.url, cs.username, cs.auth_type
+    let source: Option<(String, String, String, Option<String>, String)> = sqlx::query_as(
+        "SELECT cs.name, cs.url, cs.username, cs.auth_type, cs.provider_type
          FROM caldav_sources cs
          JOIN accounts a ON a.id = cs.account_id
          WHERE cs.id = ? AND a.user_id = ?",
@@ -6656,7 +6723,7 @@ async fn edit_source_form(
     .await
     .unwrap_or(None);
 
-    let (name, url, username, auth_type) = match source {
+    let (name, url, username, auth_type, provider_type) = match source {
         Some(s) => s,
         None => return Redirect::to("/dashboard/sources").into_response(),
     };
@@ -6667,8 +6734,22 @@ async fn edit_source_form(
         return Redirect::to("/dashboard/sources").into_response();
     }
 
-    render_source_edit_form(&state, &auth_user, &source_id, &name, &url, &username, "")
-        .into_response()
+    let form_url = if provider_type == crate::providers::factory::kinds::PUBLISHED_ICS {
+        ""
+    } else {
+        &url
+    };
+    render_source_edit_form(
+        &state,
+        &auth_user,
+        &source_id,
+        &name,
+        form_url,
+        &username,
+        &provider_type,
+        "",
+    )
+    .into_response()
 }
 
 async fn update_source(
@@ -6685,8 +6766,8 @@ async fn update_source(
 
     // Confirm the source belongs to this user and grab the existing
     // password (used as fallback when the form leaves it blank).
-    let existing: Option<(String, Option<String>)> = sqlx::query_as(
-        "SELECT cs.password_enc, cs.auth_type
+    let existing: Option<(String, Option<String>, String)> = sqlx::query_as(
+        "SELECT cs.password_enc, cs.auth_type, cs.provider_type
          FROM caldav_sources cs
          JOIN accounts a ON a.id = cs.account_id
          WHERE cs.id = ? AND a.user_id = ?",
@@ -6697,8 +6778,8 @@ async fn update_source(
     .await
     .unwrap_or(None);
 
-    let (existing_password_enc, auth_type) = match existing {
-        Some((enc, at)) => (enc, at),
+    let (existing_password_enc, auth_type, provider_type) = match existing {
+        Some(row) => row,
         None => return Redirect::to("/dashboard/sources").into_response(),
     };
 
@@ -6712,6 +6793,105 @@ async fn update_source(
     let username = form.username.trim().to_string();
     let name = form.name.trim().to_string();
 
+    if provider_type == crate::providers::factory::kinds::PUBLISHED_ICS {
+        if name.is_empty() {
+            return render_source_edit_form(
+                &state,
+                &auth_user,
+                &source_id,
+                &form.name,
+                &form.url,
+                "",
+                &provider_type,
+                "Display name is required.",
+            )
+            .into_response();
+        }
+
+        if url.is_empty() {
+            let _ = sqlx::query("UPDATE caldav_sources SET name = ? WHERE id = ?")
+                .bind(&name)
+                .bind(&source_id)
+                .execute(&state.pool)
+                .await;
+            return Redirect::to("/dashboard/sources").into_response();
+        }
+
+        let normalized = match crate::providers::published_ics::validate_subscription_url(&url) {
+            Ok(value) => value,
+            Err(e) => {
+                return render_source_edit_form(
+                    &state,
+                    &auth_user,
+                    &source_id,
+                    &name,
+                    &url,
+                    "",
+                    &provider_type,
+                    &e.to_string(),
+                )
+                .into_response()
+            }
+        };
+        if form.no_test.as_deref() != Some("on") {
+            let provider = crate::providers::published_ics::PublishedIcsProvider::new(&normalized);
+            if let Err(e) = crate::providers::CalendarProvider::check_connection(&provider).await {
+                return render_source_edit_form(
+                    &state,
+                    &auth_user,
+                    &source_id,
+                    &name,
+                    &url,
+                    "",
+                    &provider_type,
+                    &format!("Feed check failed: {}", e),
+                )
+                .into_response();
+            }
+        }
+        let new_enc = match crate::crypto::encrypt_password(&state.secret_key, &normalized) {
+            Ok(value) => value,
+            Err(_) => {
+                return render_error_page(
+                    &state,
+                    &headers,
+                    axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                    "Something went wrong",
+                    "Encryption error.",
+                )
+                .into_response()
+            }
+        };
+        let _ = sqlx::query(
+            "UPDATE caldav_sources SET name = ?, url = ?, username = '', password_enc = ?, last_synced = NULL WHERE id = ?",
+        )
+        .bind(&name)
+        .bind(crate::providers::published_ics::PRIVATE_URL_SENTINEL)
+        .bind(&new_enc)
+        .bind(&source_id)
+        .execute(&state.pool)
+        .await;
+        let _ = sqlx::query("UPDATE calendars SET sync_token = NULL, ctag = NULL WHERE source_id = ?")
+            .bind(&source_id)
+            .execute(&state.pool)
+            .await;
+        let _ = run_sync_for_source(
+            &state.pool,
+            &state.secret_key,
+            &source_id,
+            crate::providers::published_ics::PRIVATE_URL_SENTINEL,
+            "",
+            Some(&new_enc),
+            "published_ics",
+            None,
+            None,
+            &provider_type,
+        )
+        .await;
+        tracing::info!(source_id = %source_id, source_name = %name, user = %auth_user.user.email, "published calendar source updated");
+        return Redirect::to("/dashboard/sources").into_response();
+    }
+
     if url.is_empty() || username.is_empty() || name.is_empty() {
         return render_source_edit_form(
             &state,
@@ -6720,6 +6900,7 @@ async fn update_source(
             &form.name,
             &form.url,
             &form.username,
+            &provider_type,
             "Name, URL, and username are required.",
         )
         .into_response();
@@ -6733,6 +6914,7 @@ async fn update_source(
             &name,
             &url,
             &username,
+            &provider_type,
             &e.to_string(),
         )
         .into_response();
@@ -6767,7 +6949,14 @@ async fn update_source(
         if let Err(e) = client.check_connection().await {
             let msg = format!("Connection failed: {}. Check the URL and credentials, or check \"Skip connection test\" to save anyway.", e);
             return render_source_edit_form(
-                &state, &auth_user, &source_id, &name, &url, &username, &msg,
+                &state,
+                &auth_user,
+                &source_id,
+                &name,
+                &url,
+                &username,
+                &provider_type,
+                &msg,
             )
             .into_response();
         }
@@ -7030,8 +7219,8 @@ async fn run_sync_for_source(
 }
 
 /// Run discovery + sync for a freshly-created source with plaintext password.
-/// Dispatches on `provider_type`: EWS goes through the trait-based path,
-/// CalDAV reuses the existing `CaldavClient` + `sync_source` flow.
+/// Dispatches on `provider_type`: non-CalDAV backends go through the generic
+/// provider path; CalDAV retains its protocol-specific sync flow.
 async fn run_sync(
     pool: &SqlitePool,
     key: &[u8; 32],
@@ -7041,7 +7230,7 @@ async fn run_sync(
     username: &str,
     password: &str,
 ) -> (Vec<String>, usize) {
-    if provider_type == crate::providers::factory::kinds::EWS {
+    if provider_type != crate::providers::factory::kinds::CALDAV {
         let provider =
             match crate::providers::build_provider(provider_type, url, username, password) {
                 Ok(p) => p,
@@ -30912,6 +31101,79 @@ mod tests {
                 && body.contains("Microsoft 365 is not available"),
             "Microsoft 365 OAuth option should be present"
         );
+        assert!(
+            body.contains("Published calendar / free-busy (ICS)")
+                && body.contains(r#"value="published_ics""#),
+            "read-only published calendar option should be present"
+        );
+    }
+
+    #[tokio::test]
+    async fn create_published_source_encrypts_and_redacts_bearer_url() {
+        let (app, pool, session, _) = setup_test_app().await;
+        let csrf = "test-csrf-published-source";
+        let body = format!(
+            "_csrf={}&provider=published_ics&provider_type=published_ics&name=Marathon&url=https%3A%2F%2Fexample.com%2Fprivate-calendar.ics&username=&password=&no_test=on",
+            csrf
+        );
+        let response = app
+            .clone()
+            .oneshot(post_form(
+                "/dashboard/sources/new",
+                &session,
+                csrf,
+                &body,
+            ))
+            .await
+            .unwrap();
+        assert!(response.status().is_redirection());
+        assert_eq!(response.headers().get("location").unwrap(), "/dashboard/sources");
+
+        let row: (String, String, String, String, String, String) = sqlx::query_as(
+            "SELECT name, url, username, password_enc, auth_type, provider_type
+             FROM caldav_sources WHERE name = 'Marathon'",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(row.0, "Marathon");
+        assert_eq!(
+            row.1,
+            crate::providers::published_ics::PRIVATE_URL_SENTINEL,
+            "plaintext bearer URL must not be stored in the source URL column"
+        );
+        assert!(row.2.is_empty());
+        assert_eq!(row.4, "published_ics");
+        assert_eq!(row.5, "published_ics");
+        assert_eq!(
+            crate::crypto::decrypt_password(&[0u8; 32], &row.3).unwrap(),
+            "https://example.com/private-calendar.ics"
+        );
+
+        let dashboard = app
+            .clone()
+            .oneshot(get_authed("/dashboard/sources", &session))
+            .await
+            .unwrap();
+        let dashboard_body = body_string(dashboard).await;
+        assert!(dashboard_body.contains("Private published feed"));
+        assert!(!dashboard_body.contains("private-calendar.ics"));
+
+        let source_id: String =
+            sqlx::query_scalar("SELECT id FROM caldav_sources WHERE name = 'Marathon'")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        let edit = app
+            .oneshot(get_authed(
+                &format!("/dashboard/sources/{}/edit", source_id),
+                &session,
+            ))
+            .await
+            .unwrap();
+        let edit_body = body_string(edit).await;
+        assert!(edit_body.contains("Leave empty to keep current feed"));
+        assert!(!edit_body.contains("private-calendar.ics"));
     }
 
     /// Helper for the source-edit tests: insert a caldav source for the test user.

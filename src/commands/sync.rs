@@ -1782,6 +1782,132 @@ mod tests {
         );
     }
 
+    struct SnapshotProvider {
+        body: String,
+    }
+
+    #[async_trait::async_trait]
+    impl crate::providers::CalendarProvider for SnapshotProvider {
+        async fn check_connection(&self) -> anyhow::Result<bool> {
+            Ok(true)
+        }
+
+        async fn list_calendars(
+            &self,
+        ) -> anyhow::Result<Vec<crate::providers::RemoteCalendar>> {
+            Ok(vec![crate::providers::RemoteCalendar {
+                id: "published-ics".to_string(),
+                display_name: Some("Published calendar".to_string()),
+                color: None,
+                change_marker: None,
+                sync_state: None,
+            }])
+        }
+
+        async fn fetch_events(
+            &self,
+            _calendar_id: &str,
+        ) -> anyhow::Result<Vec<crate::providers::RawEvent>> {
+            Ok(vec![crate::providers::RawEvent {
+                remote_id: "published-ics".to_string(),
+                ical: self.body.clone(),
+            }])
+        }
+
+        async fn fetch_events_since(
+            &self,
+            calendar_id: &str,
+            _since_utc: &str,
+        ) -> anyhow::Result<Vec<crate::providers::RawEvent>> {
+            self.fetch_events(calendar_id).await
+        }
+
+        async fn sync_delta(
+            &self,
+            _calendar_id: &str,
+            _sync_state: Option<&str>,
+        ) -> anyhow::Result<crate::providers::DeltaResult> {
+            Ok(crate::providers::DeltaResult::default())
+        }
+
+        async fn put_event(
+            &self,
+            _calendar_id: &str,
+            _uid: &str,
+            _ics: &str,
+        ) -> anyhow::Result<()> {
+            anyhow::bail!("read-only")
+        }
+
+        async fn delete_event(
+            &self,
+            _calendar_id: &str,
+            _uid: &str,
+        ) -> anyhow::Result<()> {
+            anyhow::bail!("read-only")
+        }
+    }
+
+    #[tokio::test]
+    async fn published_snapshot_sync_persists_busy_metadata_and_removes_orphans() {
+        let pool = setup_test_db().await;
+        let (source_id, _) = seed_fixtures(&pool).await;
+        let day = (Utc::now() + chrono::Duration::days(1))
+            .format("%Y%m%d")
+            .to_string();
+        let initial = SnapshotProvider {
+            body: format!(
+                "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:busy-one\r\nDTSTART;TZID=Central Standard Time:{day}T090000\r\nDTEND;TZID=Central Standard Time:{day}T100000\r\nSUMMARY:Busy\r\nTRANSP:OPAQUE\r\nEND:VEVENT\r\nBEGIN:VEVENT\r\nUID:free-one\r\nDTSTART;TZID=Eastern Standard Time:{day}T110000\r\nDTEND;TZID=Eastern Standard Time:{day}T120000\r\nSUMMARY:Free\r\nTRANSP:TRANSPARENT\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+            ),
+        };
+        sync_provider_source(&pool, &[0u8; 32], &initial, &source_id)
+            .await
+            .unwrap();
+
+        let rows: Vec<(String, Option<String>, Option<String>)> = sqlx::query_as(
+            "SELECT uid, timezone, transp FROM events ORDER BY uid",
+        )
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+        assert_eq!(
+            rows,
+            vec![
+                (
+                    "busy-one".to_string(),
+                    Some("America/Chicago".to_string()),
+                    Some("OPAQUE".to_string()),
+                ),
+                (
+                    "free-one".to_string(),
+                    Some("America/New_York".to_string()),
+                    Some("TRANSPARENT".to_string()),
+                ),
+            ]
+        );
+        let last_synced: Option<String> =
+            sqlx::query_scalar("SELECT last_synced FROM caldav_sources WHERE id = ?")
+                .bind(&source_id)
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert!(last_synced.is_some());
+
+        let second = SnapshotProvider {
+            body: format!(
+                "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:free-one\r\nDTSTART;TZID=Eastern Standard Time:{day}T110000\r\nDTEND;TZID=Eastern Standard Time:{day}T120000\r\nSUMMARY:Free\r\nTRANSP:TRANSPARENT\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+            ),
+        };
+        sync_provider_source(&pool, &[0u8; 32], &second, &source_id)
+            .await
+            .unwrap();
+        let remaining: Vec<String> = sqlx::query_scalar("SELECT uid FROM events ORDER BY uid")
+            .fetch_all(&pool)
+            .await
+            .unwrap();
+        assert_eq!(remaining, vec!["free-one"]);
+    }
+
     #[tokio::test]
     async fn source_lock_identity() {
         // Same id returns the same Arc so concurrent callers contend on one

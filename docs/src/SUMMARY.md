@@ -8,6 +8,7 @@
 - [CalDAV Integration](./caldav.md)
 - [Google Calendar](./google-calendar.md)
 - [Microsoft 365 Calendar](./microsoft-365.md)
+- [Published Calendar (ICS)](./published-calendar.md)
 - [Event Types](./event-types.md)
 - [Booking Flow](./booking-flow.md)
 - [Teams](./teams.md)

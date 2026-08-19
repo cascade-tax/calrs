@@ -52,7 +52,8 @@ and other compatibility identifiers retain their upstream names.
 ### Calendar integrations
 
 - **CalDAV sync** — pull-based sync from any CalDAV server (Nextcloud, BlueMind, Fastmail, iCloud, Zimbra, SOGo, Radicale...), with multi-VEVENT support for recurring event modifications
-- **Microsoft 365 / Office 365** — delegated OAuth2 authentication through Microsoft Entra and calendar sync/write-back through Microsoft Graph
+- **Microsoft 365 / Office 365** — read-only delegated OAuth2 authentication through Microsoft Entra and calendar sync through Microsoft Graph
+- **Published calendar (ICS)** — read-only free/busy feeds with encrypted bearer-URL storage, including Outlook subscription-link normalization
 - **Google Calendar** — delegated OAuth2 authentication with encrypted refresh-token storage and CalDAV sync/write-back
 - **On-prem Exchange** — Exchange Web Services support for Exchange 2013/2016/2019 installations that allow HTTP Basic authentication
 - **On-demand sync** — booking pages automatically sync the host's calendars if stale (>5 min), using RFC 4791 time-range filtering to fetch only future events

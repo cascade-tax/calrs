@@ -102,7 +102,7 @@ pub fn extract_vevent_tzid(vevent: &str, field: &str) -> Option<String> {
             let end = after_tzid.find([':', ';']).unwrap_or(after_tzid.len());
             let tz = after_tzid[..end].trim();
             if !tz.is_empty() {
-                return Some(tz.to_string());
+                return Some(canonical_ical_tzid(tz).to_string());
             }
         }
 
@@ -118,6 +118,40 @@ pub fn extract_vevent_tzid(vevent: &str, field: &str) -> Option<String> {
         return None;
     }
     None
+}
+
+/// Outlook-published ICS feeds use Windows timezone IDs. Convert the common
+/// IDs to IANA names understood by `chrono_tz`; unknown values remain intact
+/// and retain the existing graceful floating-time fallback.
+fn canonical_ical_tzid(tzid: &str) -> &str {
+    match tzid {
+        "Dateline Standard Time" => "Etc/GMT+12",
+        "UTC-11" => "Etc/GMT+11",
+        "Hawaiian Standard Time" => "Pacific/Honolulu",
+        "Alaskan Standard Time" => "America/Anchorage",
+        "Pacific Standard Time" => "America/Los_Angeles",
+        "US Mountain Standard Time" => "America/Phoenix",
+        "Mountain Standard Time" => "America/Denver",
+        "Central Standard Time (Mexico)" => "America/Mexico_City",
+        "Central Standard Time" => "America/Chicago",
+        "Canada Central Standard Time" => "America/Regina",
+        "SA Pacific Standard Time" => "America/Bogota",
+        "Eastern Standard Time" => "America/New_York",
+        "US Eastern Standard Time" => "America/Indianapolis",
+        "Atlantic Standard Time" => "America/Halifax",
+        "Newfoundland Standard Time" => "America/St_Johns",
+        "GMT Standard Time" => "Europe/London",
+        "W. Europe Standard Time" => "Europe/Berlin",
+        "Central Europe Standard Time" => "Europe/Budapest",
+        "Romance Standard Time" => "Europe/Paris",
+        "South Africa Standard Time" => "Africa/Johannesburg",
+        "India Standard Time" => "Asia/Kolkata",
+        "China Standard Time" => "Asia/Shanghai",
+        "Tokyo Standard Time" => "Asia/Tokyo",
+        "AUS Eastern Standard Time" => "Australia/Sydney",
+        "New Zealand Standard Time" => "Pacific/Auckland",
+        other => other,
+    }
 }
 
 /// Convert a NaiveDateTime from the event's timezone to the target timezone.
@@ -371,6 +405,24 @@ END:VCALENDAR";
             extract_vevent_tzid(vevent, "DTEND"),
             Some("America/New_York".to_string())
         );
+    }
+
+    #[test]
+    fn tzid_outlook_windows_ids_become_iana() {
+        let cases = [
+            ("Central Standard Time", "America/Chicago"),
+            ("Eastern Standard Time", "America/New_York"),
+            ("Mountain Standard Time", "America/Denver"),
+            ("Pacific Standard Time", "America/Los_Angeles"),
+            ("US Mountain Standard Time", "America/Phoenix"),
+            ("GMT Standard Time", "Europe/London"),
+            ("SA Pacific Standard Time", "America/Bogota"),
+            ("Central Standard Time (Mexico)", "America/Mexico_City"),
+        ];
+        for (windows, iana) in cases {
+            let vevent = format!("DTSTART;TZID={windows}:20260819T090000");
+            assert_eq!(extract_vevent_tzid(&vevent, "DTSTART").as_deref(), Some(iana));
+        }
     }
 
     #[test]

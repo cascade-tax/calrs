@@ -49,8 +49,8 @@
             {% if s.provider_label %}<span class="badge badge-muted">{{ s.provider_label }}</span>{% endif %}
             {% if s.auth_type == "oauth2" %}<span class="badge badge-info">oauth2</span>{% endif %}
           </div>
-          <div class="src-url">{{ s.url }}</div>
-          <div class="src-meta">{{ s.username }} &middot; Last sync: <span class="mono">{{ s.last_synced }}</span></div>
+          <div class="src-url">{% if s.provider_type == "published_ics" %}Private published feed{% else %}{{ s.url }}{% endif %}</div>
+          <div class="src-meta">{% if s.username %}{{ s.username }} &middot; {% endif %}Last sync: <span class="mono">{{ s.last_synced }}</span></div>
         </div>
         <div class="et-actions">
           <form method="post" action="/dashboard/sources/{{ s.id }}/sync" style="margin: 0;">
@@ -88,7 +88,7 @@
       {% elif s.calendars %}
         <div class="notice notice-info" style="margin: 0.75rem 0 0;">
           <svg class="ic" aria-hidden="true"><use href="#i-info"/></svg>
-          <span>Read-only source. Cascade uses these events for availability and never writes bookings back to Microsoft.</span>
+          <span>Read-only source. Cascade uses these events for availability and never writes bookings back to this calendar.</span>
         </div>
       {% endif %}
     </div>

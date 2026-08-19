@@ -15,10 +15,11 @@
   <form method="POST" {% if editing %}action="/dashboard/sources/{{ source_id }}/edit"{% endif %} style="margin-top: 1.25rem;">
     <div class="form-group">
       <label for="provider_type">{{ t("source-form-backend") }}</label>
-      <select id="provider_type" name="provider_type" style="padding: 0.625rem 0.75rem; border: 1px solid var(--border); border-radius: var(--radius); font-size: 0.925rem; font-family: inherit; background: var(--surface); color: var(--text); width: 100%;">
+      <select id="provider_type" name="provider_type" {% if editing %}disabled{% endif %} style="padding: 0.625rem 0.75rem; border: 1px solid var(--border); border-radius: var(--radius); font-size: 0.925rem; font-family: inherit; background: var(--surface); color: var(--text); width: 100%;">
         <option value="caldav" {% if form_provider_type == "caldav" %}selected{% endif %}>CalDAV</option>
         <option value="ews" {% if form_provider_type == "ews" %}selected{% endif %}>Microsoft Exchange (EWS)</option>
         <option value="microsoft_graph" {% if form_provider_type == "microsoft_graph" %}selected{% endif %}>Microsoft 365 (Graph)</option>
+        <option value="published_ics" {% if form_provider_type == "published_ics" %}selected{% endif %}>Published calendar (ICS)</option>
       </select>
       <small style="display:block; margin-top: 0.25rem; color: var(--text-muted); font-size: 0.825rem;">
         Microsoft 365 uses OAuth2 through Microsoft Graph. EWS targets on-prem Exchange 2019/2016/2013.
@@ -27,7 +28,7 @@
 
     <div class="form-group">
       <label for="provider">{{ t("source-form-preset") }}</label>
-      <select id="provider" name="provider" style="padding: 0.625rem 0.75rem; border: 1px solid var(--border); border-radius: var(--radius); font-size: 0.925rem; font-family: inherit; background: var(--surface); color: var(--text); width: 100%;">
+      <select id="provider" name="provider" {% if editing %}disabled{% endif %} style="padding: 0.625rem 0.75rem; border: 1px solid var(--border); border-radius: var(--radius); font-size: 0.925rem; font-family: inherit; background: var(--surface); color: var(--text); width: 100%;">
         {% for p in providers %}
           <option value="{{ p.id }}" data-url="{{ p.url }}" data-backend="{{ p.backend }}" {% if p.id == form_provider %}selected{% endif %}>{{ p.name }}</option>
         {% endfor %}
@@ -70,10 +71,15 @@
       <div id="help-microsoft" class="provider-help-text" style="display: none;">
         <strong>Microsoft 365 / Office 365</strong>: Connect securely with your work or school Microsoft account.<br>
         {% if microsoft_oauth2_configured %}
-        Click the button below to authorize Cascade to read and write your calendars.
+        Click the button below to authorize Cascade to read your calendars.
         {% else %}
         <span style="color: var(--error-text);">Microsoft 365 integration is not configured yet. Ask your administrator to add the Entra application credentials in the admin panel.</span>
         {% endif %}
+      </div>
+      <div id="help-published_ics" class="provider-help-text" style="display: none;">
+        <strong>Published calendar / free-busy feed</strong>: Paste a direct HTTPS ICS URL, a <code>webcal://</code> URL, or an Outlook “Add subscription” link.<br>
+        Cascade encrypts the URL, uses it only to check availability, and never writes to the calendar. Anyone with the original URL can read the published feed, so treat it like a password.
+        {% if editing %}<br>Leave the URL empty to keep the current private feed.{% endif %}
       </div>
       <div id="help-other" class="provider-help-text" style="display: none;">
         {{ t("source-form-help-other") | safe }}
@@ -104,10 +110,10 @@
 
       <div class="form-group">
         <label for="url" id="url-label">{{ t("source-form-url-caldav") }}</label>
-        <input type="url" id="url" name="url" value="{{ form_url }}" placeholder="https://...">
+        <input type="text" id="url" name="url" value="{{ form_url }}" placeholder="https://...">
       </div>
 
-      <div class="form-grid-2">
+      <div id="credential-fields" class="form-grid-2">
         <div class="form-group">
           <label for="username">{{ t("source-form-username") }}</label>
           <input type="text" id="username" name="username" value="{{ form_username }}" placeholder="alice">
@@ -118,7 +124,7 @@
         </div>
       </div>
 
-      <div style="border-top: 1px solid var(--border); padding-top: 1.25rem; margin-top: 0.5rem;">
+      <div id="connection-test-option" style="border-top: 1px solid var(--border); padding-top: 1.25rem; margin-top: 0.5rem;">
         <label style="display: flex; align-items: center; gap: 0.625rem; cursor: pointer; padding: 0.75rem; border: 1px solid var(--border); border-radius: var(--radius); transition: all 0.15s ease;">
           <input type="checkbox" name="no_test" style="accent-color: var(--accent); width: 1.125rem; height: 1.125rem;">
           <div>
@@ -140,6 +146,7 @@
   var urlInput = document.getElementById('url');
   var urlLabel = document.getElementById('url-label');
   var nameInput = document.getElementById('name');
+  var passwordInput = document.getElementById('password');
 
   var userEdited = urlInput.value !== '';
 
@@ -180,8 +187,13 @@
   function updateUrlLabel() {
     if (typeSelect.value === 'ews') {
       urlLabel.textContent = {{ t('source-form-url-ews') | tojson }};
+      urlInput.placeholder = 'https://mail.example.com/EWS/Exchange.asmx';
+    } else if (typeSelect.value === 'published_ics') {
+      urlLabel.textContent = 'Published ICS URL';
+      urlInput.placeholder = '{% if editing %}Leave empty to keep current feed{% else %}https://.../calendar.ics or webcal://...{% endif %}';
     } else {
       urlLabel.textContent = {{ t('source-form-url-caldav') | tojson }};
+      urlInput.placeholder = 'https://...';
     }
   }
 
@@ -192,6 +204,7 @@
     var url = opt.getAttribute('data-url');
     var isGoogle = (id === 'google');
     var isMicrosoft = (id === 'microsoft');
+    var isPublished = (id === 'published_ics');
 
     // Auto-fill URL only if user hasn't entered their own value
     if (autoFill && url && !userEdited) {
@@ -212,6 +225,9 @@
     document.getElementById('google-connect').style.display = isGoogle ? 'block' : 'none';
     document.getElementById('microsoft-connect').style.display = isMicrosoft ? 'block' : 'none';
     document.getElementById('basic-auth-fields').style.display = (isGoogle || isMicrosoft) ? 'none' : 'block';
+    document.getElementById('credential-fields').style.display = isPublished ? 'none' : 'grid';
+    document.getElementById('connection-test-option').style.display = isPublished ? 'none' : 'block';
+    passwordInput.required = !isPublished && {% if editing %}false{% else %}true{% endif %};
 
     updateUrlLabel();
   }

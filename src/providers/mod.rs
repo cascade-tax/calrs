@@ -15,6 +15,7 @@ use async_trait::async_trait;
 
 pub mod caldav;
 pub mod factory;
+pub mod published_ics;
 
 pub use factory::{build_provider, build_provider_for_source};
 
