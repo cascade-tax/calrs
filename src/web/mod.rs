@@ -185,7 +185,10 @@ pub fn verify_csrf_token(
     } else {
         Err((
             axum::http::StatusCode::FORBIDDEN,
-            Html("403 Forbidden: CSRF token mismatch".to_string()),
+            Html(static_error_html(
+                "Request could not be verified",
+                "This form could not be submitted because its security token did not match. Reload the page and try again.",
+            )),
         )
             .into_response())
     }
@@ -200,6 +203,60 @@ pub fn verify_csrf_token(
 // helpers funnel the detail to the structured log instead and return a
 // generic message to the user.
 
+/// Standalone styled error document, built without the template engine.
+///
+/// The sanitization helpers below run on paths where the template engine may
+/// itself be the thing that failed (`get_template` / `render` errors), and
+/// several of them have no `&AppState` in scope at all. They therefore cannot
+/// go through `render_error_page`. This produces the same visual language as
+/// `templates/booking_action_error.html` — Cascade surface, error mark, the
+/// display face over one plain line — as a single self-contained document with
+/// inline CSS and no external dependency beyond the self-hosted fonts (which
+/// degrade to the system stack if `/fonts` is unreachable too).
+///
+/// The palette is hardcoded rather than read from the theme: a 500 must render
+/// when nothing else does. Light values are the Cascade defaults; a
+/// `prefers-color-scheme` block covers dark.
+///
+/// `title` and `message` are escaped, and must never carry internal detail —
+/// the corresponding `tracing::error!` call already records it.
+fn static_error_html(title: &str, message: &str) -> String {
+    fn esc(s: &str) -> String {
+        s.replace('&', "&amp;")
+            .replace('<', "&lt;")
+            .replace('>', "&gt;")
+            .replace('"', "&quot;")
+    }
+    format!(
+        r##"<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{t}</title>
+<style>
+@font-face{{font-family:'Bricolage Grotesque';font-weight:400 800;font-display:swap;src:url(/fonts/bricolage-latin.woff2) format('woff2')}}
+@font-face{{font-family:'Plus Jakarta Sans';font-weight:200 800;font-display:swap;src:url(/fonts/jakarta-latin.woff2) format('woff2')}}
+:root{{color-scheme:light;--bg:#F5F3F0;--surface:#FFF;--border:#E8E6E3;--text:#22201D;--heading:#1A3A4A;--muted:#5F5D5A;--err:#B03A2B;--err-bg:#FBEBE8;--err-bd:#EEC5BD;--shadow:0 1px 2px rgba(34,32,29,.05),0 1px 3px rgba(34,32,29,.04)}}
+@media (prefers-color-scheme:dark){{:root{{color-scheme:dark;--bg:#0F1A20;--surface:#1C2A34;--border:rgba(255,255,255,.10);--text:#E8ECF0;--heading:#F2F6F8;--muted:#9FB2BE;--err:#F2907E;--err-bg:rgba(224,90,70,.14);--err-bd:rgba(224,90,70,.30);--shadow:0 1px 2px rgba(0,0,0,.35),0 1px 3px rgba(0,0,0,.25)}}}}
+*,*::before,*::after{{box-sizing:border-box;margin:0;padding:0}}
+body{{font-family:'Plus Jakarta Sans',ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;font-size:.9375rem;line-height:1.65;color:var(--text);background:var(--bg);min-height:100vh;display:flex;justify-content:center;padding:3rem 1.25rem 4rem;-webkit-font-smoothing:antialiased}}
+@media (min-height:760px){{body{{align-items:center}}}}
+.container{{width:100%;max-width:560px}}
+.card{{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:1.75rem;box-shadow:var(--shadow);text-align:center}}
+.mark{{width:3rem;height:3rem;border-radius:50%;background:var(--err-bg);border:1px solid var(--err-bd);color:var(--err);display:flex;align-items:center;justify-content:center;margin:0 auto 1.125rem}}
+.mark svg{{width:1.5rem;height:1.5rem;fill:none;stroke:currentColor;stroke-width:2.25;stroke-linecap:round;stroke-linejoin:round}}
+h1{{font-family:'Bricolage Grotesque','Plus Jakarta Sans',ui-sans-serif,system-ui,sans-serif;font-size:1.5rem;font-weight:600;letter-spacing:-.025em;line-height:1.2;color:var(--heading);margin-bottom:.375rem;text-wrap:balance}}
+p{{margin:0 auto;max-width:34rem;color:var(--muted)}}
+</style></head>
+<body><div class="container"><div class="card">
+<div class="mark"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3z"/><path d="M12 9v4M12 17h.01"/></svg></div>
+<h1>{t}</h1>
+<p>{m}</p>
+</div></div></body></html>"##,
+        t = esc(title),
+        m = esc(message)
+    )
+}
+
 /// Internal-error response (500). Use for any server-side failure on a path
 /// where the user cannot fix the cause themselves.
 pub(crate) fn internal_error_response<E: std::fmt::Display + ?Sized>(
@@ -209,7 +266,10 @@ pub(crate) fn internal_error_response<E: std::fmt::Display + ?Sized>(
     tracing::error!(error = %error, context = %context, "internal error");
     (
         axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-        Html("An internal error occurred. Please try again.".to_string()),
+        Html(static_error_html(
+            "Something went wrong",
+            "An internal error occurred. Please try again.",
+        )),
     )
         .into_response()
 }
@@ -222,18 +282,26 @@ pub(crate) fn internal_error_html<E: std::fmt::Display + ?Sized>(
     error: &E,
 ) -> Html<String> {
     tracing::error!(error = %error, context = %context, "internal error");
-    Html("An internal error occurred. Please try again.".to_string())
+    Html(static_error_html(
+        "Something went wrong",
+        "An internal error occurred. Please try again.",
+    ))
 }
 
-/// Same as `internal_error_response` but yields a plain `String` for sites
-/// that compose the response inline, e.g. as a fallback template body via
-/// `unwrap_or_else`.
+/// Same as `internal_error_response` but yields the body as a bare `String`
+/// for sites that compose the response inline — in practice the
+/// `tmpl.render(..).unwrap_or_else(..)` fallback, where the returned string
+/// becomes the whole page. It is therefore a complete `static_error_html`
+/// document, not a fragment; do not embed it inside another page.
 pub(crate) fn internal_error_body<E: std::fmt::Display + ?Sized>(
     context: &str,
     error: &E,
 ) -> String {
     tracing::error!(error = %error, context = %context, "internal error");
-    "An internal error occurred. Please try again.".to_string()
+    static_error_html(
+        "Something went wrong",
+        "An internal error occurred. Please try again.",
+    )
 }
 
 /// OIDC-flow failure response. Rendered to the user when the auth handshake
@@ -248,7 +316,10 @@ pub(crate) fn oidc_error_response<E: std::fmt::Display + ?Sized>(
     tracing::error!(error = %error, context = %context, "oidc auth failure");
     (
         axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-        Html("Authentication failed. Please try again or contact your administrator.".to_string()),
+        Html(static_error_html(
+            "Authentication failed",
+            "Please try again, or contact your administrator if the problem continues.",
+        )),
     )
         .into_response()
 }
@@ -3781,11 +3852,12 @@ async fn team_settings_page(
     let user = &auth_user.user;
     let is_admin = user.role == "admin";
     if !is_admin && !is_team_admin(&state.pool, &user.id, &team_id).await {
-        return Html(crate::i18n::translate(
-            auth_user.lang,
-            "error-team-not-found-or-not-admin",
-            None,
-        ));
+        return render_error_page_no_headers(
+            &state,
+            axum::http::StatusCode::NOT_FOUND,
+            "Team not found",
+            "Team not found or you are not a team admin.",
+        );
     }
 
     let team: Option<(String, String, String, Option<String>, Option<String>, String, Option<String>)> =
@@ -3799,11 +3871,12 @@ async fn team_settings_page(
     {
         Some(t) => t,
         None => {
-            return Html(crate::i18n::translate(
-                auth_user.lang,
-                "error-team-not-found",
-                None,
-            ))
+            return render_error_page_no_headers(
+                &state,
+                axum::http::StatusCode::NOT_FOUND,
+                "Team not found",
+                "Team not found.",
+            )
         }
     };
 
@@ -3892,7 +3965,7 @@ async fn team_settings_page(
 
     let tmpl = match state.templates.get_template("team_settings.html") {
         Ok(t) => t,
-        Err(e) => return internal_error_html("template render", &e),
+        Err(e) => return internal_error_response("template render", &e),
     };
 
     Html(
@@ -3917,6 +3990,7 @@ async fn team_settings_page(
         })
         .unwrap_or_else(|e| internal_error_body("template render", &e)),
     )
+    .into_response()
 }
 
 async fn team_settings_save(
@@ -5406,11 +5480,12 @@ async fn edit_event_type_form(
     ) = match et {
         Some(e) => e,
         None => {
-            return Html(crate::i18n::translate(
-                auth_user.lang,
-                "error-event-type-not-found",
-                None,
-            ))
+            return render_error_page_no_headers(
+                &state,
+                axum::http::StatusCode::NOT_FOUND,
+                "Event type not found",
+                "Event type not found.",
+            )
         }
     };
 
@@ -5628,7 +5703,7 @@ async fn edit_event_type_form(
 
     let tmpl = match state.templates.get_template("event_type_form.html") {
         Ok(t) => t,
-        Err(e) => return internal_error_html("template render", &e),
+        Err(e) => return internal_error_response("template render", &e),
     };
 
     let (impersonating, impersonating_name, _) = impersonation_ctx(&auth_user);
@@ -5732,6 +5807,7 @@ async fn edit_event_type_form(
         })
         .unwrap_or_else(|e| internal_error_body("template render", &e)),
     )
+    .into_response()
 }
 
 async fn update_event_type(
@@ -6399,11 +6475,13 @@ async fn create_source(
     let password_enc = match crate::crypto::encrypt_password(&state.secret_key, &form.password) {
         Ok(enc) => enc,
         Err(_) => {
-            return Html(crate::i18n::translate(
-                auth_user.lang,
-                "form-error-encryption",
-                None,
-            ))
+            return render_error_page(
+                &state,
+                &headers,
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                "Something went wrong",
+                "Encryption error.",
+            )
             .into_response()
         }
     };
@@ -6636,11 +6714,13 @@ async fn update_source(
         match crate::crypto::decrypt_password(&state.secret_key, &existing_password_enc) {
             Ok(p) => p,
             Err(_) => {
-                return Html(crate::i18n::translate(
-                    auth_user.lang,
-                    "error-decrypt-failed",
-                    None,
-                ))
+                return render_error_page(
+                    &state,
+                    &headers,
+                    axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                    "Something went wrong",
+                    "Failed to decrypt stored credentials.",
+                )
                 .into_response()
             }
         }
@@ -6663,11 +6743,13 @@ async fn update_source(
         {
             Ok(enc) => enc,
             Err(_) => {
-                return Html(crate::i18n::translate(
-                    auth_user.lang,
-                    "form-error-encryption",
-                    None,
-                ))
+                return render_error_page(
+                    &state,
+                    &headers,
+                    axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                    "Something went wrong",
+                    "Encryption error.",
+                )
                 .into_response()
             }
         };
@@ -6774,11 +6856,13 @@ async fn test_source(
     ) = match source {
         Some(s) => s,
         None => {
-            return Html(crate::i18n::translate(
-                auth_user.lang,
-                "error-source-not-found",
-                None,
-            ))
+            return render_error_page(
+                &state,
+                &headers,
+                axum::http::StatusCode::NOT_FOUND,
+                "Calendar source not found",
+                "Source not found.",
+            )
             .into_response()
         }
     };
@@ -6792,20 +6876,24 @@ async fn test_source(
             Some(enc) => match crate::crypto::decrypt_password(&state.secret_key, enc) {
                 Ok(p) => p,
                 Err(_) => {
-                    return Html(crate::i18n::translate(
-                        auth_user.lang,
-                        "error-decrypt-failed",
-                        None,
-                    ))
+                    return render_error_page(
+                        &state,
+                        &headers,
+                        axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                        "Something went wrong",
+                        "Failed to decrypt stored credentials.",
+                    )
                     .into_response()
                 }
             },
             None => {
-                return Html(crate::i18n::translate(
-                    auth_user.lang,
-                    "error-source-no-password",
-                    None,
-                ))
+                return render_error_page(
+                    &state,
+                    &headers,
+                    axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                    "Something went wrong",
+                    "Source has no stored password.",
+                )
                 .into_response();
             }
         };
@@ -6836,11 +6924,13 @@ async fn test_source(
         {
             Ok(c) => c,
             Err(_) => {
-                return Html(crate::i18n::translate(
-                    auth_user.lang,
-                    "error-decrypt-failed",
-                    None,
-                ))
+                return render_error_page(
+                    &state,
+                    &headers,
+                    axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                    "Something went wrong",
+                    "Failed to decrypt stored credentials.",
+                )
                 .into_response()
             }
         };
@@ -7037,11 +7127,13 @@ async fn force_sync_source(
     ) = match source {
         Some(s) => s,
         None => {
-            return Html(crate::i18n::translate(
-                auth_user.lang,
-                "error-source-not-found",
-                None,
-            ))
+            return render_error_page(
+                &state,
+                &headers,
+                axum::http::StatusCode::NOT_FOUND,
+                "Calendar source not found",
+                "Source not found.",
+            )
             .into_response()
         }
     };
@@ -7124,11 +7216,13 @@ async fn sync_source(
     ) = match source {
         Some(s) => s,
         None => {
-            return Html(crate::i18n::translate(
-                auth_user.lang,
-                "error-source-not-found",
-                None,
-            ))
+            return render_error_page(
+                &state,
+                &headers,
+                axum::http::StatusCode::NOT_FOUND,
+                "Calendar source not found",
+                "Source not found.",
+            )
             .into_response()
         }
     };
@@ -7544,11 +7638,12 @@ async fn render_invite_management(
     let (et_id, et_title, et_slug, team_slug, username, owner_name, visibility) = match et {
         Some(e) => e,
         None => {
-            return Html(crate::i18n::translate(
-                auth_user.lang,
-                "error-private-event-type-not-found",
-                None,
-            ))
+            return render_error_page_no_headers(
+                state,
+                axum::http::StatusCode::NOT_FOUND,
+                "Event type not found",
+                "Private event type not found.",
+            )
             .into_response()
         }
     };
@@ -7559,11 +7654,12 @@ async fn render_invite_management(
     // team admin only).
     if visibility == "private" && !can_manage_event_type(&state.pool, &auth_user.user, &et_id).await
     {
-        return Html(crate::i18n::translate(
-            auth_user.lang,
-            "error-access-denied",
-            None,
-        ))
+        return render_error_page_no_headers(
+            state,
+            axum::http::StatusCode::FORBIDDEN,
+            "Access denied",
+            "Access denied.",
+        )
         .into_response();
     }
 
@@ -8256,11 +8352,12 @@ async fn group_embed_page(
     let is_admin = user.role == "admin";
 
     if !is_admin && !is_team_admin(&state.pool, &user.id, &team_id).await {
-        return Html(crate::i18n::translate(
-            auth_user.lang,
-            "form-error-not-team-admin",
-            None,
-        ))
+        return render_error_page_no_headers(
+            &state,
+            axum::http::StatusCode::FORBIDDEN,
+            "Not allowed",
+            "You are not a team admin of this team.",
+        )
         .into_response();
     }
 
@@ -8441,11 +8538,13 @@ async fn create_group_event_type(
 
     // Only team admins (and global admins) can create team event types
     if !is_admin && !is_team_admin(&state.pool, &user.id, &team_id).await {
-        return Html(crate::i18n::translate(
-            auth_user.lang,
-            "form-error-not-team-admin",
-            None,
-        ))
+        return render_error_page(
+            &state,
+            &headers,
+            axum::http::StatusCode::FORBIDDEN,
+            "Not allowed",
+            "You are not a team admin of this team.",
+        )
         .into_response();
     }
 
@@ -8481,11 +8580,13 @@ async fn create_group_event_type(
         slug = slug.trim_matches('-').to_string();
     }
     if slug.is_empty() {
-        return Html(crate::i18n::translate(
-            auth_user.lang,
-            "form-error-title-required",
-            None,
-        ))
+        return render_error_page(
+            &state,
+            &headers,
+            axum::http::StatusCode::BAD_REQUEST,
+            "Title required",
+            "Title is required to generate a slug.",
+        )
         .into_response();
     }
 
@@ -8499,11 +8600,13 @@ async fn create_group_event_type(
             .unwrap_or(None);
 
     if existing.is_some() {
-        return Html(crate::i18n::translate(
-            auth_user.lang,
-            "form-error-event-type-slug-taken-team",
-            None,
-        ))
+        return render_error_page(
+            &state,
+            &headers,
+            axum::http::StatusCode::CONFLICT,
+            "Link already in use",
+            "An event type with this slug already exists in this team.",
+        )
         .into_response();
     }
 
@@ -8720,11 +8823,12 @@ async fn edit_group_event_type_form(
     ) = match et {
         Some(e) => e,
         None => {
-            return Html(crate::i18n::translate(
-                auth_user.lang,
-                "error-event-type-not-found",
-                None,
-            ))
+            return render_error_page_no_headers(
+                &state,
+                axum::http::StatusCode::NOT_FOUND,
+                "Event type not found",
+                "Event type not found.",
+            )
         }
     };
 
@@ -8935,7 +9039,7 @@ async fn edit_group_event_type_form(
 
     let tmpl = match state.templates.get_template("event_type_form.html") {
         Ok(t) => t,
-        Err(e) => return internal_error_html("template render", &e),
+        Err(e) => return internal_error_response("template render", &e),
     };
 
     let attachable = attachable_resources(
@@ -9006,6 +9110,7 @@ async fn edit_group_event_type_form(
         })
         .unwrap_or_else(|e| internal_error_body("template render", &e)),
     )
+    .into_response()
 }
 
 async fn update_group_event_type(
@@ -9436,9 +9541,23 @@ async fn redirect_team_link_to_team(
         Some((None,)) => {
             // Team exists but has no slug — should not happen after migration fix,
             // but handle gracefully
-            Html(crate::i18n::translate(lang, "error-team-not-found", None)).into_response()
+            render_error_page(
+                &state,
+                &headers,
+                axum::http::StatusCode::NOT_FOUND,
+                "Team not found",
+                "Team not found.",
+            )
+            .into_response()
         }
-        None => Html(crate::i18n::translate(lang, "error-team-not-found", None)).into_response(),
+        None => render_error_page(
+            &state,
+            &headers,
+            axum::http::StatusCode::NOT_FOUND,
+            "Team not found",
+            "Team not found.",
+        )
+        .into_response(),
     }
 }
 
@@ -9447,6 +9566,7 @@ async fn redirect_team_link_to_team(
 async fn team_profile_page(
     State(state): State<Arc<AppState>>,
     optional_auth: crate::auth::OptionalAuthUser,
+    headers: HeaderMap,
     Path(team_slug): Path<String>,
     Query(query): Query<std::collections::HashMap<String, String>>,
 ) -> impl IntoResponse {
@@ -9467,11 +9587,13 @@ async fn team_profile_page(
     ) = match team {
         Some(t) => t,
         None => {
-            return Html(crate::i18n::translate(
-                optional_auth.lang,
-                "error-team-not-found",
-                None,
-            ))
+            return render_error_page(
+                &state,
+                &headers,
+                axum::http::StatusCode::NOT_FOUND,
+                "Team not found",
+                "Team not found.",
+            )
         }
     };
 
@@ -9491,11 +9613,13 @@ async fn team_profile_page(
                 // valid — continue
             }
             _ => {
-                return Html(crate::i18n::translate(
-                    optional_auth.lang,
-                    "error-team-not-found",
-                    None,
-                ));
+                return render_error_page(
+                    &state,
+                    &headers,
+                    axum::http::StatusCode::NOT_FOUND,
+                    "Team not found",
+                    "Team not found.",
+                );
             }
         }
     }
@@ -9554,7 +9678,7 @@ async fn team_profile_page(
 
     let tmpl = match state.templates.get_template("team_profile.html") {
         Ok(t) => t,
-        Err(e) => return internal_error_html("template render", &e),
+        Err(e) => return internal_error_response("template render", &e),
     };
 
     let et_ctx: Vec<minijinja::Value> = event_types
@@ -9593,6 +9717,7 @@ async fn team_profile_page(
         })
         .unwrap_or_else(|e| internal_error_body("template render", &e)),
     )
+    .into_response()
 }
 
 async fn show_group_slots(
@@ -9636,11 +9761,13 @@ async fn show_group_slots(
     ) = match et {
         Some(e) => e,
         None => {
-            return Html(crate::i18n::translate(
-                lang,
-                "error-event-type-not-found",
-                None,
-            ))
+            return render_error_page(
+                &state,
+                &headers,
+                axum::http::StatusCode::NOT_FOUND,
+                "Event type not found",
+                "Event type not found.",
+            )
             .into_response()
         }
     };
@@ -9658,11 +9785,13 @@ async fn show_group_slots(
     {
         Some(tid) => tid,
         None => {
-            return Html(crate::i18n::translate(
-                lang,
-                "error-event-type-not-found",
-                None,
-            ))
+            return render_error_page(
+                &state,
+                &headers,
+                axum::http::StatusCode::NOT_FOUND,
+                "Event type not found",
+                "Event type not found.",
+            )
             .into_response()
         }
     };
@@ -9975,11 +10104,13 @@ async fn show_group_book_form(
     ) = match et {
         Some(e) => e,
         None => {
-            return Html(crate::i18n::translate(
-                lang,
-                "error-event-type-not-found",
-                None,
-            ))
+            return render_error_page(
+                &state,
+                &headers,
+                axum::http::StatusCode::NOT_FOUND,
+                "Event type not found",
+                "Event type not found.",
+            )
             .into_response()
         }
     };
@@ -9999,8 +10130,14 @@ async fn show_group_book_form(
         let token = match &query.invite {
             Some(t) => t,
             None => {
-                return Html(crate::i18n::translate(lang, "error-invite-required", None))
-                    .into_response()
+                return render_error_page(
+                    &state,
+                    &headers,
+                    axum::http::StatusCode::FORBIDDEN,
+                    "Invite link required",
+                    "This event type requires an invite link.",
+                )
+                .into_response()
             }
         };
         let invite: Option<(String, String, Option<String>, i32, i32)> = sqlx::query_as(
@@ -10014,19 +10151,37 @@ async fn show_group_book_form(
 
         match invite {
             None => {
-                return Html(crate::i18n::translate(lang, "error-invite-invalid", None))
-                    .into_response()
+                return render_error_page(
+                    &state,
+                    &headers,
+                    axum::http::StatusCode::NOT_FOUND,
+                    "Invalid invite link",
+                    "Invalid invite link.",
+                )
+                .into_response()
             }
             Some((name, email, expires_at, max_uses, used_count)) => {
                 if let Some(exp) = &expires_at {
                     if exp < &chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string() {
-                        return Html(crate::i18n::translate(lang, "error-invite-expired", None))
-                            .into_response();
+                        return render_error_page(
+                            &state,
+                            &headers,
+                            axum::http::StatusCode::GONE,
+                            "Invite link expired",
+                            "This invite link has expired.",
+                        )
+                        .into_response();
                     }
                 }
                 if used_count >= max_uses {
-                    return Html(crate::i18n::translate(lang, "error-invite-used", None))
-                        .into_response();
+                    return render_error_page(
+                        &state,
+                        &headers,
+                        axum::http::StatusCode::GONE,
+                        "Invite link already used",
+                        "This invite link has already been used.",
+                    )
+                    .into_response();
                 }
                 invite_guest_name = Some(name);
                 invite_guest_email = Some(email);
@@ -10037,11 +10192,13 @@ async fn show_group_book_form(
         // unless the viewer is a logged-in team member or global admin.
         let valid = matches!((&team_invite_token, &query.invite), (Some(expected), Some(provided)) if !provided.is_empty() && provided == expected);
         if !valid {
-            return Html(crate::i18n::translate(
-                lang,
-                "error-event-type-not-found",
-                None,
-            ))
+            return render_error_page(
+                &state,
+                &headers,
+                axum::http::StatusCode::NOT_FOUND,
+                "Event type not found",
+                "Event type not found.",
+            )
             .into_response();
         }
         invite_guest_name = None;
@@ -10057,22 +10214,26 @@ async fn show_group_book_form(
     let date = match NaiveDate::parse_from_str(&query.date, "%Y-%m-%d") {
         Ok(d) => d,
         Err(_) => {
-            return Html(crate::i18n::translate(
-                lang,
-                "error-invalid-date-format",
-                None,
-            ))
+            return render_error_page(
+                &state,
+                &headers,
+                axum::http::StatusCode::BAD_REQUEST,
+                "Invalid date",
+                "Invalid date format.",
+            )
             .into_response()
         }
     };
     let time = match NaiveTime::parse_from_str(&query.time, "%H:%M") {
         Ok(t) => t,
         Err(_) => {
-            return Html(crate::i18n::translate(
-                lang,
-                "error-invalid-time-format",
-                None,
-            ))
+            return render_error_page(
+                &state,
+                &headers,
+                axum::http::StatusCode::BAD_REQUEST,
+                "Invalid time",
+                "Invalid time format.",
+            )
             .into_response()
         }
     };
@@ -10162,11 +10323,13 @@ async fn handle_group_booking(
     let client_ip = client_ip_for_rate_limit(&headers);
     if state.booking_limiter.check_limited(&client_ip).await {
         tracing::warn!(ip = %client_ip, "rate limited");
-        return Html(crate::i18n::translate(
-            lang,
-            "error-too-many-bookings",
-            None,
-        ))
+        return render_error_page(
+            &state,
+            &headers,
+            axum::http::StatusCode::TOO_MANY_REQUESTS,
+            "Too many attempts",
+            "Too many booking attempts. Please try again in a few minutes.",
+        )
         .into_response();
     }
 
@@ -10206,11 +10369,13 @@ async fn handle_group_booking(
     ) = match et {
         Some(e) => e,
         None => {
-            return Html(crate::i18n::translate(
-                lang,
-                "error-event-type-not-found",
-                None,
-            ))
+            return render_error_page(
+                &state,
+                &headers,
+                axum::http::StatusCode::NOT_FOUND,
+                "Event type not found",
+                "Event type not found.",
+            )
             .into_response()
         }
     };
@@ -10254,8 +10419,14 @@ async fn handle_group_booking(
         let token = match &form.invite_token {
             Some(t) if !t.is_empty() => t,
             _ => {
-                return Html(crate::i18n::translate(lang, "error-invite-required", None))
-                    .into_response()
+                return render_error_page(
+                    &state,
+                    &headers,
+                    axum::http::StatusCode::FORBIDDEN,
+                    "Invite link required",
+                    "This event type requires an invite link.",
+                )
+                .into_response()
             }
         };
         let invite: Option<(Option<String>, i32, i32)> = sqlx::query_as(
@@ -10269,19 +10440,37 @@ async fn handle_group_booking(
 
         match invite {
             None => {
-                return Html(crate::i18n::translate(lang, "error-invite-invalid", None))
-                    .into_response()
+                return render_error_page(
+                    &state,
+                    &headers,
+                    axum::http::StatusCode::NOT_FOUND,
+                    "Invalid invite link",
+                    "Invalid invite link.",
+                )
+                .into_response()
             }
             Some((expires_at, max_uses, used_count)) => {
                 if let Some(exp) = &expires_at {
                     if exp < &chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string() {
-                        return Html(crate::i18n::translate(lang, "error-invite-expired", None))
-                            .into_response();
+                        return render_error_page(
+                            &state,
+                            &headers,
+                            axum::http::StatusCode::GONE,
+                            "Invite link expired",
+                            "This invite link has expired.",
+                        )
+                        .into_response();
                     }
                 }
                 if used_count >= max_uses {
-                    return Html(crate::i18n::translate(lang, "error-invite-used", None))
-                        .into_response();
+                    return render_error_page(
+                        &state,
+                        &headers,
+                        axum::http::StatusCode::GONE,
+                        "Invite link already used",
+                        "This invite link has already been used.",
+                    )
+                    .into_response();
                 }
             }
         }
@@ -10298,11 +10487,13 @@ async fn handle_group_booking(
         if !viewer_is_member_or_admin {
             let valid = matches!((&team_invite_token, &form.invite_token), (Some(expected), Some(provided)) if !provided.is_empty() && provided == expected);
             if !valid {
-                return Html(crate::i18n::translate(
-                    lang,
-                    "error-event-type-not-found",
-                    None,
-                ))
+                return render_error_page(
+                    &state,
+                    &headers,
+                    axum::http::StatusCode::NOT_FOUND,
+                    "Event type not found",
+                    "Event type not found.",
+                )
                 .into_response();
             }
         }
@@ -10311,7 +10502,14 @@ async fn handle_group_booking(
     let date = match NaiveDate::parse_from_str(&form.date, "%Y-%m-%d") {
         Ok(d) => d,
         Err(_) => {
-            return Html(crate::i18n::translate(lang, "error-invalid-date", None)).into_response()
+            return render_error_page(
+                &state,
+                &headers,
+                axum::http::StatusCode::BAD_REQUEST,
+                "Invalid date",
+                "Invalid date.",
+            )
+            .into_response()
         }
     };
     if let Err(e) = validate_date_not_too_far(date) {
@@ -10320,7 +10518,14 @@ async fn handle_group_booking(
     let start_time = match NaiveTime::parse_from_str(&form.time, "%H:%M") {
         Ok(t) => t,
         Err(_) => {
-            return Html(crate::i18n::translate(lang, "error-invalid-time", None)).into_response()
+            return render_error_page(
+                &state,
+                &headers,
+                axum::http::StatusCode::BAD_REQUEST,
+                "Invalid time",
+                "Invalid time.",
+            )
+            .into_response()
         }
     };
 
@@ -10337,21 +10542,13 @@ async fn handle_group_booking(
 
     let now = Local::now().naive_local();
     if slot_start < now + Duration::minutes(min_notice as i64) {
-        return Html(crate::i18n::translate(lang, "error-slot-too-soon", None)).into_response();
-    }
-
-    // Rolling booking horizon. The slot list already hides anything past it,
-    // but that is advisory: a crafted POST has to be rejected here too.
-    let horizon_end = horizon_last_date(
-        Utc::now().with_timezone(&host_tz).naive_local(),
-        get_booking_horizon(&state.pool, &et_id).await,
-    );
-    if horizon_end.is_some_and(|last| slot_start.date() > last) {
-        return Html(crate::i18n::translate(
-            lang,
-            "error-slot-beyond-horizon",
-            None,
-        ))
+        return render_error_page(
+            &state,
+            &headers,
+            axum::http::StatusCode::CONFLICT,
+            "Slot no longer available",
+            "This slot is no longer available (too soon).",
+        )
         .into_response();
     }
 
@@ -10405,11 +10602,13 @@ async fn handle_group_booking(
         .unwrap_or_default();
         if members.is_empty() {
             let _ = tx.rollback().await;
-            return Html(crate::i18n::translate(
-                lang,
-                "error-no-members-available",
-                None,
-            ))
+            return render_error_page(
+                &state,
+                &headers,
+                axum::http::StatusCode::CONFLICT,
+                "Nobody available",
+                "No team members are available for this slot.",
+            )
             .into_response();
         }
         // Submit-time re-check, mirroring pick_group_member: the slot grid
@@ -10429,11 +10628,13 @@ async fn handle_group_booking(
             );
             if has_conflict(&busy, buf_start, buf_end) {
                 let _ = tx.rollback().await;
-                return Html(crate::i18n::translate(
-                    lang,
-                    "error-no-members-available",
-                    None,
-                ))
+                return render_error_page(
+                    &state,
+                    &headers,
+                    axum::http::StatusCode::CONFLICT,
+                    "Nobody available",
+                    "No team members are available for this slot.",
+                )
                 .into_response();
             }
         }
@@ -10460,11 +10661,13 @@ async fn handle_group_booking(
             Some((member_id, name, email)) => (Some(member_id), name, email, Vec::new()),
             None => {
                 let _ = tx.rollback().await;
-                return Html(crate::i18n::translate(
-                    lang,
-                    "error-no-members-available",
-                    None,
-                ))
+                return render_error_page(
+                    &state,
+                    &headers,
+                    axum::http::StatusCode::CONFLICT,
+                    "Nobody available",
+                    "No team members are available for this slot.",
+                )
                 .into_response();
             }
         }
@@ -10512,8 +10715,14 @@ async fn handle_group_booking(
     {
         crate::resources::ResourceCheck::Busy => {
             let _ = tx.rollback().await;
-            return Html(crate::i18n::translate(lang, "error-slot-unavailable", None))
-                .into_response();
+            return render_error_page(
+                &state,
+                &headers,
+                axum::http::StatusCode::CONFLICT,
+                "Slot no longer available",
+                "This slot is no longer available.",
+            )
+            .into_response();
         }
         crate::resources::ResourceCheck::Free { assigned } => assigned,
         crate::resources::ResourceCheck::NoResources => None,
@@ -10561,8 +10770,14 @@ async fn handle_group_booking(
         Err(e) => {
             let _ = tx.rollback().await;
             if e.to_string().contains("UNIQUE constraint failed") {
-                return Html(crate::i18n::translate(lang, "error-slot-unavailable", None))
-                    .into_response();
+                return render_error_page(
+                    &state,
+                    &headers,
+                    axum::http::StatusCode::CONFLICT,
+                    "Slot no longer available",
+                    "This slot is no longer available.",
+                )
+                .into_response();
             }
             return internal_error_response("database query", &e);
         }
@@ -10582,8 +10797,14 @@ async fn handle_group_booking(
 
     if let Err(e) = tx.commit().await {
         if e.to_string().contains("UNIQUE constraint failed") {
-            return Html(crate::i18n::translate(lang, "error-slot-unavailable", None))
-                .into_response();
+            return render_error_page(
+                &state,
+                &headers,
+                axum::http::StatusCode::CONFLICT,
+                "Slot no longer available",
+                "This slot is no longer available.",
+            )
+            .into_response();
         }
         return internal_error_response("database query", &e);
     }
@@ -10819,11 +11040,13 @@ async fn user_profile(
     let (user_id, user_name, user_title, user_bio, avatar_path, language) = match user {
         Some(u) => u,
         None => {
-            return Html(crate::i18n::translate(
-                crate::i18n::detect_from_headers(&headers),
-                "error-user-not-found",
-                None,
-            ))
+            return render_error_page(
+                &state,
+                &headers,
+                axum::http::StatusCode::NOT_FOUND,
+                "User not found",
+                "User not found.",
+            )
         }
     };
     let lang = crate::i18n::resolve(language.as_deref(), &headers);
@@ -10843,7 +11066,7 @@ async fn user_profile(
 
     let tmpl = match state.templates.get_template("profile.html") {
         Ok(t) => t,
-        Err(e) => return internal_error_html("template render", &e),
+        Err(e) => return internal_error_response("template render", &e),
     };
 
     let et_ctx: Vec<minijinja::Value> = event_types
@@ -10868,6 +11091,7 @@ async fn user_profile(
         })
         .unwrap_or_else(|e| internal_error_body("template render", &e)),
     )
+    .into_response()
 }
 
 // --- Dynamic group link handlers ---
@@ -10878,14 +11102,15 @@ async fn show_dynamic_group_slots(
     combined_username: &str,
     slug: &str,
     query: &SlotsQuery,
-) -> Html<String> {
+) -> axum::response::Response {
     let lang = crate::i18n::detect_from_headers(headers);
     let usernames = match parse_dynamic_group_usernames(combined_username, lang) {
         Ok(u) => u,
         Err(e) => {
-            return render_booking_action_error_html(
+            return render_error_page(
                 state,
                 headers,
+                axum::http::StatusCode::BAD_REQUEST,
                 &crate::i18n::translate(lang, "bae-title-invalid-link", None),
                 &e,
             )
@@ -10894,9 +11119,10 @@ async fn show_dynamic_group_slots(
     let dg_users = match validate_dynamic_group_users(&state.pool, &usernames, lang).await {
         Ok(u) => u,
         Err(e) => {
-            return render_booking_action_error_html(
+            return render_error_page(
                 state,
                 headers,
+                axum::http::StatusCode::BAD_REQUEST,
                 &crate::i18n::translate(lang, "bae-title-invalid-link", None),
                 &e,
             )
@@ -10938,21 +11164,25 @@ async fn show_dynamic_group_slots(
     ) = match et {
         Some(e) => e,
         None => {
-            return Html(crate::i18n::translate(
-                lang,
-                "error-event-type-not-found",
-                None,
-            ))
+            return render_error_page(
+                state,
+                headers,
+                axum::http::StatusCode::NOT_FOUND,
+                "Event type not found",
+                "Event type not found.",
+            )
         }
     };
 
     // Dynamic group links only for public event types
     if visibility != "public" {
-        return Html(crate::i18n::translate(
-            lang,
-            "error-dynamic-group-public-only",
-            None,
-        ));
+        return render_error_page(
+            state,
+            headers,
+            axum::http::StatusCode::FORBIDDEN,
+            "Not available",
+            "Dynamic group links are only available for public event types.",
+        );
     }
 
     // Build combined host display name
@@ -11073,7 +11303,7 @@ async fn show_dynamic_group_slots(
     let (meeting_jitsi_label, meeting_webhook_label) = meeting_provider_labels(state).await;
     let tmpl = match state.templates.get_template("slots.html") {
         Ok(t) => t,
-        Err(e) => return internal_error_html("internal", &e),
+        Err(e) => return internal_error_response("internal", &e),
     };
     Html(
         tmpl.render(context! {
@@ -11118,6 +11348,7 @@ async fn show_dynamic_group_slots(
         })
         .unwrap_or_else(|e| internal_error_body("template render", &e)),
     )
+    .into_response()
 }
 
 async fn show_dynamic_group_book_form(
@@ -11126,14 +11357,15 @@ async fn show_dynamic_group_book_form(
     combined_username: &str,
     slug: &str,
     query: &BookQuery,
-) -> Html<String> {
+) -> axum::response::Response {
     let lang = crate::i18n::detect_from_headers(headers);
     let usernames = match parse_dynamic_group_usernames(combined_username, lang) {
         Ok(u) => u,
         Err(e) => {
-            return render_booking_action_error_html(
+            return render_error_page(
                 state,
                 headers,
+                axum::http::StatusCode::BAD_REQUEST,
                 &crate::i18n::translate(lang, "bae-title-invalid-link", None),
                 &e,
             )
@@ -11142,9 +11374,10 @@ async fn show_dynamic_group_book_form(
     let dg_users = match validate_dynamic_group_users(&state.pool, &usernames, lang).await {
         Ok(u) => u,
         Err(e) => {
-            return render_booking_action_error_html(
+            return render_error_page(
                 state,
                 headers,
+                axum::http::StatusCode::BAD_REQUEST,
                 &crate::i18n::translate(lang, "bae-title-invalid-link", None),
                 &e,
             )
@@ -11179,20 +11412,24 @@ async fn show_dynamic_group_book_form(
     ) = match et {
         Some(e) => e,
         None => {
-            return Html(crate::i18n::translate(
-                lang,
-                "error-event-type-not-found",
-                None,
-            ))
+            return render_error_page(
+                state,
+                headers,
+                axum::http::StatusCode::NOT_FOUND,
+                "Event type not found",
+                "Event type not found.",
+            )
         }
     };
 
     if visibility != "public" {
-        return Html(crate::i18n::translate(
-            lang,
-            "error-dynamic-group-public-only",
-            None,
-        ));
+        return render_error_page(
+            state,
+            headers,
+            axum::http::StatusCode::FORBIDDEN,
+            "Not available",
+            "Dynamic group links are only available for public event types.",
+        );
     }
 
     let host_name = dg_users
@@ -11208,21 +11445,25 @@ async fn show_dynamic_group_book_form(
     let date = match NaiveDate::parse_from_str(&query.date, "%Y-%m-%d") {
         Ok(d) => d,
         Err(_) => {
-            return Html(crate::i18n::translate(
-                lang,
-                "error-invalid-date-format",
-                None,
-            ))
+            return render_error_page(
+                state,
+                headers,
+                axum::http::StatusCode::BAD_REQUEST,
+                "Invalid date",
+                "Invalid date format.",
+            )
         }
     };
     let time = match NaiveTime::parse_from_str(&query.time, "%H:%M") {
         Ok(t) => t,
         Err(_) => {
-            return Html(crate::i18n::translate(
-                lang,
-                "error-invalid-time-format",
-                None,
-            ))
+            return render_error_page(
+                state,
+                headers,
+                axum::http::StatusCode::BAD_REQUEST,
+                "Invalid time",
+                "Invalid time format.",
+            )
         }
     };
     let end_time = (date.and_time(time) + Duration::minutes(duration as i64))
@@ -11234,7 +11475,7 @@ async fn show_dynamic_group_book_form(
     let (meeting_jitsi_label, meeting_webhook_label) = meeting_provider_labels(state).await;
     let tmpl = match state.templates.get_template("book.html") {
         Ok(t) => t,
-        Err(e) => return internal_error_html("internal", &e),
+        Err(e) => return internal_error_response("internal", &e),
     };
     let captcha = captcha::CaptchaVars::from_config(&*state.captcha_config.read().await);
     Html(
@@ -11273,6 +11514,7 @@ async fn show_dynamic_group_book_form(
         })
         .unwrap_or_else(|e| internal_error_body("template render", &e)),
     )
+    .into_response()
 }
 
 async fn handle_dynamic_group_booking(
@@ -11287,11 +11529,13 @@ async fn handle_dynamic_group_booking(
     let client_ip = client_ip_for_rate_limit(headers);
     if state.booking_limiter.check_limited(&client_ip).await {
         tracing::warn!(ip = %client_ip, "rate limited");
-        return Html(crate::i18n::translate(
-            lang,
-            "error-too-many-bookings",
-            None,
-        ))
+        return render_error_page(
+            state,
+            headers,
+            axum::http::StatusCode::TOO_MANY_REQUESTS,
+            "Too many attempts",
+            "Too many booking attempts. Please try again in a few minutes.",
+        )
         .into_response();
     }
 
@@ -11302,9 +11546,10 @@ async fn handle_dynamic_group_booking(
     let usernames = match parse_dynamic_group_usernames(combined_username, lang) {
         Ok(u) => u,
         Err(e) => {
-            return render_booking_action_error(
+            return render_error_page(
                 state,
                 headers,
+                axum::http::StatusCode::BAD_REQUEST,
                 &crate::i18n::translate(lang, "bae-title-invalid-link", None),
                 &e,
             )
@@ -11313,9 +11558,10 @@ async fn handle_dynamic_group_booking(
     let dg_users = match validate_dynamic_group_users(&state.pool, &usernames, lang).await {
         Ok(u) => u,
         Err(e) => {
-            return render_booking_action_error(
+            return render_error_page(
                 state,
                 headers,
+                axum::http::StatusCode::BAD_REQUEST,
                 &crate::i18n::translate(lang, "bae-title-invalid-link", None),
                 &e,
             )
@@ -11355,21 +11601,25 @@ async fn handle_dynamic_group_booking(
     ) = match et {
         Some(e) => e,
         None => {
-            return Html(crate::i18n::translate(
-                lang,
-                "error-event-type-not-found",
-                None,
-            ))
+            return render_error_page(
+                state,
+                headers,
+                axum::http::StatusCode::NOT_FOUND,
+                "Event type not found",
+                "Event type not found.",
+            )
             .into_response()
         }
     };
 
     if visibility != "public" {
-        return Html(crate::i18n::translate(
-            lang,
-            "error-dynamic-group-public-only",
-            None,
-        ))
+        return render_error_page(
+            state,
+            headers,
+            axum::http::StatusCode::FORBIDDEN,
+            "Not available",
+            "Dynamic group links are only available for public event types.",
+        )
         .into_response();
     }
 
@@ -11396,7 +11646,14 @@ async fn handle_dynamic_group_booking(
     let date = match NaiveDate::parse_from_str(&form.date, "%Y-%m-%d") {
         Ok(d) => d,
         Err(_) => {
-            return Html(crate::i18n::translate(lang, "error-invalid-date", None)).into_response()
+            return render_error_page(
+                state,
+                headers,
+                axum::http::StatusCode::BAD_REQUEST,
+                "Invalid date",
+                "Invalid date.",
+            )
+            .into_response()
         }
     };
     if let Err(e) = validate_date_not_too_far(date) {
@@ -11405,7 +11662,14 @@ async fn handle_dynamic_group_booking(
     let start_time = match NaiveTime::parse_from_str(&form.time, "%H:%M") {
         Ok(t) => t,
         Err(_) => {
-            return Html(crate::i18n::translate(lang, "error-invalid-time", None)).into_response()
+            return render_error_page(
+                state,
+                headers,
+                axum::http::StatusCode::BAD_REQUEST,
+                "Invalid time",
+                "Invalid time.",
+            )
+            .into_response()
         }
     };
 
@@ -11423,21 +11687,13 @@ async fn handle_dynamic_group_booking(
 
     let now = Local::now().naive_local();
     if slot_start < now + Duration::minutes(min_notice as i64) {
-        return Html(crate::i18n::translate(lang, "error-slot-too-soon", None)).into_response();
-    }
-
-    // Rolling booking horizon. The slot list already hides anything past it,
-    // but that is advisory: a crafted POST has to be rejected here too.
-    let horizon_end = horizon_last_date(
-        Utc::now().with_timezone(&host_tz).naive_local(),
-        get_booking_horizon(&state.pool, &et_id).await,
-    );
-    if horizon_end.is_some_and(|last| slot_start.date() > last) {
-        return Html(crate::i18n::translate(
-            lang,
-            "error-slot-beyond-horizon",
-            None,
-        ))
+        return render_error_page(
+            state,
+            headers,
+            axum::http::StatusCode::CONFLICT,
+            "Slot no longer available",
+            "This slot is no longer available (too soon).",
+        )
         .into_response();
     }
 
@@ -11529,8 +11785,14 @@ async fn handle_dynamic_group_booking(
     {
         crate::resources::ResourceCheck::Busy => {
             let _ = tx.rollback().await;
-            return Html(crate::i18n::translate(lang, "error-slot-unavailable", None))
-                .into_response();
+            return render_error_page(
+                state,
+                headers,
+                axum::http::StatusCode::CONFLICT,
+                "Slot no longer available",
+                "This slot is no longer available.",
+            )
+            .into_response();
         }
         crate::resources::ResourceCheck::Free { assigned } => assigned,
         crate::resources::ResourceCheck::NoResources => None,
@@ -11577,8 +11839,14 @@ async fn handle_dynamic_group_booking(
         Err(e) => {
             let _ = tx.rollback().await;
             if e.to_string().contains("UNIQUE constraint failed") {
-                return Html(crate::i18n::translate(lang, "error-slot-unavailable", None))
-                    .into_response();
+                return render_error_page(
+                    state,
+                    headers,
+                    axum::http::StatusCode::CONFLICT,
+                    "Slot no longer available",
+                    "This slot is no longer available.",
+                )
+                .into_response();
             }
             return internal_error_response("database query", &e);
         }
@@ -11610,8 +11878,14 @@ async fn handle_dynamic_group_booking(
 
     if let Err(e) = tx.commit().await {
         if e.to_string().contains("UNIQUE constraint failed") {
-            return Html(crate::i18n::translate(lang, "error-slot-unavailable", None))
-                .into_response();
+            return render_error_page(
+                state,
+                headers,
+                axum::http::StatusCode::CONFLICT,
+                "Slot no longer available",
+                "This slot is no longer available.",
+            )
+            .into_response();
         }
         return internal_error_response("database query", &e);
     }
@@ -11776,9 +12050,7 @@ async fn show_slots_for_user(
     // render with full chrome and don't autosize. The embed generator only
     // produces single-user/team links.
     if username.contains('+') {
-        return show_dynamic_group_slots(&state, &headers, &username, &slug, &query)
-            .await
-            .into_response();
+        return show_dynamic_group_slots(&state, &headers, &username, &slug, &query).await;
     }
 
     let user: Option<(
@@ -11798,11 +12070,13 @@ async fn show_slots_for_user(
     let (host_user_id, host_name, host_title, host_avatar_path, user_lang) = match user {
         Some(user) => user,
         None => {
-            return Html(crate::i18n::translate(
-                crate::i18n::detect_from_headers(&headers),
-                "error-user-not-found",
-                None,
-            ))
+            return render_error_page(
+                &state,
+                &headers,
+                axum::http::StatusCode::NOT_FOUND,
+                "User not found",
+                "User not found.",
+            )
             .into_response()
         }
     };
@@ -11837,11 +12111,13 @@ async fn show_slots_for_user(
     ) = match et {
         Some(e) => e,
         None => {
-            return Html(crate::i18n::translate(
-                lang,
-                "error-event-type-not-found",
-                None,
-            ))
+            return render_error_page(
+                &state,
+                &headers,
+                axum::http::StatusCode::NOT_FOUND,
+                "Event type not found",
+                "Event type not found.",
+            )
             .into_response()
         }
     };
@@ -11853,8 +12129,14 @@ async fn show_slots_for_user(
         let token = match &query.invite {
             Some(t) => t,
             None => {
-                return Html(crate::i18n::translate(lang, "error-invite-required", None))
-                    .into_response()
+                return render_error_page(
+                    &state,
+                    &headers,
+                    axum::http::StatusCode::FORBIDDEN,
+                    "Invite link required",
+                    "This event type requires an invite link.",
+                )
+                .into_response()
             }
         };
         let invite: Option<(String, String, Option<String>, i32, i32)> = sqlx::query_as(
@@ -11868,19 +12150,37 @@ async fn show_slots_for_user(
 
         match invite {
             None => {
-                return Html(crate::i18n::translate(lang, "error-invite-invalid", None))
-                    .into_response()
+                return render_error_page(
+                    &state,
+                    &headers,
+                    axum::http::StatusCode::NOT_FOUND,
+                    "Invalid invite link",
+                    "Invalid invite link.",
+                )
+                .into_response()
             }
             Some((name, email, expires_at, max_uses, used_count)) => {
                 if let Some(exp) = &expires_at {
                     if exp < &chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string() {
-                        return Html(crate::i18n::translate(lang, "error-invite-expired", None))
-                            .into_response();
+                        return render_error_page(
+                            &state,
+                            &headers,
+                            axum::http::StatusCode::GONE,
+                            "Invite link expired",
+                            "This invite link has expired.",
+                        )
+                        .into_response();
                     }
                 }
                 if used_count >= max_uses {
-                    return Html(crate::i18n::translate(lang, "error-invite-used", None))
-                        .into_response();
+                    return render_error_page(
+                        &state,
+                        &headers,
+                        axum::http::StatusCode::GONE,
+                        "Invite link already used",
+                        "This invite link has already been used.",
+                    )
+                    .into_response();
                 }
                 invite_guest_name = Some(name);
                 invite_guest_email = Some(email);
@@ -12021,9 +12321,7 @@ async fn show_book_form_for_user(
 ) -> Response {
     let embed = query.embed_params();
     if username.contains('+') {
-        return show_dynamic_group_book_form(&state, &headers, &username, &slug, &query)
-            .await
-            .into_response();
+        return show_dynamic_group_book_form(&state, &headers, &username, &slug, &query).await;
     }
 
     let et: Option<(String, String, String, Option<String>, i32, String, Option<String>, String, i32, Option<String>, String)> = sqlx::query_as(
@@ -12054,11 +12352,13 @@ async fn show_book_form_for_user(
     ) = match et {
         Some(e) => e,
         None => {
-            return Html(crate::i18n::translate(
-                crate::i18n::detect_from_headers(&headers),
-                "error-event-type-not-found",
-                None,
-            ))
+            return render_error_page(
+                &state,
+                &headers,
+                axum::http::StatusCode::NOT_FOUND,
+                "Event type not found",
+                "Event type not found.",
+            )
             .into_response()
         }
     };
@@ -12072,8 +12372,14 @@ async fn show_book_form_for_user(
         let token = match &query.invite {
             Some(t) => t,
             None => {
-                return Html(crate::i18n::translate(lang, "error-invite-required", None))
-                    .into_response()
+                return render_error_page(
+                    &state,
+                    &headers,
+                    axum::http::StatusCode::FORBIDDEN,
+                    "Invite link required",
+                    "This event type requires an invite link.",
+                )
+                .into_response()
             }
         };
         let invite: Option<(String, String, Option<String>, i32, i32)> = sqlx::query_as(
@@ -12087,19 +12393,37 @@ async fn show_book_form_for_user(
 
         match invite {
             None => {
-                return Html(crate::i18n::translate(lang, "error-invite-invalid", None))
-                    .into_response()
+                return render_error_page(
+                    &state,
+                    &headers,
+                    axum::http::StatusCode::NOT_FOUND,
+                    "Invalid invite link",
+                    "Invalid invite link.",
+                )
+                .into_response()
             }
             Some((name, email, expires_at, max_uses, used_count)) => {
                 if let Some(exp) = &expires_at {
                     if exp < &chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string() {
-                        return Html(crate::i18n::translate(lang, "error-invite-expired", None))
-                            .into_response();
+                        return render_error_page(
+                            &state,
+                            &headers,
+                            axum::http::StatusCode::GONE,
+                            "Invite link expired",
+                            "This invite link has expired.",
+                        )
+                        .into_response();
                     }
                 }
                 if used_count >= max_uses {
-                    return Html(crate::i18n::translate(lang, "error-invite-used", None))
-                        .into_response();
+                    return render_error_page(
+                        &state,
+                        &headers,
+                        axum::http::StatusCode::GONE,
+                        "Invite link already used",
+                        "This invite link has already been used.",
+                    )
+                    .into_response();
                 }
                 invite_guest_name = Some(name);
                 invite_guest_email = Some(email);
@@ -12124,22 +12448,26 @@ async fn show_book_form_for_user(
     let date = match NaiveDate::parse_from_str(&query.date, "%Y-%m-%d") {
         Ok(d) => d,
         Err(_) => {
-            return Html(crate::i18n::translate(
-                lang,
-                "error-invalid-date-format",
-                None,
-            ))
+            return render_error_page(
+                &state,
+                &headers,
+                axum::http::StatusCode::BAD_REQUEST,
+                "Invalid date",
+                "Invalid date format.",
+            )
             .into_response()
         }
     };
     let time = match NaiveTime::parse_from_str(&query.time, "%H:%M") {
         Ok(t) => t,
         Err(_) => {
-            return Html(crate::i18n::translate(
-                lang,
-                "error-invalid-time-format",
-                None,
-            ))
+            return render_error_page(
+                &state,
+                &headers,
+                axum::http::StatusCode::BAD_REQUEST,
+                "Invalid time",
+                "Invalid time format.",
+            )
             .into_response()
         }
     };
@@ -12232,11 +12560,13 @@ async fn handle_booking_for_user(
     let client_ip = client_ip_for_rate_limit(&headers);
     if state.booking_limiter.check_limited(&client_ip).await {
         tracing::warn!(ip = %client_ip, "rate limited");
-        return Html(crate::i18n::translate(
-            crate::i18n::detect_from_headers(&headers),
-            "error-too-many-bookings",
-            None,
-        ))
+        return render_error_page(
+            &state,
+            &headers,
+            axum::http::StatusCode::TOO_MANY_REQUESTS,
+            "Too many attempts",
+            "Too many booking attempts. Please try again in a few minutes.",
+        )
         .into_response();
     }
 
@@ -12277,11 +12607,13 @@ async fn handle_booking_for_user(
     ) = match et {
         Some(e) => e,
         None => {
-            return Html(crate::i18n::translate(
-                crate::i18n::detect_from_headers(&headers),
-                "error-event-type-not-found",
-                None,
-            ))
+            return render_error_page(
+                &state,
+                &headers,
+                axum::http::StatusCode::NOT_FOUND,
+                "Event type not found",
+                "Event type not found.",
+            )
             .into_response()
         }
     };
@@ -12324,8 +12656,14 @@ async fn handle_booking_for_user(
         let token = match &form.invite_token {
             Some(t) if !t.is_empty() => t,
             _ => {
-                return Html(crate::i18n::translate(lang, "error-invite-required", None))
-                    .into_response()
+                return render_error_page(
+                    &state,
+                    &headers,
+                    axum::http::StatusCode::FORBIDDEN,
+                    "Invite link required",
+                    "This event type requires an invite link.",
+                )
+                .into_response()
             }
         };
         let invite: Option<(Option<String>, i32, i32)> = sqlx::query_as(
@@ -12339,19 +12677,37 @@ async fn handle_booking_for_user(
 
         match invite {
             None => {
-                return Html(crate::i18n::translate(lang, "error-invite-invalid", None))
-                    .into_response()
+                return render_error_page(
+                    &state,
+                    &headers,
+                    axum::http::StatusCode::NOT_FOUND,
+                    "Invalid invite link",
+                    "Invalid invite link.",
+                )
+                .into_response()
             }
             Some((expires_at, max_uses, used_count)) => {
                 if let Some(exp) = &expires_at {
                     if exp < &chrono::Utc::now().format("%Y-%m-%d %H:%M:%S").to_string() {
-                        return Html(crate::i18n::translate(lang, "error-invite-expired", None))
-                            .into_response();
+                        return render_error_page(
+                            &state,
+                            &headers,
+                            axum::http::StatusCode::GONE,
+                            "Invite link expired",
+                            "This invite link has expired.",
+                        )
+                        .into_response();
                     }
                 }
                 if used_count >= max_uses {
-                    return Html(crate::i18n::translate(lang, "error-invite-used", None))
-                        .into_response();
+                    return render_error_page(
+                        &state,
+                        &headers,
+                        axum::http::StatusCode::GONE,
+                        "Invite link already used",
+                        "This invite link has already been used.",
+                    )
+                    .into_response();
                 }
             }
         }
@@ -12360,7 +12716,14 @@ async fn handle_booking_for_user(
     let date = match NaiveDate::parse_from_str(&form.date, "%Y-%m-%d") {
         Ok(d) => d,
         Err(_) => {
-            return Html(crate::i18n::translate(lang, "error-invalid-date", None)).into_response()
+            return render_error_page(
+                &state,
+                &headers,
+                axum::http::StatusCode::BAD_REQUEST,
+                "Invalid date",
+                "Invalid date.",
+            )
+            .into_response()
         }
     };
     if let Err(e) = validate_date_not_too_far(date) {
@@ -12369,7 +12732,14 @@ async fn handle_booking_for_user(
     let start_time = match NaiveTime::parse_from_str(&form.time, "%H:%M") {
         Ok(t) => t,
         Err(_) => {
-            return Html(crate::i18n::translate(lang, "error-invalid-time", None)).into_response()
+            return render_error_page(
+                &state,
+                &headers,
+                axum::http::StatusCode::BAD_REQUEST,
+                "Invalid time",
+                "Invalid time.",
+            )
+            .into_response()
         }
     };
 
@@ -12387,21 +12757,13 @@ async fn handle_booking_for_user(
 
     let now = Local::now().naive_local();
     if slot_start < now + Duration::minutes(min_notice as i64) {
-        return Html(crate::i18n::translate(lang, "error-slot-too-soon", None)).into_response();
-    }
-
-    // Rolling booking horizon. The slot list already hides anything past it,
-    // but that is advisory: a crafted POST has to be rejected here too.
-    let horizon_end = horizon_last_date(
-        Utc::now().with_timezone(&host_tz).naive_local(),
-        get_booking_horizon(&state.pool, &et_id).await,
-    );
-    if horizon_end.is_some_and(|last| slot_start.date() > last) {
-        return Html(crate::i18n::translate(
-            lang,
-            "error-slot-beyond-horizon",
-            None,
-        ))
+        return render_error_page(
+            &state,
+            &headers,
+            axum::http::StatusCode::CONFLICT,
+            "Slot no longer available",
+            "This slot is no longer available (too soon).",
+        )
         .into_response();
     }
 
@@ -12445,7 +12807,14 @@ async fn handle_booking_for_user(
     .await;
     if has_conflict(&busy, buf_start, buf_end) {
         let _ = tx.rollback().await;
-        return Html(crate::i18n::translate(lang, "error-slot-unavailable", None)).into_response();
+        return render_error_page(
+            &state,
+            &headers,
+            axum::http::StatusCode::CONFLICT,
+            "Slot no longer available",
+            "This slot is no longer available.",
+        )
+        .into_response();
     }
 
     // Check booking frequency limits. Personal event-type flows don't have a
@@ -12489,8 +12858,14 @@ async fn handle_booking_for_user(
     {
         crate::resources::ResourceCheck::Busy => {
             let _ = tx.rollback().await;
-            return Html(crate::i18n::translate(lang, "error-slot-unavailable", None))
-                .into_response();
+            return render_error_page(
+                &state,
+                &headers,
+                axum::http::StatusCode::CONFLICT,
+                "Slot no longer available",
+                "This slot is no longer available.",
+            )
+            .into_response();
         }
         crate::resources::ResourceCheck::Free { assigned } => assigned,
         crate::resources::ResourceCheck::NoResources => None,
@@ -12524,8 +12899,14 @@ async fn handle_booking_for_user(
         Err(e) => {
             let _ = tx.rollback().await;
             if e.to_string().contains("UNIQUE constraint failed") {
-                return Html(crate::i18n::translate(lang, "error-slot-unavailable", None))
-                    .into_response();
+                return render_error_page(
+                    &state,
+                    &headers,
+                    axum::http::StatusCode::CONFLICT,
+                    "Slot no longer available",
+                    "This slot is no longer available.",
+                )
+                .into_response();
             }
             return internal_error_response("database query", &e);
         }
@@ -12545,8 +12926,14 @@ async fn handle_booking_for_user(
 
     if let Err(e) = tx.commit().await {
         if e.to_string().contains("UNIQUE constraint failed") {
-            return Html(crate::i18n::translate(lang, "error-slot-unavailable", None))
-                .into_response();
+            return render_error_page(
+                &state,
+                &headers,
+                axum::http::StatusCode::CONFLICT,
+                "Slot no longer available",
+                "This slot is no longer available.",
+            )
+            .into_response();
         }
         return internal_error_response("database query", &e);
     }
@@ -14410,17 +14797,25 @@ async fn show_slots(
     ) = match et {
         Some(e) => e,
         None => {
-            return Html(crate::i18n::translate(
-                lang,
-                "error-event-type-not-found",
-                None,
-            ))
+            return render_error_page(
+                &state,
+                &headers,
+                axum::http::StatusCode::NOT_FOUND,
+                "Event type not found",
+                "Event type not found.",
+            )
         }
     };
 
     // Block private event types on legacy route (use /u/ or /team/ routes with invite token instead)
     if visibility == "private" || visibility == "internal" {
-        return Html(crate::i18n::translate(lang, "error-invite-required", None));
+        return render_error_page(
+            &state,
+            &headers,
+            axum::http::StatusCode::FORBIDDEN,
+            "Invite link required",
+            "This event type requires an invite link.",
+        );
     }
 
     let host_info: Option<(String, String, Option<String>, Option<String>)> = sqlx::query_as(
@@ -14508,7 +14903,7 @@ async fn show_slots(
     let (meeting_jitsi_label, meeting_webhook_label) = meeting_provider_labels(&state).await;
     let tmpl = match state.templates.get_template("slots.html") {
         Ok(t) => t,
-        Err(e) => return internal_error_html("internal", &e),
+        Err(e) => return internal_error_response("internal", &e),
     };
     let rendered = tmpl
         .render(context! {
@@ -14542,7 +14937,7 @@ async fn show_slots(
         })
         .unwrap_or_else(|e| internal_error_body("template render", &e));
 
-    Html(rendered)
+    Html(rendered).into_response()
 }
 
 #[derive(Deserialize)]
@@ -14602,17 +14997,25 @@ async fn show_book_form(
     ) = match et {
         Some(e) => e,
         None => {
-            return Html(crate::i18n::translate(
-                lang,
-                "error-event-type-not-found",
-                None,
-            ))
+            return render_error_page(
+                &state,
+                &headers,
+                axum::http::StatusCode::NOT_FOUND,
+                "Event type not found",
+                "Event type not found.",
+            )
         }
     };
 
     // Block non-public event types on legacy route
     if visibility == "private" || visibility == "internal" {
-        return Html(crate::i18n::translate(lang, "error-invite-required", None));
+        return render_error_page(
+            &state,
+            &headers,
+            axum::http::StatusCode::FORBIDDEN,
+            "Invite link required",
+            "This event type requires an invite link.",
+        );
     }
 
     let host_name: String = sqlx::query_scalar(
@@ -14631,21 +15034,25 @@ async fn show_book_form(
     let date = match NaiveDate::parse_from_str(&query.date, "%Y-%m-%d") {
         Ok(d) => d,
         Err(_) => {
-            return Html(crate::i18n::translate(
-                lang,
-                "error-invalid-date-format",
-                None,
-            ))
+            return render_error_page(
+                &state,
+                &headers,
+                axum::http::StatusCode::BAD_REQUEST,
+                "Invalid date",
+                "Invalid date format.",
+            )
         }
     };
     let time = match NaiveTime::parse_from_str(&query.time, "%H:%M") {
         Ok(t) => t,
         Err(_) => {
-            return Html(crate::i18n::translate(
-                lang,
-                "error-invalid-time-format",
-                None,
-            ))
+            return render_error_page(
+                &state,
+                &headers,
+                axum::http::StatusCode::BAD_REQUEST,
+                "Invalid time",
+                "Invalid time format.",
+            )
         }
     };
     let end_time = (date.and_time(time) + Duration::minutes(duration as i64))
@@ -14657,7 +15064,7 @@ async fn show_book_form(
     let (meeting_jitsi_label, meeting_webhook_label) = meeting_provider_labels(&state).await;
     let tmpl = match state.templates.get_template("book.html") {
         Ok(t) => t,
-        Err(e) => return internal_error_html("internal", &e),
+        Err(e) => return internal_error_response("internal", &e),
     };
     let captcha = captcha::CaptchaVars::from_config(&*state.captcha_config.read().await);
     let rendered = tmpl
@@ -14692,7 +15099,7 @@ async fn show_book_form(
         })
         .unwrap_or_else(|e| internal_error_body("template render", &e));
 
-    Html(rendered)
+    Html(rendered).into_response()
 }
 
 fn validate_booking_input(
@@ -14950,11 +15357,13 @@ async fn handle_booking(
     let client_ip = client_ip_for_rate_limit(&headers);
     if state.booking_limiter.check_limited(&client_ip).await {
         tracing::warn!(ip = %client_ip, "rate limited");
-        return Html(crate::i18n::translate(
-            lang,
-            "error-too-many-bookings",
-            None,
-        ))
+        return render_error_page(
+            &state,
+            &headers,
+            axum::http::StatusCode::TOO_MANY_REQUESTS,
+            "Too many attempts",
+            "Too many booking attempts. Please try again in a few minutes.",
+        )
         .into_response();
     }
 
@@ -15001,11 +15410,13 @@ async fn handle_booking(
     ) = match et {
         Some(e) => e,
         None => {
-            return Html(crate::i18n::translate(
-                lang,
-                "error-event-type-not-found",
-                None,
-            ))
+            return render_error_page(
+                &state,
+                &headers,
+                axum::http::StatusCode::NOT_FOUND,
+                "Event type not found",
+                "Event type not found.",
+            )
             .into_response()
         }
     };
@@ -15031,7 +15442,14 @@ async fn handle_booking(
 
     // Block non-public event types on legacy route
     if visibility == "private" || visibility == "internal" {
-        return Html(crate::i18n::translate(lang, "error-invite-required", None)).into_response();
+        return render_error_page(
+            &state,
+            &headers,
+            axum::http::StatusCode::FORBIDDEN,
+            "Invite link required",
+            "This event type requires an invite link.",
+        )
+        .into_response();
     }
 
     // Parse additional guests
@@ -15065,7 +15483,14 @@ async fn handle_booking(
     let date = match NaiveDate::parse_from_str(&form.date, "%Y-%m-%d") {
         Ok(d) => d,
         Err(_) => {
-            return Html(crate::i18n::translate(lang, "error-invalid-date", None)).into_response()
+            return render_error_page(
+                &state,
+                &headers,
+                axum::http::StatusCode::BAD_REQUEST,
+                "Invalid date",
+                "Invalid date.",
+            )
+            .into_response()
         }
     };
     if let Err(e) = validate_date_not_too_far(date) {
@@ -15074,7 +15499,14 @@ async fn handle_booking(
     let start_time = match NaiveTime::parse_from_str(&form.time, "%H:%M") {
         Ok(t) => t,
         Err(_) => {
-            return Html(crate::i18n::translate(lang, "error-invalid-time", None)).into_response()
+            return render_error_page(
+                &state,
+                &headers,
+                axum::http::StatusCode::BAD_REQUEST,
+                "Invalid time",
+                "Invalid time.",
+            )
+            .into_response()
         }
     };
 
@@ -15093,21 +15525,13 @@ async fn handle_booking(
     // Validate minimum notice
     let now = Local::now().naive_local();
     if slot_start < now + Duration::minutes(min_notice as i64) {
-        return Html(crate::i18n::translate(lang, "error-slot-too-soon", None)).into_response();
-    }
-
-    // Rolling booking horizon. The slot list already hides anything past it,
-    // but that is advisory: a crafted POST has to be rejected here too.
-    let horizon_end = horizon_last_date(
-        Utc::now().with_timezone(&host_tz).naive_local(),
-        get_booking_horizon(&state.pool, &et_id).await,
-    );
-    if horizon_end.is_some_and(|last| slot_start.date() > last) {
-        return Html(crate::i18n::translate(
-            lang,
-            "error-slot-beyond-horizon",
-            None,
-        ))
+        return render_error_page(
+            &state,
+            &headers,
+            axum::http::StatusCode::CONFLICT,
+            "Slot no longer available",
+            "This slot is no longer available (too soon).",
+        )
         .into_response();
     }
 
@@ -15154,7 +15578,14 @@ async fn handle_booking(
     .await;
     if has_conflict(&busy, buf_start, buf_end) {
         let _ = tx.rollback().await;
-        return Html(crate::i18n::translate(lang, "error-slot-unavailable", None)).into_response();
+        return render_error_page(
+            &state,
+            &headers,
+            axum::http::StatusCode::CONFLICT,
+            "Slot no longer available",
+            "This slot is no longer available.",
+        )
+        .into_response();
     }
 
     // Check booking frequency limits. Personal event-type flows don't have a
@@ -15198,8 +15629,14 @@ async fn handle_booking(
     {
         crate::resources::ResourceCheck::Busy => {
             let _ = tx.rollback().await;
-            return Html(crate::i18n::translate(lang, "error-slot-unavailable", None))
-                .into_response();
+            return render_error_page(
+                &state,
+                &headers,
+                axum::http::StatusCode::CONFLICT,
+                "Slot no longer available",
+                "This slot is no longer available.",
+            )
+            .into_response();
         }
         crate::resources::ResourceCheck::Free { assigned } => assigned,
         crate::resources::ResourceCheck::NoResources => None,
@@ -15233,8 +15670,14 @@ async fn handle_booking(
         Err(e) => {
             let _ = tx.rollback().await;
             if e.to_string().contains("UNIQUE constraint failed") {
-                return Html(crate::i18n::translate(lang, "error-slot-unavailable", None))
-                    .into_response();
+                return render_error_page(
+                    &state,
+                    &headers,
+                    axum::http::StatusCode::CONFLICT,
+                    "Slot no longer available",
+                    "This slot is no longer available.",
+                )
+                .into_response();
             }
             return internal_error_response("database query", &e);
         }
@@ -15254,8 +15697,14 @@ async fn handle_booking(
 
     if let Err(e) = tx.commit().await {
         if e.to_string().contains("UNIQUE constraint failed") {
-            return Html(crate::i18n::translate(lang, "error-slot-unavailable", None))
-                .into_response();
+            return render_error_page(
+                &state,
+                &headers,
+                axum::http::StatusCode::CONFLICT,
+                "Slot no longer available",
+                "This slot is no longer available.",
+            )
+            .into_response();
         }
         return internal_error_response("database query", &e);
     }
@@ -15496,7 +15945,7 @@ async fn troubleshoot(
             != 0;
         let tmpl = match state.templates.get_template("troubleshoot.html") {
             Ok(t) => t,
-            Err(e) => return internal_error_html("template render", &e),
+            Err(e) => return internal_error_response("template render", &e),
         };
         let (impersonating, impersonating_name, _) = impersonation_ctx(&auth_user);
         return Html(
@@ -15510,7 +15959,8 @@ async fn troubleshoot(
                 impersonating_name => impersonating_name,
             })
             .unwrap_or_default(),
-        );
+        )
+        .into_response();
     }
 
     let selected_slug = params.event_type.as_deref().unwrap_or(&event_types[0].0);
@@ -15533,11 +15983,12 @@ async fn troubleshoot(
     let et_id = match et_id {
         Some((id,)) => id,
         None => {
-            return Html(crate::i18n::translate(
-                auth_user.lang,
-                "error-event-type-not-found",
-                None,
-            ))
+            return render_error_page_no_headers(
+                &state,
+                axum::http::StatusCode::NOT_FOUND,
+                "Event type not found",
+                "Event type not found",
+            )
         }
     };
 
@@ -16102,7 +16553,7 @@ async fn troubleshoot(
 
     let tmpl = match state.templates.get_template("troubleshoot.html") {
         Ok(t) => t,
-        Err(e) => return internal_error_html("template render", &e),
+        Err(e) => return internal_error_response("template render", &e),
     };
 
     let (impersonating, impersonating_name, _impersonating_admin) = impersonation_ctx(&auth_user);
@@ -16134,6 +16585,7 @@ async fn troubleshoot(
         })
         .unwrap_or_default(),
     )
+    .into_response()
 }
 
 // --- Admin dashboard ---
@@ -17356,7 +17808,7 @@ async fn google_connect(
     let client_id = match creds.and_then(|(id, _)| id).filter(|s| !s.is_empty()) {
         Some(id) => id,
         None => {
-            return Html("Google Calendar integration is not configured. Ask your administrator to set up Google OAuth2 credentials in the admin panel.".to_string()).into_response();
+            return render_error_page_no_headers(&state, axum::http::StatusCode::INTERNAL_SERVER_ERROR, "Google Calendar unavailable", "Google Calendar integration is not configured. Ask your administrator to set up Google OAuth2 credentials in the admin panel.").into_response();
         }
     };
 
@@ -17424,11 +17876,12 @@ async fn google_callback(
         .unwrap_or_default();
     let query_state = query.state.unwrap_or_default();
     if stored_state.is_empty() || stored_state != query_state {
-        return Html(crate::i18n::translate(
-            auth_user.lang,
-            "error-oauth-invalid-state",
-            None,
-        ))
+        return render_error_page_no_headers(
+            &state,
+            axum::http::StatusCode::BAD_REQUEST,
+            "Authorization failed",
+            "Invalid state parameter. Please try again.",
+        )
         .into_response();
     }
 
@@ -17455,11 +17908,12 @@ async fn google_callback(
     let code = match query.code {
         Some(c) => c,
         None => {
-            return Html(crate::i18n::translate(
-                auth_user.lang,
-                "error-oauth-no-code",
-                None,
-            ))
+            return render_error_page_no_headers(
+                &state,
+                axum::http::StatusCode::BAD_REQUEST,
+                "Authorization failed",
+                "No authorization code received.",
+            )
             .into_response()
         }
     };
@@ -17475,11 +17929,12 @@ async fn google_callback(
     let (client_id, client_secret_enc) = match creds {
         Some(c) => c,
         None => {
-            return Html(crate::i18n::translate(
-                auth_user.lang,
-                "error-oauth-not-configured",
-                None,
-            ))
+            return render_error_page_no_headers(
+                &state,
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                "Google Calendar unavailable",
+                "Google OAuth2 not configured.",
+            )
             .into_response()
         }
     };
@@ -17539,11 +17994,12 @@ async fn google_callback(
     let account_id = match account {
         Some((id,)) => id,
         None => {
-            return Html(crate::i18n::translate(
-                auth_user.lang,
-                "error-no-scheduling-account",
-                None,
-            ))
+            return render_error_page_no_headers(
+                &state,
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                "Something went wrong",
+                "No scheduling account found.",
+            )
             .into_response()
         }
     };
@@ -17552,11 +18008,12 @@ async fn google_callback(
     let access_token_enc = match crate::crypto::encrypt_password(&state.secret_key, &access_token) {
         Ok(enc) => enc,
         Err(_) => {
-            return Html(crate::i18n::translate(
-                auth_user.lang,
-                "form-error-encryption",
-                None,
-            ))
+            return render_error_page_no_headers(
+                &state,
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                "Something went wrong",
+                "Encryption error.",
+            )
             .into_response()
         }
     };
@@ -17564,11 +18021,12 @@ async fn google_callback(
     {
         Ok(enc) => enc,
         Err(_) => {
-            return Html(crate::i18n::translate(
-                auth_user.lang,
-                "form-error-encryption",
-                None,
-            ))
+            return render_error_page_no_headers(
+                &state,
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                "Something went wrong",
+                "Encryption error.",
+            )
             .into_response()
         }
     };
@@ -19996,11 +20454,13 @@ async fn guest_reschedule_slots(
     ) = match et_info {
         Some(e) => e,
         None => {
-            return Html(crate::i18n::translate(
-                lang,
-                "error-event-type-not-found",
-                None,
-            ))
+            return render_error_page(
+                &state,
+                &headers,
+                axum::http::StatusCode::NOT_FOUND,
+                "Event type not found",
+                "Event type not found.",
+            )
             .into_response()
         }
     };
@@ -20029,15 +20489,27 @@ async fn guest_reschedule_slots(
         let new_date = match NaiveDate::parse_from_str(date, "%Y-%m-%d") {
             Ok(d) => d,
             Err(_) => {
-                return Html(crate::i18n::translate(lang, "error-invalid-date", None))
-                    .into_response()
+                return render_error_page(
+                    &state,
+                    &headers,
+                    axum::http::StatusCode::BAD_REQUEST,
+                    "Invalid date",
+                    "Invalid date.",
+                )
+                .into_response()
             }
         };
         let new_time = match NaiveTime::parse_from_str(time, "%H:%M") {
             Ok(t) => t,
             Err(_) => {
-                return Html(crate::i18n::translate(lang, "error-invalid-time", None))
-                    .into_response()
+                return render_error_page(
+                    &state,
+                    &headers,
+                    axum::http::StatusCode::BAD_REQUEST,
+                    "Invalid time",
+                    "Invalid time.",
+                )
+                .into_response()
             }
         };
         let new_end = new_date.and_time(new_time) + Duration::minutes(duration as i64);
@@ -20230,11 +20702,13 @@ async fn guest_reschedule_booking(
     // Rate limit
     let client_ip = client_ip_for_rate_limit(&headers);
     if state.booking_limiter.check_limited(&client_ip).await {
-        return Html(crate::i18n::translate(
-            lang,
-            "error-too-many-requests",
-            None,
-        ))
+        return render_error_page(
+            &state,
+            &headers,
+            axum::http::StatusCode::TOO_MANY_REQUESTS,
+            "Too many attempts",
+            "Too many requests. Please try again later.",
+        )
         .into_response();
     }
 
@@ -20332,7 +20806,14 @@ async fn guest_reschedule_booking(
     let date = match NaiveDate::parse_from_str(&form.date, "%Y-%m-%d") {
         Ok(d) => d,
         Err(_) => {
-            return Html(crate::i18n::translate(lang, "error-invalid-date", None)).into_response()
+            return render_error_page(
+                &state,
+                &headers,
+                axum::http::StatusCode::BAD_REQUEST,
+                "Invalid date",
+                "Invalid date.",
+            )
+            .into_response()
         }
     };
     if let Err(e) = validate_date_not_too_far(date) {
@@ -20341,7 +20822,14 @@ async fn guest_reschedule_booking(
     let start_time = match NaiveTime::parse_from_str(&form.time, "%H:%M") {
         Ok(t) => t,
         Err(_) => {
-            return Html(crate::i18n::translate(lang, "error-invalid-time", None)).into_response()
+            return render_error_page(
+                &state,
+                &headers,
+                axum::http::StatusCode::BAD_REQUEST,
+                "Invalid time",
+                "Invalid time.",
+            )
+            .into_response()
         }
     };
 
@@ -20359,7 +20847,14 @@ async fn guest_reschedule_booking(
 
     let now = Local::now().naive_local();
     if slot_start < now + Duration::minutes(min_notice as i64) {
-        return Html(crate::i18n::translate(lang, "error-slot-too-soon", None)).into_response();
+        return render_error_page(
+            &state,
+            &headers,
+            axum::http::StatusCode::CONFLICT,
+            "Slot no longer available",
+            "This slot is no longer available (too soon).",
+        )
+        .into_response();
     }
 
     // Rolling booking horizon. The slot list already hides anything past it,
@@ -20394,8 +20889,15 @@ async fn guest_reschedule_booking(
         &uid,
     )
     .await;
-    if !busy_source_is_free(&busy, slot_start, slot_end) {
-        return Html(crate::i18n::translate(lang, "error-slot-unavailable", None)).into_response();
+    if has_conflict(&busy, slot_start, slot_end) {
+        return render_error_page(
+            &state,
+            &headers,
+            axum::http::StatusCode::CONFLICT,
+            "Slot no longer available",
+            "This slot is no longer available.",
+        )
+        .into_response();
     }
 
     // Re-check required resources for the new slot (excluding this booking's
@@ -20425,8 +20927,14 @@ async fn guest_reschedule_booking(
     .await
     {
         crate::resources::ResourceCheck::Busy => {
-            return Html(crate::i18n::translate(lang, "error-slot-unavailable", None))
-                .into_response();
+            return render_error_page(
+                &state,
+                &headers,
+                axum::http::StatusCode::CONFLICT,
+                "Slot no longer available",
+                "This slot is no longer available.",
+            )
+            .into_response();
         }
         crate::resources::ResourceCheck::Free { assigned } => assigned,
         crate::resources::ResourceCheck::NoResources => None,
@@ -20500,8 +21008,14 @@ async fn guest_reschedule_booking(
         // idx_bookings_no_overlap can reject the new time; do not proceed to
         // emails and pushes advertising a time the DB refused.
         if e.to_string().contains("UNIQUE constraint failed") {
-            return Html(crate::i18n::translate(lang, "error-slot-unavailable", None))
-                .into_response();
+            return render_error_page(
+                &state,
+                &headers,
+                axum::http::StatusCode::CONFLICT,
+                "Slot no longer available",
+                "This slot is no longer available.",
+            )
+            .into_response();
         }
         return internal_error_response("database query", &e);
     }
@@ -22588,9 +23102,22 @@ fn render_booking_action_error_keys(
     )
 }
 
-fn render_booking_action_error(
+/// Render the styled standalone error page (`booking_action_error.html`) with
+/// an explicit HTTP status.
+///
+/// Guest- and dashboard-facing failures used to return a bare `Html("...")`
+/// body with HTTP 200: unstyled serif text in the browser's default font, and
+/// a success status on a failure. Every such site now funnels through here so
+/// the visitor gets the Cascade error card and crawlers, monitors and fetch()
+/// callers get a truthful status.
+///
+/// `message` is shown to the visitor verbatim, so it must never carry internal
+/// detail (paths, driver errors, credentials). Log the specifics with
+/// `tracing` and pass a generic sentence here.
+pub(crate) fn render_error_page(
     state: &AppState,
     headers: &HeaderMap,
+    status: axum::http::StatusCode,
     title: &str,
     message: &str,
 ) -> axum::response::Response {
@@ -22610,14 +23137,39 @@ fn render_booking_action_error_html(
         Ok(t) => t,
         Err(e) => return internal_error_html("internal", &e),
     };
-    Html(
-        tmpl.render(context! {
+    let body = tmpl
+        .render(context! {
             title => title,
             message => message,
             lang => lang,
         })
-        .unwrap_or_else(|e| internal_error_body("template render", &e)),
-    )
+        .unwrap_or_else(|e| internal_error_body("template render", &e));
+    (status, Html(body)).into_response()
+}
+
+/// `render_error_page` for handlers that have no `HeaderMap` in scope (the
+/// authenticated dashboard surface, which is English-only for now). Language
+/// detection falls back to the default locale.
+pub(crate) fn render_error_page_no_headers(
+    state: &AppState,
+    status: axum::http::StatusCode,
+    title: &str,
+    message: &str,
+) -> axum::response::Response {
+    render_error_page(state, &HeaderMap::new(), status, title, message)
+}
+
+/// Terminal outcome of a token-driven booking action (already cancelled, link
+/// expired, invalid token). These are rendered as HTTP 200 because they are
+/// the endpoint of a flow the guest followed to completion, not a failed
+/// lookup; see `render_error_page` for the status-carrying variant.
+fn render_booking_action_error(
+    state: &AppState,
+    headers: &HeaderMap,
+    title: &str,
+    message: &str,
+) -> axum::response::Response {
+    render_error_page(state, headers, axum::http::StatusCode::OK, title, message)
 }
 
 #[cfg(test)]
