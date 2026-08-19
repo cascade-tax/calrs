@@ -740,7 +740,10 @@ async fn upsert_provider_events(
             .bind(&description)
             .bind(&status)
             .bind(&rrule)
-            .bind(&raw.ical)
+            // Persist only this VEVENT. A provider may return an entire
+            // VCALENDAR containing many events (published ICS feeds do), so
+            // storing the outer blob here would duplicate it once per row.
+            .bind(vevent)
             .bind(&recurrence_id)
             .bind(&timezone)
             .bind(&transp)
@@ -1878,6 +1881,18 @@ mod tests {
                 ),
             ]
         );
+        let raw_icals: Vec<String> =
+            sqlx::query_scalar("SELECT raw_ical FROM events ORDER BY uid")
+                .fetch_all(&pool)
+                .await
+                .unwrap();
+        assert_eq!(raw_icals.len(), 2);
+        assert!(raw_icals[0].starts_with("BEGIN:VEVENT"));
+        assert!(raw_icals[0].contains("UID:busy-one"));
+        assert!(!raw_icals[0].contains("UID:free-one"));
+        assert!(raw_icals[1].starts_with("BEGIN:VEVENT"));
+        assert!(raw_icals[1].contains("UID:free-one"));
+        assert!(!raw_icals[1].contains("UID:busy-one"));
         let last_synced: Option<String> =
             sqlx::query_scalar("SELECT last_synced FROM caldav_sources WHERE id = ?")
                 .bind(&source_id)
