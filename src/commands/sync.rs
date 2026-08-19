@@ -1881,11 +1881,10 @@ mod tests {
                 ),
             ]
         );
-        let raw_icals: Vec<String> =
-            sqlx::query_scalar("SELECT raw_ical FROM events ORDER BY uid")
-                .fetch_all(&pool)
-                .await
-                .unwrap();
+        let raw_icals: Vec<String> = sqlx::query_scalar("SELECT raw_ical FROM events ORDER BY uid")
+            .fetch_all(&pool)
+            .await
+            .unwrap();
         assert_eq!(raw_icals.len(), 2);
         assert!(raw_icals[0].starts_with("BEGIN:VEVENT"));
         assert!(raw_icals[0].contains("UID:busy-one"));
