@@ -195,21 +195,147 @@ fn h(s: &str) -> String {
         .replace('"', "&quot;")
 }
 
+// --- Cascade email palette ---
+//
+// Email is the only Cascade surface that renders inside someone else's client,
+// so it cannot use CSS custom properties or webfonts. These constants are the
+// hard-coded equivalent of the product tokens. Light only: dark-mode handling
+// in mail clients is unreliable, so the shell is designed for light and
+// degrades gracefully when a client force-inverts it.
+const OCEAN: &str = "#1A3A4A";
+const OCEAN_DEEP: &str = "#0E2530";
+const OCEAN_LIGHT: &str = "#E8F0F3";
+/// 2x2 emblem: solid stand-in for Deep Ocean at 55% over the page background.
+/// Real `opacity` is unreliable in Outlook, so the steps are pre-blended.
+const OCEAN_STEP: &str = "#7D8D95";
+const CORAL: &str = "#E07A5F";
+const PAGE_BG: &str = "#F5F3F0";
+const CARD_BG: &str = "#FFFFFF";
+const BORDER: &str = "#E8E6E3";
+const BORDER_OCEAN: &str = "#C9D6DB";
+const TEXT: &str = "#22201D";
+const TEXT_2ND: &str = "#5F5D5A";
+const TEXT_MUTED: &str = "#757370";
+const FOOTER_TEXT: &str = "#9FB4BD";
+const SUCCESS: &str = "#2D6A4F";
+const WARNING: &str = "#7A5C18";
+const ERROR: &str = "#B03A2B";
+
+const FONT_BODY: &str = "'Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif";
+const FONT_DISPLAY: &str = "'Bricolage Grotesque','Plus Jakarta Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif";
+const FONT_MONO: &str = "'DM Mono',ui-monospace,SFMono-Regular,Menlo,Consolas,monospace";
+
 struct EmailRow {
     label: String,
     value: String,
 }
 
+/// Semantic accent role. Cascade emails share one shell; the role only tints
+/// the 3px rule at the top of the card and the small status mark beside the
+/// greeting. It is never a full-width coloured band, and it never varies by
+/// email type for decoration's sake.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum Accent {
+    /// Default. Informational: invitations, reminders, test sends, claims.
+    Ocean,
+    /// A booking now exists and is confirmed.
+    Success,
+    /// Awaiting a decision, or about to happen.
+    Warning,
+    /// Cancelled, declined, or otherwise undone.
+    Error,
+}
+
+impl Accent {
+    /// Colour of the top rule and the status mark.
+    fn color(self) -> &'static str {
+        match self {
+            Accent::Ocean => OCEAN,
+            Accent::Success => SUCCESS,
+            Accent::Warning => WARNING,
+            Accent::Error => ERROR,
+        }
+    }
+}
+
+/// How an action button renders. `Primary` is a Deep Ocean fill; `Ghost` is a
+/// bordered outline for the secondary half of a pair (decline, cancel).
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ActionStyle {
+    Primary,
+    Ghost,
+}
+
 struct EmailAction {
     label: String,
     url: String,
-    color: String,
+    style: ActionStyle,
+}
+
+/// The Cascade lockup: the 2x2 emblem plus the wordmark, left-aligned above
+/// the card.
+///
+/// The emblem is built from table cells with background colours rather than an
+/// inline SVG or a hosted `<img>`. Inline SVG is dropped by Outlook and by
+/// several webmail sanitisers, and a hosted PNG needs a configured public base
+/// URL plus the recipient choosing to load remote images — neither is
+/// guaranteed. Table cells always paint. Outlook's Word engine ignores
+/// `border-radius`, so the emblem degrades to four hard squares, which still
+/// reads as the mark.
+fn brand_lockup() -> String {
+    let cell = |color: &str| {
+        format!(
+            "<td width=\"13\" height=\"13\" style=\"width:13px;height:13px;line-height:13px;font-size:0;background:{color};border-radius:4px;\">&nbsp;</td>"
+        )
+    };
+    let gap = "<td width=\"2\" style=\"width:2px;font-size:0;line-height:0;\">&nbsp;</td>";
+    format!(
+        "<table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" style=\"border-collapse:collapse;\">\
+           <tr>\
+             <td width=\"28\" style=\"width:28px;padding:0 10px 0 0;vertical-align:middle;\">\
+               <table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" width=\"28\" style=\"width:28px;border-collapse:collapse;\">\
+                 <tr>{tl}{gap}{tr}</tr>\
+                 <tr><td colspan=\"3\" height=\"2\" style=\"height:2px;font-size:0;line-height:0;\">&nbsp;</td></tr>\
+                 <tr>{bl}{gap}{br}</tr>\
+               </table>\
+             </td>\
+             <td style=\"vertical-align:middle;font-family:{FONT_DISPLAY};font-size:18px;font-weight:700;letter-spacing:-0.02em;color:{OCEAN};\">Cascade</td>\
+           </tr>\
+         </table>",
+        tl = cell(OCEAN),
+        tr = cell(OCEAN_STEP),
+        bl = cell(OCEAN_STEP),
+        br = cell(CORAL),
+    )
+}
+
+/// A bulletproof button: a one-cell table with a `bgcolor` and a padded `<a>`,
+/// so it paints in Outlook as well as in webmail.
+fn action_button(action: &EmailAction) -> String {
+    let (bg, fg, border, pad) = match action.style {
+        ActionStyle::Primary => (OCEAN, "#FFFFFF", "none", "12px 22px"),
+        ActionStyle::Ghost => (CARD_BG, OCEAN, BORDER_OCEAN, "11px 21px"),
+    };
+    let border_style = if border == "none" {
+        String::new()
+    } else {
+        format!("border:1px solid {border};")
+    };
+    format!(
+        "<table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" style=\"border-collapse:separate;\">\
+           <tr><td bgcolor=\"{bg}\" style=\"background:{bg};{border_style}border-radius:8px;\">\
+             <a href=\"{url}\" class=\"cx-btn\" style=\"display:inline-block;padding:{pad};font-family:{FONT_BODY};font-size:13px;font-weight:600;line-height:1;color:{fg};text-decoration:none;border-radius:8px;\">{label}</a>\
+           </td></tr>\
+         </table>",
+        url = h(&action.url),
+        label = h(&action.label),
+    )
 }
 
 fn render_html_email(
     greeting: &str,
     message: &str,
-    accent: &str,
+    accent: Accent,
     rows: &[EmailRow],
     footer_note: Option<&str>,
 ) -> String {
@@ -219,72 +345,122 @@ fn render_html_email(
 fn render_html_email_with_actions(
     greeting: &str,
     message: &str,
-    accent: &str,
+    accent: Accent,
     rows: &[EmailRow],
     footer_note: Option<&str>,
     actions: &[EmailAction],
 ) -> String {
-    let mut detail_rows = String::new();
-    for (i, row) in rows.iter().enumerate() {
-        let bg = if i % 2 == 0 { "#f8f9fa" } else { "#ffffff" };
-        detail_rows.push_str(&format!(
-            "<tr>\
-               <td style=\"padding:8px 12px;color:#6b7280;font-size:13px;white-space:nowrap;vertical-align:top;\">{}</td>\
-               <td style=\"padding:8px 12px;color:#111827;font-size:14px;background:{bg};\">{}</td>\
-             </tr>",
-            row.label, h(&row.value),
-        ));
-    }
+    let accent_color = accent.color();
+
+    let details_html = if rows.is_empty() {
+        String::new()
+    } else {
+        let last = rows.len() - 1;
+        let mut detail_rows = String::new();
+        for (i, row) in rows.iter().enumerate() {
+            let rule = if i == last {
+                String::new()
+            } else {
+                format!("border-bottom:1px solid {BORDER};")
+            };
+            detail_rows.push_str(&format!(
+                "<tr>\
+                   <td class=\"cx-label\" width=\"34%\" style=\"width:34%;padding:11px 14px;{rule}background:{OCEAN_LIGHT};font-family:{FONT_MONO};font-size:10px;letter-spacing:0.07em;text-transform:uppercase;color:{TEXT_MUTED};vertical-align:top;\">{label}</td>\
+                   <td class=\"cx-value\" style=\"padding:11px 14px;{rule}font-family:{FONT_BODY};font-size:14px;line-height:1.5;color:{TEXT};vertical-align:top;\">{value}</td>\
+                 </tr>",
+                label = row.label,
+                value = h(&row.value),
+            ));
+        }
+        format!(
+            "<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" style=\"width:100%;margin:22px 0 0;border:1px solid {BORDER};border-radius:8px;border-collapse:separate;overflow:hidden;\">\
+               {detail_rows}\
+             </table>"
+        )
+    };
 
     let actions_html = if actions.is_empty() {
         String::new()
     } else {
-        let buttons: Vec<String> = actions.iter().map(|a| {
-            format!(
-                "<a href=\"{}\" style=\"display:inline-block;padding:12px 28px;background:{};color:#ffffff;text-decoration:none;border-radius:6px;font-weight:600;font-size:14px;margin:0 6px;\">{}</a>",
-                h(&a.url), a.color, h(&a.label)
-            )
-        }).collect();
+        let cells: Vec<String> = actions
+            .iter()
+            .map(|a| {
+                format!(
+                    "<td class=\"cx-btn-cell\" style=\"padding:0 10px 0 0;\">{}</td>",
+                    action_button(a)
+                )
+            })
+            .collect();
         format!(
-            "<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"margin:20px 0 0;\"><tr><td align=\"center\">{}</td></tr></table>",
-            buttons.join(" ")
+            "<table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" style=\"margin:24px 0 0;border-collapse:collapse;\"><tr>{}</tr></table>",
+            cells.join("")
         )
     };
 
     let footer_html = footer_note
         .map(|n| {
             format!(
-                "<p style=\"margin:16px 0 0;font-size:13px;color:#6b7280;\">{}</p>",
+                "<p style=\"margin:20px 0 0;font-family:{FONT_BODY};font-size:13px;line-height:1.55;color:{TEXT_2ND};\">{}</p>",
                 h(n)
             )
         })
         .unwrap_or_default();
 
+    let lockup = brand_lockup();
+
     format!(
         r##"<!DOCTYPE html>
 <html lang="en">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
-<body style="margin:0;padding:0;background:#f4f4f7;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f7;">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<meta name="color-scheme" content="light">
+<meta name="supported-color-schemes" content="light">
+<style>
+  @media only screen and (max-width:620px) {{
+    .cx-pad {{ padding: 24px 20px 26px !important; }}
+    .cx-foot {{ padding: 20px !important; }}
+    .cx-btn-cell {{ display:block !important; width:100% !important; padding:0 0 10px 0 !important; }}
+    .cx-btn-cell table {{ width:100% !important; }}
+    .cx-btn {{ display:block !important; text-align:center !important; }}
+  }}
+</style>
+</head>
+<body style="margin:0;padding:0;background:{PAGE_BG};font-family:{FONT_BODY};color:{TEXT};-webkit-font-smoothing:antialiased;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:{PAGE_BG};width:100%;">
 <tr><td align="center" style="padding:32px 16px;">
-  <table role="presentation" width="520" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:8px;border:1px solid #e5e7eb;max-width:520px;width:100%;">
-    <!-- Accent bar -->
-    <tr><td style="height:4px;background:{accent};border-radius:8px 8px 0 0;"></td></tr>
-    <!-- Content -->
-    <tr><td style="padding:32px 28px;">
-      <p style="margin:0 0 4px;font-size:15px;color:#374151;">{greeting}</p>
-      <p style="margin:0 0 20px;font-size:15px;color:#111827;font-weight:500;">{message}</p>
-      <!-- Details table -->
-      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e5e7eb;border-radius:6px;overflow:hidden;">
-        {detail_rows}
+  <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:600px;max-width:100%;">
+    <!-- Header lockup -->
+    <tr><td align="left" style="padding:0 4px 16px;">{lockup}</td></tr>
+    <!-- Card -->
+    <tr><td>
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;background:{CARD_BG};border:1px solid {BORDER};border-radius:12px;border-collapse:separate;">
+        <!-- Accent rule -->
+        <tr><td height="3" style="height:3px;line-height:3px;font-size:0;background:{accent_color};border-radius:12px 12px 0 0;">&nbsp;</td></tr>
+        <!-- Content -->
+        <tr><td class="cx-pad" style="padding:28px 32px 32px;">
+          <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">
+            <tr>
+              <td width="8" style="width:8px;padding:0 9px 0 0;vertical-align:middle;">
+                <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="8" style="width:8px;border-collapse:collapse;">
+                  <tr><td height="8" style="width:8px;height:8px;line-height:8px;font-size:0;background:{accent_color};border-radius:8px;">&nbsp;</td></tr>
+                </table>
+              </td>
+              <td style="vertical-align:middle;font-family:{FONT_BODY};font-size:13px;line-height:1.4;color:{TEXT_2ND};">{greeting}</td>
+            </tr>
+          </table>
+          <p style="margin:12px 0 0;font-family:{FONT_DISPLAY};font-size:20px;line-height:1.35;font-weight:700;letter-spacing:-0.01em;color:{TEXT};">{message}</p>
+          {details_html}
+          {actions_html}
+          {footer_html}
+        </td></tr>
+        <!-- Footer band -->
+        <tr><td class="cx-foot" style="padding:20px 32px;background:{OCEAN_DEEP};border-radius:0 0 12px 12px;">
+          <p style="margin:0;font-family:{FONT_DISPLAY};font-size:14px;font-weight:700;letter-spacing:-0.01em;color:#FFFFFF;">Cascade</p>
+          <p style="margin:6px 0 0;font-family:{FONT_BODY};font-size:12px;line-height:1.55;color:{FOOTER_TEXT};">Automated scheduling notification. Manage your bookings from your Cascade dashboard.</p>
+          <p style="margin:6px 0 0;font-family:{FONT_MONO};font-size:11px;letter-spacing:0.04em;"><a href="https://cascade.tax" style="color:{OCEAN_LIGHT};text-decoration:none;">cascade.tax</a></p>
+        </td></tr>
       </table>
-      {actions_html}
-      {footer_html}
-    </td></tr>
-    <!-- Footer -->
-    <tr><td style="padding:16px 28px;border-top:1px solid #f0f0f3;text-align:center;">
-      <span style="font-size:12px;color:#9ca3af;">Sent by </span>
-      <a href="https://cascade.tax" style="font-size:12px;color:#6b7280;font-weight:600;text-decoration:none;">Cascade</a>
     </td></tr>
   </table>
 </td></tr>
@@ -810,14 +986,14 @@ pub async fn send_guest_confirmation_ex(
         actions.push(EmailAction {
             label: t(lang, "email-action-reschedule"),
             url: u.to_string(),
-            color: "#1A3A4A".to_string(),
+            style: ActionStyle::Primary,
         });
     }
     if let Some(u) = cancel_url {
         actions.push(EmailAction {
             label: t(lang, "email-action-cancel-booking"),
             url: u.to_string(),
-            color: "#dc2626".to_string(),
+            style: ActionStyle::Ghost,
         });
     }
 
@@ -835,7 +1011,7 @@ pub async fn send_guest_confirmation_ex(
     let html = render_html_email_with_actions(
         &h(&greeting),
         &headline,
-        "#16a34a",
+        Accent::Success,
         &rows,
         Some(&footer_note_html),
         &actions,
@@ -894,7 +1070,7 @@ pub async fn send_guest_confirmation_ex(
         let html2 = render_html_email(
             "Hi,",
             "You've been added as an attendee to a booking.",
-            "#16a34a",
+            Accent::Success,
             &[
                 EmailRow {
                     label: "Event".to_string(),
@@ -1029,7 +1205,7 @@ pub async fn send_host_notification(config: &SmtpConfig, details: &BookingDetail
     let html = render_html_email(
         "New booking!",
         &format!("{} booked a slot with you.", h(&details.guest_name)),
-        "#16a34a",
+        Accent::Success,
         &rows,
         Some("A calendar invite is attached to this email."),
     );
@@ -1128,7 +1304,7 @@ pub async fn send_host_booking_confirmed(
     let html = render_html_email(
         "Booking confirmed",
         &format!("You approved the booking with {}.", h(&details.guest_name)),
-        "#16a34a",
+        Accent::Success,
         &rows,
         Some("The event has been added to your calendar."),
     );
@@ -1238,13 +1414,19 @@ pub async fn send_guest_reminder(
             vec![EmailAction {
                 label: t(lang, "email-action-cancel-booking"),
                 url: u.to_string(),
-                color: "#dc2626".to_string(),
+                style: ActionStyle::Ghost,
             }]
         })
         .unwrap_or_default();
 
-    let html =
-        render_html_email_with_actions(&h(&greeting), &headline, "#1A3A4A", &rows, None, &actions);
+    let html = render_html_email_with_actions(
+        &h(&greeting),
+        &headline,
+        Accent::Warning,
+        &rows,
+        None,
+        &actions,
+    );
 
     let body = build_multipart_body(&plain, &html);
 
@@ -1329,7 +1511,7 @@ pub async fn send_host_reminder(config: &SmtpConfig, details: &BookingDetails) -
             "Reminder: you have a booking with {} coming up.",
             h(&details.guest_name)
         ),
-        "#1A3A4A",
+        Accent::Warning,
         &rows,
         None,
     );
@@ -1446,7 +1628,7 @@ pub async fn send_guest_cancellation(
     let html = render_html_email(
         &h(&greeting),
         &headline,
-        "#dc2626",
+        Accent::Error,
         &rows,
         Some(&ics_attached_html),
     );
@@ -1547,7 +1729,7 @@ pub async fn send_host_cancellation(
         } else {
             format!("{} cancelled their booking.", h(&details.guest_name))
         },
-        "#dc2626",
+        Accent::Error,
         &rows,
         Some("A calendar cancellation is attached to this email."),
     );
@@ -1655,14 +1837,14 @@ pub async fn send_guest_pending_notice_ex(
         actions.push(EmailAction {
             label: "Reschedule".to_string(),
             url: u.to_string(),
-            color: "#1A3A4A".to_string(),
+            style: ActionStyle::Primary,
         });
     }
     if let Some(u) = cancel_url {
         actions.push(EmailAction {
             label: "Cancel booking".to_string(),
             url: u.to_string(),
-            color: "#dc2626".to_string(),
+            style: ActionStyle::Ghost,
         });
     }
 
@@ -1672,7 +1854,7 @@ pub async fn send_guest_pending_notice_ex(
             "Your booking request is awaiting confirmation from {}.",
             h(&details.host_name)
         ),
-        "#f59e0b",
+        Accent::Warning,
         &rows,
         Some("You\u{2019}ll receive another email once it\u{2019}s confirmed."),
         &actions,
@@ -1800,12 +1982,12 @@ pub async fn send_host_approval_request(
             EmailAction {
                 label: "Approve".to_string(),
                 url: a,
-                color: "#16a34a".to_string(),
+                style: ActionStyle::Primary,
             },
             EmailAction {
                 label: "Decline".to_string(),
                 url: d,
-                color: "#dc2626".to_string(),
+                style: ActionStyle::Ghost,
             },
         ],
         _ => vec![],
@@ -1814,7 +1996,7 @@ pub async fn send_host_approval_request(
     let html = render_html_email_with_actions(
         "Action required",
         &format!("{} wants to book a slot with you.", h(&details.guest_name)),
-        "#f59e0b",
+        Accent::Warning,
         &rows,
         Some("You can also manage this from your dashboard."),
         &actions,
@@ -1897,7 +2079,7 @@ pub async fn send_guest_decline_notice(
     let html = render_html_email(
         &format!("Hi {},", h(&details.guest_name)),
         "Your booking request has been declined.",
-        "#dc2626",
+        Accent::Error,
         &rows,
         None,
     );
@@ -2161,7 +2343,7 @@ pub async fn send_test_email(config: &SmtpConfig, to_email: &str) -> Result<()> 
     let html = render_html_email(
         "SMTP test",
         "This is a test email from Cascade Calendar. SMTP is working!",
-        "#1A3A4A",
+        Accent::Ocean,
         &[],
         None,
     );
@@ -2238,7 +2420,7 @@ pub async fn send_invite_email(
     let actions = vec![EmailAction {
         label: "Choose a time".to_string(),
         url: invite_url.to_string(),
-        color: "#1A3A4A".to_string(),
+        style: ActionStyle::Primary,
     }];
 
     let html = render_html_email_with_actions(
@@ -2248,7 +2430,7 @@ pub async fn send_invite_email(
             h(host_name),
             h(event_title)
         ),
-        "#1A3A4A",
+        Accent::Ocean,
         &rows,
         None,
         &actions,
@@ -2405,13 +2587,13 @@ pub async fn send_guest_pick_new_time(
     let mut actions = vec![EmailAction {
         label: "Pick a new time".to_string(),
         url: reschedule_url.to_string(),
-        color: "#1A3A4A".to_string(),
+        style: ActionStyle::Primary,
     }];
     if let Some(u) = cancel_url {
         actions.push(EmailAction {
             label: "Cancel booking".to_string(),
             url: u.to_string(),
-            color: "#dc2626".to_string(),
+            style: ActionStyle::Ghost,
         });
     }
 
@@ -2421,7 +2603,7 @@ pub async fn send_guest_pick_new_time(
             "{} needs to reschedule your booking. Please pick a new time.",
             h(&details.host_name)
         ),
-        "#d97706",
+        Accent::Warning,
         &rows,
         None,
         &actions,
@@ -2539,14 +2721,14 @@ pub async fn send_guest_reschedule_notification(
         actions.push(EmailAction {
             label: "Reschedule".to_string(),
             url: u.to_string(),
-            color: "#1A3A4A".to_string(),
+            style: ActionStyle::Primary,
         });
     }
     if let Some(u) = cancel_url {
         actions.push(EmailAction {
             label: "Cancel booking".to_string(),
             url: u.to_string(),
-            color: "#dc2626".to_string(),
+            style: ActionStyle::Ghost,
         });
     }
 
@@ -2556,7 +2738,7 @@ pub async fn send_guest_reschedule_notification(
             "Your booking has been rescheduled by {}.",
             h(&details.host_name)
         ),
-        "#d97706",
+        Accent::Success,
         &rows,
         Some("An updated calendar invite is attached to this email."),
         &actions,
@@ -2680,14 +2862,14 @@ pub async fn send_host_reschedule_request(
         actions.push(EmailAction {
             label: "Approve".to_string(),
             url: u.clone(),
-            color: "#16a34a".to_string(),
+            style: ActionStyle::Primary,
         });
     }
     if let Some(u) = &decline_url {
         actions.push(EmailAction {
             label: "Decline".to_string(),
             url: u.clone(),
-            color: "#dc2626".to_string(),
+            style: ActionStyle::Ghost,
         });
     }
 
@@ -2697,7 +2879,7 @@ pub async fn send_host_reschedule_request(
             "{} wants to reschedule their booking.",
             h(&details.guest_name)
         ),
-        "#d97706",
+        Accent::Warning,
         &rows,
         None,
         &actions,
@@ -2791,13 +2973,13 @@ pub async fn send_watcher_claim_notification(
     let actions = vec![EmailAction {
         label: "Claim this booking".to_string(),
         url: claim_url.to_string(),
-        color: "#1A3A4A".to_string(),
+        style: ActionStyle::Primary,
     }];
 
     let html = render_html_email_with_actions(
         &format!("Hi {},", h(watcher_name)),
         "A new booking is available to claim. Click below to join as an attendee.",
-        "#1A3A4A",
+        Accent::Ocean,
         &rows,
         Some("You can also claim from your dashboard."),
         &actions,
@@ -2880,7 +3062,7 @@ pub async fn send_claim_confirmation(
     let html = render_html_email(
         &format!("Hi {},", h(claimant_name)),
         "You have successfully claimed this booking. A calendar invite is attached.",
-        "#16a34a",
+        Accent::Success,
         &rows,
         Some("You will be added as an attendee on this meeting."),
     );
@@ -3637,7 +3819,7 @@ mod tests {
         let html = render_html_email(
             "Hi Alice,",
             "Your booking is confirmed!",
-            "#16a34a",
+            Accent::Success,
             &[
                 EmailRow {
                     label: "Event".to_string(),
@@ -3654,7 +3836,7 @@ mod tests {
         assert!(html.contains("<!DOCTYPE html>"));
         assert!(html.contains("Hi Alice,"));
         assert!(html.contains("Your booking is confirmed!"));
-        assert!(html.contains("#16a34a")); // accent color
+        assert!(html.contains(SUCCESS)); // accent colour
         assert!(html.contains("Intro Call"));
         assert!(html.contains("2026-03-10"));
         assert!(html.contains("Calendar invite attached."));
@@ -3667,19 +3849,19 @@ mod tests {
         let html = render_html_email_with_actions(
             "Action required",
             "Someone wants to book.",
-            "#f59e0b",
+            Accent::Warning,
             &[],
             None,
             &[
                 EmailAction {
                     label: "Approve".to_string(),
                     url: "https://cal.rs/approve/tok".to_string(),
-                    color: "#16a34a".to_string(),
+                    style: ActionStyle::Primary,
                 },
                 EmailAction {
                     label: "Decline".to_string(),
                     url: "https://cal.rs/decline/tok".to_string(),
-                    color: "#dc2626".to_string(),
+                    style: ActionStyle::Ghost,
                 },
             ],
         );
@@ -3774,7 +3956,7 @@ mod tests {
             } else {
                 format!("{} cancelled their booking.", h(&details.guest_name))
             },
-            "#dc2626",
+            Accent::Error,
             &[],
             None,
         );
@@ -3836,7 +4018,7 @@ mod tests {
         let html = render_html_email_with_actions(
             "Hi Bob,",
             "Your booking has been confirmed!",
-            "#16a34a",
+            Accent::Success,
             &[EmailRow {
                 label: "Event".to_string(),
                 value: "Intro Call".to_string(),
@@ -3845,13 +4027,14 @@ mod tests {
             &[EmailAction {
                 label: "Cancel booking".to_string(),
                 url: "https://cal.rs/booking/cancel/abc-123".to_string(),
-                color: "#dc2626".to_string(),
+                style: ActionStyle::Ghost,
             }],
         );
 
         assert!(html.contains("Cancel booking"));
         assert!(html.contains("https://cal.rs/booking/cancel/abc-123"));
-        assert!(html.contains("#dc2626"));
+        // The cancel action renders as a ghost (secondary) button.
+        assert!(html.contains(BORDER_OCEAN));
     }
 
     #[test]
@@ -3859,7 +4042,7 @@ mod tests {
         let html = render_html_email(
             "Hi,",
             "Test",
-            "#000",
+            Accent::Ocean,
             &[EmailRow {
                 label: "Notes".to_string(),
                 value: "<script>alert(1)</script>".to_string(),
@@ -4131,20 +4314,20 @@ mod tests {
 
     #[test]
     fn html_email_no_rows_no_footer() {
-        let html = render_html_email("Hello,", "Nothing to show.", "#333", &[], None);
+        let html = render_html_email("Hello,", "Nothing to show.", Accent::Ocean, &[], None);
         assert!(html.contains("Hello,"));
         assert!(html.contains("Nothing to show."));
-        assert!(html.contains("#333"));
-        // No detail rows
-        assert!(!html.contains("<td style=\"padding:8px"));
+        assert!(html.contains(OCEAN));
+        // No detail rows: the label/value table is never emitted.
+        assert!(!html.contains("cx-label"));
     }
 
     #[test]
-    fn html_email_multiple_rows_alternate_bg() {
+    fn html_email_multiple_rows_use_label_tint() {
         let html = render_html_email(
             "Hi,",
             "Details below.",
-            "#000",
+            Accent::Ocean,
             &[
                 EmailRow {
                     label: "Row1".to_string(),
@@ -4161,11 +4344,12 @@ mod tests {
             ],
             None,
         );
-        // Even rows (0, 2) get #f8f9fa background, odd rows (1) get #ffffff
+        // Rows are no longer striped: every label cell carries the Ocean Light
+        // tint and the value cell stays on the card background.
         assert!(html.contains("val1"));
         assert!(html.contains("val2"));
         assert!(html.contains("val3"));
-        assert!(html.contains("#f8f9fa"));
+        assert!(html.contains(OCEAN_LIGHT));
     }
 
     #[test]
@@ -4173,13 +4357,13 @@ mod tests {
         let html = render_html_email_with_actions(
             "Hi,",
             "Test",
-            "#000",
+            Accent::Ocean,
             &[],
             None,
             &[EmailAction {
                 label: "Click <here>".to_string(),
                 url: "https://cal.rs/action?a=1&b=2".to_string(),
-                color: "#16a34a".to_string(),
+                style: ActionStyle::Primary,
             }],
         );
         // Label should be HTML-escaped
@@ -4644,14 +4828,14 @@ mod tests {
             actions.push(EmailAction {
                 label: "Reschedule".to_string(),
                 url: u.to_string(),
-                color: "#1A3A4A".to_string(),
+                style: ActionStyle::Primary,
             });
         }
         if let Some(u) = cancel_url {
             actions.push(EmailAction {
                 label: "Cancel booking".to_string(),
                 url: u.to_string(),
-                color: "#dc2626".to_string(),
+                style: ActionStyle::Ghost,
             });
         }
 
@@ -4676,14 +4860,14 @@ mod tests {
             actions.push(EmailAction {
                 label: "Reschedule".to_string(),
                 url: u.to_string(),
-                color: "#1A3A4A".to_string(),
+                style: ActionStyle::Primary,
             });
         }
         if let Some(u) = cancel_url {
             actions.push(EmailAction {
                 label: "Cancel booking".to_string(),
                 url: u.to_string(),
-                color: "#dc2626".to_string(),
+                style: ActionStyle::Ghost,
             });
         }
 
@@ -4732,7 +4916,7 @@ mod tests {
         let html = render_html_email_with_actions(
             &format!("Hi {},", h(&details.guest_name)),
             "Your booking has been rescheduled.",
-            "#d97706",
+            Accent::Success,
             &rows,
             None,
             &[],
@@ -4744,8 +4928,8 @@ mod tests {
         assert!(html.contains("10:00 AM"), "Should contain old start time");
         assert!(html.contains("2:00 PM"), "Should contain new start time");
         assert!(
-            html.contains("#d97706"),
-            "Should use orange accent for reschedule"
+            html.contains(SUCCESS),
+            "Should use the confirmed accent for a completed reschedule"
         );
     }
 
@@ -4758,19 +4942,19 @@ mod tests {
             EmailAction {
                 label: "Approve".to_string(),
                 url: approve_url.to_string(),
-                color: "#16a34a".to_string(),
+                style: ActionStyle::Primary,
             },
             EmailAction {
                 label: "Decline".to_string(),
                 url: decline_url.to_string(),
-                color: "#dc2626".to_string(),
+                style: ActionStyle::Ghost,
             },
         ];
 
         let html = render_html_email_with_actions(
             "Hi,",
             "A guest wants to reschedule.",
-            "#d97706",
+            Accent::Warning,
             &[EmailRow {
                 label: "Event".to_string(),
                 value: "Test".to_string(),
@@ -5192,13 +5376,13 @@ mod tests {
         let html = render_html_email_with_actions(
             "Hi,",
             "Message.",
-            "#000",
+            Accent::Ocean,
             &[],
             None,
             &[], // no actions
         );
         // No action buttons table when empty
-        assert!(!html.contains("display:inline-block;padding:12px 28px"));
+        assert!(!html.contains("class=\"cx-btn\""));
     }
 
     #[test]
@@ -5206,18 +5390,18 @@ mod tests {
         let html = render_html_email_with_actions(
             "Hi,",
             "Click below.",
-            "#1A3A4A",
+            Accent::Ocean,
             &[],
             None,
             &[EmailAction {
                 label: "Book now".to_string(),
                 url: "https://cal.rs/book".to_string(),
-                color: "#1A3A4A".to_string(),
+                style: ActionStyle::Primary,
             }],
         );
         assert!(html.contains("Book now"));
         assert!(html.contains("https://cal.rs/book"));
-        assert!(html.contains("#1A3A4A"));
+        assert!(html.contains(OCEAN));
     }
 
     #[test]
@@ -5225,24 +5409,24 @@ mod tests {
         let html = render_html_email_with_actions(
             "Hi,",
             "Actions below.",
-            "#000",
+            Accent::Ocean,
             &[],
             None,
             &[
                 EmailAction {
                     label: "A".to_string(),
                     url: "https://a.com".to_string(),
-                    color: "#111".to_string(),
+                    style: ActionStyle::Primary,
                 },
                 EmailAction {
                     label: "B".to_string(),
                     url: "https://b.com".to_string(),
-                    color: "#222".to_string(),
+                    style: ActionStyle::Ghost,
                 },
                 EmailAction {
                     label: "C".to_string(),
                     url: "https://c.com".to_string(),
-                    color: "#333".to_string(),
+                    style: ActionStyle::Primary,
                 },
             ],
         );
@@ -5253,7 +5437,13 @@ mod tests {
 
     #[test]
     fn html_email_footer_note_html_escaped() {
-        let html = render_html_email("Hi,", "Test", "#000", &[], Some("Click <here> & there"));
+        let html = render_html_email(
+            "Hi,",
+            "Test",
+            Accent::Ocean,
+            &[],
+            Some("Click <here> & there"),
+        );
         assert!(html.contains("Click &lt;here&gt; &amp; there"));
     }
 
@@ -5262,7 +5452,7 @@ mod tests {
         let html = render_html_email(
             "Hi,",
             "Details",
-            "#000",
+            Accent::Ocean,
             &[
                 EmailRow {
                     label: "Name".to_string(),
@@ -5281,9 +5471,9 @@ mod tests {
 
     #[test]
     fn html_email_accent_color_in_bar() {
-        let html = render_html_email("Hi,", "Test", "#e11d48", &[], None);
+        let html = render_html_email("Hi,", "Test", Accent::Error, &[], None);
         // The accent color should appear in the accent bar
-        assert!(html.contains("background:#e11d48"));
+        assert!(html.contains(&format!("background:{ERROR}")));
     }
 
     #[test]
@@ -5292,7 +5482,7 @@ mod tests {
         let html = render_html_email_with_actions(
             "Hello Alice,",
             "Your booking is confirmed!",
-            "#16a34a",
+            Accent::Success,
             &[
                 EmailRow {
                     label: "Event".to_string(),
@@ -5320,12 +5510,12 @@ mod tests {
                 EmailAction {
                     label: "Reschedule".to_string(),
                     url: "https://cal.rs/reschedule/abc".to_string(),
-                    color: "#1A3A4A".to_string(),
+                    style: ActionStyle::Primary,
                 },
                 EmailAction {
                     label: "Cancel booking".to_string(),
                     url: "https://cal.rs/cancel/def".to_string(),
-                    color: "#dc2626".to_string(),
+                    style: ActionStyle::Ghost,
                 },
             ],
         );
@@ -5341,7 +5531,7 @@ mod tests {
         assert!(html.contains("Cancel booking"));
         assert!(html.contains("https://cal.rs/reschedule/abc"));
         assert!(html.contains("https://cal.rs/cancel/def"));
-        assert!(html.contains("#16a34a")); // accent
+        assert!(html.contains(SUCCESS)); // accent
         assert!(html.contains("https://cascade.tax"));
         assert!(html.contains("Cascade"));
     }
@@ -5446,21 +5636,21 @@ mod tests {
             actions.push(EmailAction {
                 label: "Reschedule".to_string(),
                 url: u.to_string(),
-                color: "#1A3A4A".to_string(),
+                style: ActionStyle::Primary,
             });
         }
         if let Some(u) = cancel_url {
             actions.push(EmailAction {
                 label: "Cancel booking".to_string(),
                 url: u.to_string(),
-                color: "#dc2626".to_string(),
+                style: ActionStyle::Ghost,
             });
         }
 
         let html = render_html_email_with_actions(
             &format!("Hi {},", h(&details.guest_name)),
             "Your booking has been confirmed!",
-            "#16a34a",
+            Accent::Success,
             &rows,
             Some("A calendar invite is attached to this email."),
             &actions,
@@ -5476,7 +5666,7 @@ mod tests {
         assert!(html.contains("Discuss project roadmap"));
         assert!(html.contains("Reschedule"));
         assert!(html.contains("Cancel booking"));
-        assert!(html.contains("#16a34a")); // green accent
+        assert!(html.contains(SUCCESS)); // confirmed accent
     }
 
     #[test]
@@ -5522,14 +5712,14 @@ mod tests {
                 "Your booking request is awaiting confirmation from {}.",
                 h(&details.host_name)
             ),
-            "#f59e0b",
+            Accent::Warning,
             &rows,
             Some("You\u{2019}ll receive another email once it\u{2019}s confirmed."),
             &[],
         );
 
         assert!(html.contains("awaiting confirmation from Alice Smith"));
-        assert!(html.contains("#f59e0b")); // amber accent for pending
+        assert!(html.contains(WARNING)); // amber accent for pending
         assert!(!html.contains("Location")); // No location in pending emails
         assert!(html.contains("Notes"));
     }
@@ -5579,7 +5769,7 @@ mod tests {
         let html = render_html_email(
             "New booking!",
             &format!("{} booked a slot with you.", h(&details.guest_name)),
-            "#16a34a",
+            Accent::Success,
             &rows,
             Some("A calendar invite is attached to this email."),
         );
@@ -5627,12 +5817,12 @@ mod tests {
                 EmailAction {
                     label: "Approve".to_string(),
                     url: a,
-                    color: "#16a34a".to_string(),
+                    style: ActionStyle::Primary,
                 },
                 EmailAction {
                     label: "Decline".to_string(),
                     url: d,
-                    color: "#dc2626".to_string(),
+                    style: ActionStyle::Ghost,
                 },
             ],
             _ => vec![],
@@ -5641,7 +5831,7 @@ mod tests {
         let html = render_html_email_with_actions(
             "Action required",
             &format!("{} wants to book a slot with you.", h(&details.guest_name)),
-            "#f59e0b",
+            Accent::Warning,
             &[EmailRow {
                 label: "Guest".to_string(),
                 value: format!("{} <{}>", details.guest_name, details.guest_email),
@@ -5684,12 +5874,12 @@ mod tests {
                 EmailAction {
                     label: "Approve".to_string(),
                     url: a,
-                    color: "#16a34a".to_string(),
+                    style: ActionStyle::Primary,
                 },
                 EmailAction {
                     label: "Decline".to_string(),
                     url: d,
-                    color: "#dc2626".to_string(),
+                    style: ActionStyle::Ghost,
                 },
             ],
             _ => vec![],
@@ -5740,7 +5930,7 @@ mod tests {
         let html = render_html_email(
             &format!("Hi {},", h(&details.guest_name)),
             "Your booking request has been declined.",
-            "#dc2626",
+            Accent::Error,
             &rows,
             None,
         );
@@ -5748,7 +5938,7 @@ mod tests {
         assert!(html.contains("Hi Jane,"));
         assert!(html.contains("declined"));
         assert!(html.contains("Schedule conflict"));
-        assert!(html.contains("#dc2626")); // red accent
+        assert!(html.contains(ERROR)); // red accent
     }
 
     #[test]
@@ -5780,7 +5970,7 @@ mod tests {
             });
         }
 
-        let html = render_html_email("Hi,", "Declined.", "#dc2626", &rows, None);
+        let html = render_html_email("Hi,", "Declined.", Accent::Error, &rows, None);
         assert!(!html.contains("Reason")); // No reason row
     }
 
@@ -5820,7 +6010,7 @@ mod tests {
         let actions = vec![EmailAction {
             label: "Choose a time".to_string(),
             url: invite_url.to_string(),
-            color: "#1A3A4A".to_string(),
+            style: ActionStyle::Primary,
         }];
 
         let html = render_html_email_with_actions(
@@ -5830,7 +6020,7 @@ mod tests {
                 h(host_name),
                 h(event_title)
             ),
-            "#1A3A4A",
+            Accent::Ocean,
             &rows,
             None,
             &actions,
@@ -5842,7 +6032,7 @@ mod tests {
         assert!(html.contains("2026-04-20"));
         assert!(html.contains("Choose a time"));
         assert!(html.contains(invite_url));
-        assert!(html.contains("#1A3A4A")); // Cascade Ocean accent
+        assert!(html.contains(OCEAN)); // Cascade Ocean accent
     }
 
     #[test]
@@ -5905,7 +6095,7 @@ mod tests {
                 vec![EmailAction {
                     label: "Cancel booking".to_string(),
                     url: u.to_string(),
-                    color: "#dc2626".to_string(),
+                    style: ActionStyle::Ghost,
                 }]
             })
             .unwrap_or_default();
@@ -5913,7 +6103,7 @@ mod tests {
         let html = render_html_email_with_actions(
             &format!("Hi {},", h(&details.guest_name)),
             "Reminder: you have an upcoming booking.",
-            "#1A3A4A",
+            Accent::Warning,
             &[
                 EmailRow {
                     label: "Event".to_string(),
@@ -5929,7 +6119,7 @@ mod tests {
         );
 
         assert!(html.contains("Reminder"));
-        assert!(html.contains("#1A3A4A")); // Cascade Ocean accent for reminders
+        assert!(html.contains(WARNING)); // amber accent: the booking is imminent
         assert!(html.contains("Cancel booking"));
         assert!(html.contains("rem-tok"));
     }
@@ -5943,15 +6133,21 @@ mod tests {
                 vec![EmailAction {
                     label: "Cancel booking".to_string(),
                     url: u.to_string(),
-                    color: "#dc2626".to_string(),
+                    style: ActionStyle::Ghost,
                 }]
             })
             .unwrap_or_default();
 
         assert!(actions.is_empty());
 
-        let html =
-            render_html_email_with_actions("Hi,", "Reminder.", "#1A3A4A", &[], None, &actions);
+        let html = render_html_email_with_actions(
+            "Hi,",
+            "Reminder.",
+            Accent::Warning,
+            &[],
+            None,
+            &actions,
+        );
         assert!(!html.contains("Cancel booking"));
     }
 
@@ -6019,13 +6215,13 @@ mod tests {
         let mut actions = vec![EmailAction {
             label: "Pick a new time".to_string(),
             url: reschedule_url.to_string(),
-            color: "#1A3A4A".to_string(),
+            style: ActionStyle::Primary,
         }];
         if let Some(u) = cancel_url {
             actions.push(EmailAction {
                 label: "Cancel booking".to_string(),
                 url: u.to_string(),
-                color: "#dc2626".to_string(),
+                style: ActionStyle::Ghost,
             });
         }
 
@@ -6035,7 +6231,7 @@ mod tests {
                 "{} needs to reschedule your booking. Please pick a new time.",
                 h(&details.host_name)
             ),
-            "#d97706",
+            Accent::Warning,
             &rows,
             None,
             &actions,
@@ -6044,7 +6240,7 @@ mod tests {
         assert!(html.contains("Pick a new time"));
         assert!(html.contains("Cancel booking"));
         assert!(html.contains("needs to reschedule"));
-        assert!(html.contains("#d97706")); // orange accent
+        assert!(html.contains(WARNING)); // amber accent: a decision is needed
         assert!(html.contains("Originally"));
     }
 
@@ -6087,7 +6283,7 @@ mod tests {
         let html = render_html_email(
             "Booking confirmed",
             &format!("You approved the booking with {}.", h(&details.guest_name)),
-            "#16a34a",
+            Accent::Success,
             &rows,
             Some("The event has been added to your calendar."),
         );
@@ -6208,7 +6404,7 @@ mod tests {
 
     #[test]
     fn html_email_is_valid_html_structure() {
-        let html = render_html_email("Hi,", "Test", "#000", &[], None);
+        let html = render_html_email("Hi,", "Test", Accent::Ocean, &[], None);
         assert!(html.contains("<!DOCTYPE html>"));
         assert!(html.contains("<html"));
         assert!(html.contains("</html>"));
@@ -6220,19 +6416,19 @@ mod tests {
 
     #[test]
     fn html_email_has_meta_charset() {
-        let html = render_html_email("Hi,", "Test", "#000", &[], None);
+        let html = render_html_email("Hi,", "Test", Accent::Ocean, &[], None);
         assert!(html.contains("charset=\"utf-8\"") || html.contains("charset=utf-8"));
     }
 
     #[test]
     fn html_email_has_viewport_meta() {
-        let html = render_html_email("Hi,", "Test", "#000", &[], None);
+        let html = render_html_email("Hi,", "Test", Accent::Ocean, &[], None);
         assert!(html.contains("viewport"));
     }
 
     #[test]
     fn html_email_has_cascade_footer_link() {
-        let html = render_html_email("Hi,", "Test", "#000", &[], None);
+        let html = render_html_email("Hi,", "Test", Accent::Ocean, &[], None);
         assert!(html.contains("https://cascade.tax"));
         assert!(html.contains("Cascade"));
         assert!(!html.contains("https://cal.rs"));
@@ -6292,7 +6488,7 @@ mod tests {
         let html = render_html_email(
             &format!("Hi {},", h(&details.guest_name)),
             &msg,
-            "#dc2626",
+            Accent::Error,
             &rows,
             Some("A calendar cancellation is attached to this email."),
         );
@@ -6325,7 +6521,7 @@ mod tests {
             format!("{} cancelled their booking.", h(&details.guest_name))
         };
 
-        let html = render_html_email("Booking cancelled.", &msg, "#dc2626", &[], None);
+        let html = render_html_email("Booking cancelled.", &msg, Accent::Error, &[], None);
 
         assert!(html.contains("Bob cancelled their booking."));
     }

@@ -1,11 +1,14 @@
 {% extends "base.html" %}
 
 {% block title %}{{ t("action-error-page-title") }}{% endblock %}
+{% block head %}{% include "_booking_action_head.html" %}{% endblock %}
 
 {% block content %}
-<div class="card" style="text-align: center;">
-  <div class="check" style="background: var(--text-muted);">!</div>
-  <h1>{{ title }}</h1>
-  <p class="subtitle">{{ message }}</p>
+<div class="card">
+  <div class="action-head">
+    <div class="check check-error"><svg class="ic" aria-hidden="true"><use href="#i-alert"/></svg></div>
+    <h1>{{ title }}</h1>
+    <p class="subtitle">{{ message }}</p>
+  </div>
 </div>
 {% endblock %}

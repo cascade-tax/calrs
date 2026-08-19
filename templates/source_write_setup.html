@@ -2,40 +2,95 @@
 
 {% block title %}{{ t("source-write-page-title") }} — Cascade{% endblock %}
 
+{% block head %}
+<style>
+  .cal-list { display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 1.5rem; }
+  .cal-option {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.8125rem 0.9375rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+    cursor: pointer;
+    transition: border-color 0.15s var(--ease), background 0.15s var(--ease);
+  }
+  .cal-option:hover { border-color: var(--border-hover); background: var(--surface-hover); }
+  .cal-option:has(input:checked) { border-color: var(--accent); background: var(--accent-subtle); }
+  .cal-option input { flex: none; width: 1.0625rem; height: 1.0625rem; cursor: pointer; }
+  .cal-dot {
+    flex: none;
+    width: 0.625rem;
+    height: 0.625rem;
+    border-radius: 50%;
+    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.12);
+  }
+  .cal-name {
+    flex: 1;
+    min-width: 0;
+    font-size: 0.9375rem;
+    font-weight: 600;
+    color: var(--text);
+    overflow-wrap: anywhere;
+  }
+  .cal-count {
+    flex: none;
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    white-space: nowrap;
+  }
+  .sync-result {
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+    line-height: 1.7;
+    color: var(--text-secondary);
+    white-space: pre-line;
+    overflow-wrap: anywhere;
+  }
+</style>
+{% endblock %}
+
 {% block content %}
-<a href="/dashboard" class="back-link">&larr; {{ t("source-write-back") }}</a>
+<a href="/dashboard" class="back-link">
+  <svg class="ic" aria-hidden="true"><use href="#i-arrow-left"/></svg> Back to dashboard
+</a>
 
 <div class="card">
-  <h1>{{ t("source-write-heading") }}</h1>
-  <p style="color: var(--text-secondary); margin-bottom: 1.5rem;">
-    {{ t("source-write-help", name='<strong>' ~ (source_name | escape) ~ '</strong>') | safe }}
+  <h1>Where should bookings go?</h1>
+  <p class="subtitle">
+    When someone books a meeting with you, Cascade writes the event straight into your calendar.
+    Pick the calendar it should write to for <strong>{{ source_name }}</strong>.
   </p>
 
   <form method="post" action="/dashboard/sources/{{ source_id }}/write-calendar">
-    <div style="display: flex; flex-direction: column; gap: 0.75rem; margin-bottom: 1.5rem;">
+    <div class="cal-list">
       {% for cal in calendars %}
-      <label style="display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem 1rem; border: 1px solid var(--border); border-radius: var(--radius); cursor: pointer; transition: border-color 0.15s;">
-        <input type="radio" name="calendar_href" value="{{ cal.href }}" {% if loop.first %}checked{% endif %} style="accent-color: var(--accent);">
+      <label class="cal-option">
+        <input type="radio" name="calendar_href" value="{{ cal.href }}" {% if loop.first %}checked{% endif %}>
         {% if cal.color %}
-        <span style="width: 12px; height: 12px; border-radius: 50%; background: {{ cal.color }}; flex-shrink: 0;"></span>
+        <span class="cal-dot" style="background: {{ cal.color }}"></span>
         {% endif %}
-        <span>{{ cal.name }}</span>
-        <span style="color: var(--text-muted); font-size: 0.8rem;">{{ t("source-write-event-count", count=cal.event_count) }}</span>
+        <span class="cal-name">{{ cal.name }}</span>
+        <span class="cal-count">{{ cal.event_count }} event{{ "s" if cal.event_count != 1 }}</span>
       </label>
       {% endfor %}
     </div>
 
-    <div style="display: flex; gap: 0.75rem; align-items: center;">
-      <button type="submit" class="slot-btn" style="background: var(--btn-primary-bg); color: #fff; border: none; padding: 0.5rem 1.5rem; border-radius: var(--radius); font-size: 0.95rem; cursor: pointer;">{{ t("source-write-save") }}</button>
-      <a href="/dashboard" style="color: var(--text-muted); text-decoration: none; font-size: 0.9rem;">{{ t("source-write-skip") }}</a>
+    <div class="btn-row">
+      <button type="submit" class="btn">
+        <svg class="ic" aria-hidden="true"><use href="#i-check"/></svg> Save
+      </button>
+      <a href="/dashboard" class="btn btn-ghost">Skip for now</a>
     </div>
   </form>
 </div>
 
 {% if sync_messages %}
-<div class="card" style="margin-top: 1rem;">
-  <h2 style="font-size: 1rem;">{{ t("source-write-sync-results") }}</h2>
-  <div style="padding: 0.75rem; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); font-size: 0.85rem; white-space: pre-line; font-family: inherit;">{{ sync_messages }}</div>
+<div class="card">
+  <h2>Sync results</h2>
+  <div class="card-sunken sync-result">{{ sync_messages }}</div>
 </div>
 {% endif %}
 {% endblock %}

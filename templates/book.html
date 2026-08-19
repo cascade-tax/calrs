@@ -3,6 +3,15 @@
 {% block title %}{{ t("book-page-title", title=event_type.title) }}{% endblock %}
 
 {% block content %}
+<style>
+  /* Short single-column form: an 800px text input reads as a stretched
+     dialog, so hold the card at a comfortable measure and settle it on the
+     centre of a tall window. */
+  .container { max-width: 560px; }
+  @media (min-height: 820px) {
+    .container { margin-block: auto; }
+  }
+</style>
 {# Compute base path: /t/token, /team/team_slug/slug, /u/username/slug, or /slug #}
 {% if team_token is defined and team_token %}
   {% set base = "/t/" ~ team_token %}
@@ -21,20 +30,18 @@
 <div class="card">
   <h1>{{ event_type.title }}</h1>
   <div class="meta">
-    <span>{{ event_type.duration_min }} min</span>
-    <span>{{ host_name }}</span>
+    <span><svg class="ic" aria-hidden="true"><use href="#i-clock"/></svg>{{ event_type.duration_min }} min</span>
+    <span><svg class="ic" aria-hidden="true"><use href="#i-user"/></svg>{{ host_name }}</span>
     {% if event_type.location_value or event_type.location_type == "jitsi_auto" or event_type.location_type == "webhook_auto" %}
       {% if event_type.location_type is defined and event_type.location_type == "in_person" %}
-        <span>{{ event_type.location_value }}</span>
+        <span><svg class="ic" aria-hidden="true"><use href="#i-map-pin"/></svg>{{ event_type.location_value }}</span>
       {% else %}
-        <span>{% if event_type.location_type == "jitsi_auto" %}{% if meeting_jitsi_label %}{{ meeting_jitsi_label }}{% else %}{{ t("slots-location-video") }}{% endif %}{% elif event_type.location_type == "webhook_auto" %}{% if meeting_webhook_label %}{{ meeting_webhook_label }}{% else %}{{ t("slots-location-video") }}{% endif %}{% elif event_type.location_type == "link" %}{{ t("slots-location-video") }}{% elif event_type.location_type == "phone" %}{{ t("slots-location-phone") }}{% else %}{{ event_type.location_type }}{% endif %}</span>
+        <span><svg class="ic" aria-hidden="true"><use href="#i-{% if event_type.location_type == "phone" %}phone{% else %}video{% endif %}"/></svg>{% if event_type.location_type == "jitsi_auto" %}{% if meeting_jitsi_label %}{{ meeting_jitsi_label }}{% else %}{{ t("slots-location-video") }}{% endif %}{% elif event_type.location_type == "webhook_auto" %}{% if meeting_webhook_label %}{{ meeting_webhook_label }}{% else %}{{ t("slots-location-video") }}{% endif %}{% elif event_type.location_type == "link" %}{{ t("slots-location-video") }}{% elif event_type.location_type == "phone" %}{{ t("slots-location-phone") }}{% else %}{{ event_type.location_type }}{% endif %}</span>
       {% endif %}
     {% endif %}
   </div>
 
-  <div class="selected-summary">
-    <strong>{{ date_label }}</strong> &middot; {{ time_start | time12h }} – {{ time_end | time12h }}
-  </div>
+  <div class="selected-summary"><strong>{{ date_label }}</strong> &middot; {{ time_start | time12h }} &ndash; {{ time_end | time12h }}</div>
 
   {% if error %}
     <div class="error">{{ error }}</div>
@@ -323,7 +330,7 @@
     </div>
     {% endif %}
 
-    <button type="submit" class="btn">{{ t("book-confirm-button") }}</button>
+    <button type="submit" class="btn btn-block btn-lg">{{ t("book-confirm-button") }}</button>
   </form>
 </div>
 {% endblock %}

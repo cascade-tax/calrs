@@ -1,545 +1,838 @@
 {% extends "dashboard_base.html" %}
 {% block title %}{{ t("admin-page-title") }} — Cascade{% endblock %}
 {% block dashboard_content %}
-<div class="card">
-  <h1>{{ t("admin-heading") }}</h1>
-</div>
+<style>
+  /* ── Admin page composition ───────────────────────────────────────────
+     The admin surface is the densest page in the product: fourteen distinct
+     configuration domains on one scroll. It earns its structure from four
+     rules — a mono section rule between domains, a consistent icon + title
+     + one-line purpose head on every card, a status strip above every
+     integration form, and a hard 30rem measure on form fields so settings
+     never stretch to the full 940px column.
+
+     Every colour here resolves to a base.html token. The only literal
+     colours left in this template are inside the theme-preset swatches and
+     the custom-colour picker, where the hex value *is* the data. */
+  .admin-page .form-group { max-width: 30rem; }
+  .admin-page .form-group input,
+  .admin-page .form-group select,
+  .admin-page .form-group textarea { width: 100%; }
+  /* …but not the boxes that are meant to stay box-sized. The rule above
+     out-specifies base.html's `input[type="checkbox"] { width: auto }`, which
+     would stretch a checkbox to the full field measure. Scoped to
+     `.form-group` so it cannot reach the visually-hidden theme radios. */
+  .admin-page .form-group input[type="checkbox"],
+  .admin-page .form-group input[type="radio"] { width: auto; }
+  .admin-page .card:last-of-type { margin-bottom: 0; }
+  .admin-page .field-hint { display: block; margin-top: 0.3125rem; max-width: 34rem; }
+  .admin-page .form-group .field-hint { max-width: none; }
+  /* Paired fields share the single-field measure, so every input in a card
+     ends on the same right edge instead of stepping in and out. */
+  .admin-page .form-grid-2 { max-width: 30rem; gap: 0.75rem; }
+  .admin-page .form-grid-2.grid-2-1 { grid-template-columns: 1.7fr 1fr; }
+
+  .admin-section-label {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    font-family: var(--font-mono);
+    font-size: 0.625rem;
+    font-weight: 500;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin: 2.25rem 0 0.875rem;
+  }
+  .admin-section-label::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+  .admin-page > .admin-section-label:first-of-type { margin-top: 0.25rem; }
+
+  .admin-card-head { display: flex; align-items: flex-start; gap: 0.75rem; margin-bottom: 1.25rem; }
+  .admin-card-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    flex: none;
+    border-radius: var(--radius-sm);
+    background: var(--surface-sunken);
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+  }
+  .admin-card-icon .ic { width: 1rem; height: 1rem; }
+  .admin-card-head-text { min-width: 0; }
+  .admin-card-head h2 { margin-bottom: 0.1875rem; }
+  .admin-card-head p { margin: 0; font-size: 0.8125rem; line-height: 1.55; color: var(--text-secondary); max-width: 46rem; }
+
+  /* Status strip — the "is this wired up?" answer, always directly under the
+     card head and always in the same shape across every integration. */
+  .admin-status {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    width: fit-content;
+    max-width: 100%;
+    gap: 0.5rem 1.25rem;
+    padding: 0.6875rem 0.875rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface-sunken);
+    margin-bottom: 1.25rem;
+  }
+  .admin-status-item { display: inline-flex; align-items: baseline; gap: 0.4375rem; min-width: 0; }
+  .admin-status-item .label { flex: none; }
+  .mono-val {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    overflow-wrap: anywhere;
+    min-width: 0;
+  }
+
+  .admin-filter { width: 100%; max-width: 20rem; margin-bottom: 1rem; }
+  .admin-note { font-size: 0.8125rem; color: var(--text-muted); line-height: 1.55; max-width: 46rem; }
+  .admin-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 1.25rem;
+  }
+  .admin-page .btn-row { margin-top: 0.25rem; }
+
+  /* A labelled boolean with its consequence spelled out, rather than a naked
+     checkbox with a four-word label. */
+  .toggle-field {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.625rem;
+    max-width: 30rem;
+    padding: 0.75rem 0.875rem;
+    margin-bottom: 1.25rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface-sunken);
+    cursor: pointer;
+    transition: border-color 0.15s var(--ease);
+  }
+  .toggle-field:hover { border-color: var(--border-hover); }
+  .toggle-field input[type="checkbox"] { width: 1rem; height: 1rem; flex: none; margin-top: 0.2em; }
+  .toggle-field-text { min-width: 0; }
+  .toggle-field-text strong { display: block; font-size: 0.875rem; font-weight: 600; color: var(--text); }
+  .toggle-field-text span { display: block; font-size: 0.8125rem; line-height: 1.5; color: var(--text-muted); }
+
+  .admin-page input[type="file"] { font-size: 0.8125rem; color: var(--text-secondary); max-width: 100%; }
+  .admin-page input[type="file"]::file-selector-button {
+    font-family: inherit;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    padding: 0.375rem 0.75rem;
+    margin-right: 0.625rem;
+    border: 1px solid var(--border-hover);
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    color: var(--text);
+    cursor: pointer;
+  }
+  .admin-page input[type="file"]::file-selector-button:hover { background: var(--surface-hover); border-color: var(--accent); }
+
+  /* ── Users ─────────────────────────────────────────────────────────── */
+  .user-list { border-top: 1px solid var(--border); }
+  .user-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.75rem 1rem;
+    flex-wrap: wrap;
+    padding: 0.75rem 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .user-main { min-width: 0; flex: 1 1 16rem; }
+  .user-idline { display: flex; flex-wrap: wrap; align-items: center; gap: 0.375rem 0.5rem; }
+  .user-name { font-weight: 600; font-size: 0.875rem; color: var(--text); }
+  .user-email { font-size: 0.8125rem; color: var(--text-secondary); overflow-wrap: anywhere; }
+  .user-groups { display: flex; flex-wrap: wrap; gap: 0.25rem; margin-top: 0.375rem; }
+  .user-self {
+    font-family: var(--font-mono);
+    font-size: 0.625rem;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+  }
+  .user-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.375rem;
+    justify-content: flex-end;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.15s var(--ease);
+  }
+  .user-item:hover .user-actions,
+  .user-item:focus-within .user-actions { opacity: 1; pointer-events: auto; }
+  @media (hover: none), (max-width: 860px) {
+    .user-actions { opacity: 1; pointer-events: auto; }
+  }
+  .admin-pagination {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.625rem;
+    margin-top: 1rem;
+  }
+  .admin-pagination:empty { display: none; }
+  .pager-status { font-family: var(--font-mono); font-size: 0.6875rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-muted); }
+
+  /* ── Groups ────────────────────────────────────────────────────────────
+     Deliberately not a table: the members cell holds a form per member, and
+     no two-column table survives that at 390px. Stacked rows instead. */
+  .group-list { border-top: 1px solid var(--border); }
+  .group-item { padding: 0.875rem 0; border-bottom: 1px solid var(--border); }
+  .group-head { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+  .group-name { font-weight: 600; font-size: 0.875rem; color: var(--text); overflow-wrap: anywhere; }
+  .group-members { display: flex; flex-direction: column; gap: 0.375rem; margin-top: 0.625rem; }
+  .group-member-row { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; margin: 0; }
+  .group-member-name { flex: 0 1 10rem; min-width: 7rem; font-size: 0.8125rem; color: var(--text-secondary); overflow-wrap: anywhere; }
+  .group-member-row .weight-label {
+    font-family: var(--font-mono);
+    font-size: 0.625rem;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+  }
+  .group-member-row .weight-input { width: 4rem; padding: 0.25rem 0.4375rem; font-size: 0.8125rem; }
+  .group-expand-btn {
+    align-self: flex-start;
+    background: none;
+    border: none;
+    padding: 0.125rem 0;
+    font-family: inherit;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--accent);
+    cursor: pointer;
+  }
+  .group-expand-btn:hover { color: var(--accent-hover); text-decoration: underline; }
+  .group-count { font-size: 0.8125rem; color: var(--text-muted); margin-top: 0.375rem; }
+
+  /* ── Resources ─────────────────────────────────────────────────────── */
+  .res-list { display: flex; flex-direction: column; gap: 0.625rem; margin-bottom: 1.5rem; }
+  .res-item { border: 1px solid var(--border); border-radius: var(--radius); padding: 0.875rem 1rem; background: var(--surface); }
+  .res-name { font-weight: 600; font-size: 0.9375rem; color: var(--text); }
+  .res-url { font-family: var(--font-mono); font-size: 0.75rem; color: var(--text-muted); overflow-wrap: anywhere; margin-top: 0.125rem; }
+  .res-meta { font-size: 0.8125rem; color: var(--text-secondary); margin-top: 0.4375rem; line-height: 1.6; }
+  .res-badges { display: flex; flex-wrap: wrap; align-items: center; gap: 0.375rem; margin-top: 0.5rem; }
+  .res-actions { display: flex; flex-wrap: wrap; gap: 0.375rem; margin-top: 0.75rem; }
+  .admin-details { margin-top: 0.75rem; }
+  .admin-details > summary {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    cursor: pointer;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--accent);
+    list-style: none;
+  }
+  .admin-details > summary::-webkit-details-marker { display: none; }
+  .admin-details > summary:hover { color: var(--accent-hover); }
+  .admin-details[open] > summary { margin-bottom: 0.875rem; }
+  .check-grid { display: flex; flex-wrap: wrap; gap: 0.5rem 1.125rem; margin-bottom: 0.375rem; }
+  /* Out-specifies base.html's `.form-group label { display: block }`, which
+     would otherwise stack each checkbox above its own caption. */
+  .admin-page .form-group .check-inline,
+  .admin-page .check-inline {
+    display: flex;
+    align-items: center;
+    gap: 0.4375rem;
+    /* Never shrink: a flex item left to its default would fold a two-word
+       team name onto two lines while the row still has room. */
+    flex: 0 0 auto;
+    max-width: 100%;
+    font-weight: 400;
+    font-size: 0.875rem;
+    margin: 0;
+    cursor: pointer;
+  }
+
+  /* ── Theme presets ─────────────────────────────────────────────────── */
+  .theme-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr));
+    gap: 0.625rem;
+    margin-bottom: 1.25rem;
+  }
+  .theme-option { display: block; cursor: pointer; }
+  .theme-option input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+  .theme-card {
+    position: relative;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+    padding: 0.75rem;
+    transition: border-color 0.15s var(--ease), background 0.15s var(--ease), box-shadow 0.2s var(--ease);
+  }
+  .theme-card:hover { border-color: var(--border-hover); box-shadow: var(--shadow); }
+  .theme-option input:focus-visible + .theme-card { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+  .theme-card-active,
+  .theme-card-active:hover {
+    border-color: var(--accent);
+    background: var(--accent-subtle);
+    box-shadow: none;
+  }
+  .theme-swatches { display: flex; gap: 4px; margin-bottom: 0.5rem; }
+  .theme-swatch { width: 18px; height: 18px; border-radius: 50%; border: 1px solid var(--border-strong); }
+  .theme-name { font-weight: 600; font-size: 0.875rem; color: var(--text); }
+  .theme-desc { font-size: 0.75rem; color: var(--text-muted); }
+  .theme-check {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.5rem;
+    display: none;
+    color: var(--accent);
+  }
+  .theme-card-active .theme-check { display: block; }
+
+  .custom-colors { border: 1px solid var(--border); border-radius: var(--radius); padding: 1rem; margin-bottom: 1.25rem; }
+  .custom-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(8.75rem, 1fr)); gap: 0.875rem; }
+  .custom-swatch-row { display: flex; align-items: center; gap: 0.5rem; }
+  .custom-swatch-row input[type="color"] {
+    width: 2rem;
+    height: 2rem;
+    flex: none;
+    padding: 0;
+    border: 1px solid var(--border-hover);
+    border-radius: var(--radius-sm);
+    background: none;
+    cursor: pointer;
+  }
+  .hex-input {
+    width: 100%;
+    min-width: 0;
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    padding: 0.3125rem 0.4375rem;
+  }
+
+  /* ── Logo ──────────────────────────────────────────────────────────── */
+  .logo-preview {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+    margin-bottom: 1rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface-sunken);
+  }
+  .logo-preview img { max-height: 80px; max-width: 100%; object-fit: contain; }
+  .upload-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.625rem; margin: 0; }
+
+  @media (max-width: 560px) {
+    .admin-page .form-group,
+    .admin-page .toggle-field { max-width: none; }
+    .user-actions { justify-content: flex-start; }
+    .user-actions .btn { flex: 0 0 auto; }
+    .admin-status { gap: 0.4375rem 1rem; }
+    .group-member-name { flex: 1 1 100%; }
+  }
+</style>
+
+<div class="admin-page">
+  <div class="page-head">
+    <div class="page-head-text">
+      <h1>Admin</h1>
+      <p>Instance-wide configuration — people, access, integrations and appearance.</p>
+    </div>
+  </div>
 
 {% if error_message %}
-<div class="card" style="border-color: var(--error-text); background: rgba(239, 68, 68, 0.05);">
-  <div style="color: var(--error-text); font-size: 0.9rem;"><strong>{{ t("admin-action-refused") }}</strong> {{ error_message }}</div>
-</div>
+  <div class="notice notice-error">
+    <svg class="ic" aria-hidden="true"><use href="#i-alert"/></svg>
+    <span><strong>Action refused.</strong> {{ error_message }}</span>
+  </div>
 {% endif %}
 
-<!-- Logo -->
-<div class="card">
-  <h2>{{ t("admin-logo") }}</h2>
-  <p style="font-size: 0.875rem; color: var(--text-secondary); margin-bottom: 1rem;">{{ t("admin-logo-help") }}</p>
-  {% if has_logo %}
-  <div style="margin-bottom: 1rem; padding: 1rem; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); text-align: center;">
-    <img src="/logo" alt="{{ t('admin-logo') }}" style="max-height: 80px; max-width: 280px; object-fit: contain;">
-  </div>
-  {% endif %}
-  <div style="display: flex; gap: 0.75rem; align-items: flex-start; flex-wrap: wrap;">
-    <form method="post" action="/dashboard/admin/logo" enctype="multipart/form-data" style="margin: 0; display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
-      <input type="file" name="logo" accept="image/*" required style="font-size: 0.85rem;">
-      <button type="submit" class="slot-btn" style="cursor: pointer; font-weight: 600; color: var(--accent); border-color: var(--accent);">{{ t("settings-upload") }}</button>
-    </form>
-    {% if has_logo %}
-    <form method="post" action="/dashboard/admin/logo/delete" style="margin: 0;">
-      <button type="submit" class="slot-btn" style="cursor: pointer; font-size: 0.85rem; color: var(--error-text); border-color: var(--error-text);">{{ t("settings-remove") }}</button>
-    </form>
-    {% endif %}
-  </div>
-  <div style="margin-top: 1rem;">
-    <form method="post" action="/dashboard/admin/company-link" style="margin: 0; display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
-      <label for="company_link" style="font-size: 0.875rem; font-weight: 500; white-space: nowrap;">{{ t("admin-company-link") }}</label>
-      <input type="url" id="company_link" name="company_link" value="{{ company_link }}" placeholder="https://yourcompany.com" style="flex: 1; min-width: 200px; padding: 0.4rem 0.75rem; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); font-size: 0.85rem;">
-      <button type="submit" class="slot-btn" style="cursor: pointer; font-weight: 600; color: var(--accent); border-color: var(--accent);">{{ t("source-write-save") }}</button>
-    </form>
-    <span style="font-size: 0.8rem; color: var(--text-muted); display: block; margin-top: 0.25rem;">{{ t("admin-company-link-help") }}</span>
-  </div>
-</div>
-
-<!-- Theme -->
-<div class="card">
-  <h2>{{ t("admin-theme") }}</h2>
-  <p style="font-size: 0.875rem; color: var(--text-secondary); margin-bottom: 1rem;">{{ t("admin-theme-help") }}</p>
-  <form id="theme-form" method="post" action="/dashboard/admin/accent" style="margin: 0;">
-    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 0.75rem; margin-bottom: 1rem;">
-      {% set themes = [
-        {"id": "default", "label": t("admin-theme-default"), "desc": t("admin-theme-default-desc"), "colors": ["#2563eb", "#eff6ff", "#f4f4f5", "#18181b"]},
-        {"id": "nord", "label": "Nord", "desc": t("admin-theme-nord-desc"), "colors": ["#5e81ac", "#e8eef5", "#eceff4", "#2e3440"]},
-        {"id": "dracula", "label": "Dracula", "desc": t("admin-theme-dracula-desc"), "colors": ["#bd93f9", "#f3eefe", "#f0edf5", "#282a36"]},
-        {"id": "gruvbox", "label": "Gruvbox", "desc": t("admin-theme-gruvbox-desc"), "colors": ["#d65d0e", "#fabd2f", "#f9f5d7", "#282828"]},
-        {"id": "solarized", "label": "Solarized", "desc": t("admin-theme-solarized-desc"), "colors": ["#268bd2", "#859900", "#fdf6e3", "#002b36"]},
-        {"id": "tokyo-night", "label": "Tokyo Night", "desc": t("admin-theme-tokyo-desc"), "colors": ["#7a5af5", "#7aa2f7", "#f0f0f5", "#1a1b26"]},
-        {"id": "vates", "label": "Vates", "desc": "Rouge & Bleu Spatial", "colors": ["#be1621", "#ef7f18", "#1a1b38", "#2ca878"]},
-        {"id": "custom", "label": t("admin-theme-custom"), "desc": t("admin-theme-custom-desc"), "colors": []}
-      ] %}
-      {% for t in themes %}
-      <label style="cursor: pointer;">
-        <input type="radio" name="theme" value="{{ t.id }}" {% if current_theme == t.id %}checked{% endif %} style="display: none;" onchange="themeChanged(this.value)">
-        <div class="theme-card{% if current_theme == t.id %} theme-card-active{% endif %}" data-theme="{{ t.id }}" style="border: 2px solid {% if current_theme == t.id %}var(--accent){% else %}var(--border){% endif %}; border-radius: var(--radius); padding: 0.75rem; transition: border-color 0.15s, box-shadow 0.15s;">
-          {% if t.colors %}
-          <div style="display: flex; gap: 4px; margin-bottom: 0.5rem;">
-            {% for c in t.colors %}
-            <span style="width: 18px; height: 18px; border-radius: 50%; background: {{ c }}; border: 1px solid rgba(0,0,0,0.1);"></span>
-            {% endfor %}
-          </div>
-          {% else %}
-          <div style="display: flex; gap: 4px; margin-bottom: 0.5rem;">
-            <span style="width: 18px; height: 18px; border-radius: 50%; background: conic-gradient(#ef4444, #f59e0b, #10b981, #3b82f6, #8b5cf6, #ef4444); border: 1px solid rgba(0,0,0,0.1);"></span>
-            <span style="width: 18px; height: 18px; border-radius: 50%; background: linear-gradient(135deg, #ddd, #888); border: 1px solid rgba(0,0,0,0.1);"></span>
-          </div>
-          {% endif %}
-          <div style="font-weight: 600; font-size: 0.875rem;">{{ t.label }}</div>
-          <div style="font-size: 0.75rem; color: var(--text-muted);">{{ t.desc }}</div>
-        </div>
-      </label>
-      {% endfor %}
-    </div>
-
-    <!-- Custom color pickers (shown only when custom is selected) -->
-    <div id="custom-colors" style="display: {% if current_theme == 'custom' %}block{% else %}none{% endif %}; border: 1px solid var(--border); border-radius: var(--radius); padding: 1rem; margin-bottom: 1rem;">
-      <div style="font-weight: 600; font-size: 0.875rem; margin-bottom: 0.75rem;">{{ t("admin-custom-colors") }}</div>
-      <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 0.75rem;">
-        <div>
-          <label style="font-size: 0.8rem; color: var(--text-secondary); display: block; margin-bottom: 0.25rem;">{{ t("admin-color-accent") }}</label>
-          <div style="display: flex; align-items: center; gap: 0.5rem;">
-            <input type="color" name="custom_accent" value="{{ custom_colors.accent }}" style="width: 32px; height: 32px; border: none; cursor: pointer; background: none;">
-            <input type="text" value="{{ custom_colors.accent }}" style="width: 80px; font-size: 0.8rem; padding: 0.25rem 0.4rem; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text); font-family: monospace;" oninput="this.previousElementSibling.value=this.value" data-sync="custom_accent">
-          </div>
-        </div>
-        <div>
-          <label style="font-size: 0.8rem; color: var(--text-secondary); display: block; margin-bottom: 0.25rem;">{{ t("admin-color-accent-hover") }}</label>
-          <div style="display: flex; align-items: center; gap: 0.5rem;">
-            <input type="color" name="custom_accent_hover" value="{{ custom_colors.accent_hover }}" style="width: 32px; height: 32px; border: none; cursor: pointer; background: none;">
-            <input type="text" value="{{ custom_colors.accent_hover }}" style="width: 80px; font-size: 0.8rem; padding: 0.25rem 0.4rem; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text); font-family: monospace;" oninput="this.previousElementSibling.value=this.value" data-sync="custom_accent_hover">
-          </div>
-        </div>
-        <div>
-          <label style="font-size: 0.8rem; color: var(--text-secondary); display: block; margin-bottom: 0.25rem;">{{ t("admin-color-bg") }}</label>
-          <div style="display: flex; align-items: center; gap: 0.5rem;">
-            <input type="color" name="custom_bg" value="{{ custom_colors.bg }}" style="width: 32px; height: 32px; border: none; cursor: pointer; background: none;">
-            <input type="text" value="{{ custom_colors.bg }}" style="width: 80px; font-size: 0.8rem; padding: 0.25rem 0.4rem; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text); font-family: monospace;" oninput="this.previousElementSibling.value=this.value" data-sync="custom_bg">
-          </div>
-        </div>
-        <div>
-          <label style="font-size: 0.8rem; color: var(--text-secondary); display: block; margin-bottom: 0.25rem;">{{ t("admin-color-surface") }}</label>
-          <div style="display: flex; align-items: center; gap: 0.5rem;">
-            <input type="color" name="custom_surface" value="{{ custom_colors.surface }}" style="width: 32px; height: 32px; border: none; cursor: pointer; background: none;">
-            <input type="text" value="{{ custom_colors.surface }}" style="width: 80px; font-size: 0.8rem; padding: 0.25rem 0.4rem; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text); font-family: monospace;" oninput="this.previousElementSibling.value=this.value" data-sync="custom_surface">
-          </div>
-        </div>
-        <div>
-          <label style="font-size: 0.8rem; color: var(--text-secondary); display: block; margin-bottom: 0.25rem;">{{ t("admin-color-text") }}</label>
-          <div style="display: flex; align-items: center; gap: 0.5rem;">
-            <input type="color" name="custom_text" value="{{ custom_colors.text }}" style="width: 32px; height: 32px; border: none; cursor: pointer; background: none;">
-            <input type="text" value="{{ custom_colors.text }}" style="width: 80px; font-size: 0.8rem; padding: 0.25rem 0.4rem; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text); font-family: monospace;" oninput="this.previousElementSibling.value=this.value" data-sync="custom_text">
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <button type="submit" class="btn" style="font-size: 0.875rem; padding: 0.5rem 1.25rem;">{{ t("admin-save-theme") }}</button>
-  </form>
-</div>
-<script>
-function themeChanged(val) {
-  document.getElementById('custom-colors').style.display = val === 'custom' ? 'block' : 'none';
-  document.querySelectorAll('.theme-card').forEach(function(c) {
-    var active = c.dataset.theme === val;
-    c.classList.toggle('theme-card-active', active);
-    c.style.borderColor = active ? 'var(--accent)' : 'var(--border)';
-  });
-}
-// Sync color picker → text input
-document.querySelectorAll('input[type="color"]').forEach(function(picker) {
-  picker.addEventListener('input', function() {
-    var text = this.nextElementSibling;
-    if (text) text.value = this.value;
-  });
-});
-</script>
-<style>
-.theme-card:hover { border-color: var(--border-hover) !important; box-shadow: var(--shadow); }
-.theme-card-active:hover { border-color: var(--accent) !important; }
-.user-item .user-actions { opacity: 0; max-height: 0; overflow: hidden; transition: opacity 0.15s ease, max-height 0.15s ease; padding-top: 0; padding-bottom: 0; }
-.user-item:hover .user-actions, .user-item:focus-within .user-actions { opacity: 1; max-height: 4rem; overflow: visible; }
-@media (max-width: 768px) {
-  .user-item .user-actions { opacity: 1; max-height: none; overflow: visible; }
-}
-</style>
+<!-- ══════════════════════════════════════════════════════════════════════
+     People &amp; access
+     ══════════════════════════════════════════════════════════════════════ -->
+<div class="admin-section-label">People &amp; access</div>
 
 <!-- Users -->
 <div class="card">
-  <h2>{{ t("admin-users", count=user_count) }}</h2>
-  <div style="margin-bottom: 1rem;">
-    <input type="text" id="user-search" placeholder="{{ t('admin-user-filter') }}" oninput="filterUsers()" style="width: 100%; max-width: 360px; padding: 0.5rem 0.875rem; border: 1px solid var(--border); border-radius: 9999px; font-size: 0.875rem; font-family: inherit; background: var(--surface); color: var(--text); outline: none; transition: border-color 0.15s ease, box-shadow 0.15s ease;" onfocus="this.style.borderColor='var(--accent)';this.style.boxShadow='0 0 0 3px var(--accent-subtle)'" onblur="this.style.borderColor='var(--border)';this.style.boxShadow='none'">
+  <div class="admin-card-head">
+    <span class="admin-card-icon"><svg class="ic" aria-hidden="true"><use href="#i-users"/></svg></span>
+    <div class="admin-card-head-text">
+      <h2>Users</h2>
+      <p>{{ user_count }} account(s) on this instance. Hover a row for its actions.</p>
+    </div>
   </div>
+  <input type="search" id="user-search" class="admin-filter" placeholder="Filter by name or email" oninput="filterUsers()" aria-label="Filter users">
   {% if users %}
-  <div id="user-list" style="display: flex; flex-direction: column; gap: 0.75rem;">
+  <div id="user-list" class="user-list">
     {% for u in users %}
-    <div class="user-item" data-name="{{ u.name | lower }}" data-email="{{ u.email | lower }}" style="border: 1px solid var(--border); border-radius: var(--radius); padding: 0.875rem 1rem;">
-      <div style="display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
-        <div style="min-width: 0; flex: 1;">
-          <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem;">
-            <span style="font-weight: 600; font-size: 0.925rem;">{{ u.name }}</span>
-            <span style="font-size: 0.825rem; color: var(--text-secondary); overflow-wrap: break-word;">{{ u.email }}</span>
-            {% if u.role == "admin" %}<span class="badge badge-info">{{ t("admin-badge-admin") }}</span>{% endif %}
-            {% if not u.enabled %}<span class="badge badge-error">{{ t("admin-badge-disabled") }}</span>{% endif %}
-            <span style="font-size: 0.75rem; color: var(--text-muted);">{{ u.auth_provider }}</span>
-          </div>
-          {% if u.groups %}
-          <div style="margin-top: 0.25rem; display: flex; flex-wrap: wrap; gap: 0.25rem;">
-            {% for g in u.groups %}
-            <span class="badge badge-info">{{ g }}</span>
-            {% endfor %}
-          </div>
-          {% endif %}
+    <div class="user-item" data-name="{{ u.name | lower }}" data-email="{{ u.email | lower }}">
+      <div class="user-main">
+        <div class="user-idline">
+          <span class="user-name">{{ u.name }}</span>
+          <span class="user-email">{{ u.email }}</span>
+          {% if u.role == "admin" %}<span class="badge badge-accent">admin</span>{% endif %}
+          {% if not u.enabled %}<span class="badge badge-error">disabled</span>{% endif %}
+          <span class="badge badge-muted">{{ u.auth_provider }}</span>
+          {% if u.id == current_user_id %}<span class="user-self">you</span>{% endif %}
         </div>
+        {% if u.groups %}
+        <div class="user-groups">
+          {% for g in u.groups %}
+          <span class="badge badge-info">{{ g }}</span>
+          {% endfor %}
+        </div>
+        {% endif %}
       </div>
       {% if u.id != current_user_id %}
-      <div class="user-actions" style="margin-top: 0.25rem; display: flex; flex-wrap: wrap; gap: 0.375rem; justify-content: flex-end;">
+      <div class="user-actions">
         <form method="post" action="/dashboard/admin/impersonate/{{ u.id }}" style="margin: 0;">
-          <button type="submit" class="slot-btn" style="font-size: 0.8rem; cursor: pointer; color: #d97706; border-color: #d97706;">{{ t("admin-impersonate") }}</button>
+          <button type="submit" class="btn btn-sm btn-secondary">
+            <svg class="ic" aria-hidden="true"><use href="#i-eye"/></svg> Impersonate
+          </button>
         </form>
         <form method="post" action="/dashboard/admin/users/{{ u.id }}/toggle-role" style="margin: 0;">
-          <button type="submit" class="slot-btn" style="font-size: 0.8rem; cursor: pointer;">{% if u.role == "admin" %}{{ t("admin-demote") }}{% else %}{{ t("admin-promote") }}{% endif %}</button>
+          <button type="submit" class="btn btn-sm btn-secondary">{% if u.role == "admin" %}Demote{% else %}Promote{% endif %}</button>
         </form>
         <form method="post" action="/dashboard/admin/users/{{ u.id }}/toggle-enabled" style="margin: 0;">
-          <button type="submit" class="slot-btn" style="font-size: 0.8rem; cursor: pointer; {% if u.enabled %}color: var(--error-text);{% else %}color: var(--success);{% endif %}">{% if u.enabled %}{{ t("admin-disable") }}{% else %}{{ t("admin-enable") }}{% endif %}</button>
+          <button type="submit" class="btn btn-sm {% if u.enabled %}btn-danger{% else %}btn-success{% endif %}">
+            <svg class="ic" aria-hidden="true"><use href="{% if u.enabled %}#i-ban{% else %}#i-circle-check{% endif %}"/></svg>
+            {% if u.enabled %}Disable{% else %}Enable{% endif %}
+          </button>
         </form>
-        <form method="post" action="/dashboard/admin/users/{{ u.id }}/delete" style="margin: 0;" data-confirm="{{ t('admin-delete-user-confirm', email=u.email) }}" onsubmit="return confirm(this.dataset.confirm);">
-          <button type="submit" class="slot-btn" style="font-size: 0.8rem; cursor: pointer; color: var(--error-text); border-color: var(--error-text);">{{ t("admin-delete") }}</button>
+        <form method="post" action="/dashboard/admin/users/{{ u.id }}/delete" style="margin: 0;" onsubmit="return confirm('Permanently delete user {{ u.email }}?\n\nThis removes their user record, scheduling account, calendar sources, event types, and all data uniquely owned by them. Past bookings will be deleted with their event types.\n\nFor OIDC/SSO users: if auto-register is enabled, this person will be re-created on their next login.\n\nThis cannot be undone.');">
+          <button type="submit" class="btn btn-sm btn-danger">
+            <svg class="ic" aria-hidden="true"><use href="#i-trash"/></svg> Delete
+          </button>
         </form>
-      </div>
-      {% else %}
-      <div style="margin-top: 0.25rem; text-align: right;">
-        <span style="font-size: 0.8rem; color: var(--text-muted);">{{ t("team-form-you") }}</span>
       </div>
       {% endif %}
     </div>
     {% endfor %}
   </div>
-  <div id="user-pagination" style="display: flex; align-items: center; justify-content: center; gap: 0.5rem; margin-top: 1rem;"></div>
-  <div id="user-no-results" style="display: none; padding: 1rem; color: var(--text-muted); font-size: 0.875rem;">{{ t("admin-no-users-match") }}</div>
+  <div id="user-pagination" class="admin-pagination"></div>
+  <div id="user-no-results" class="empty" style="display: none;">
+    <span class="empty-icon"><svg class="ic" aria-hidden="true"><use href="#i-search"/></svg></span>
+    <div class="empty-text">No users match that filter.</div>
+  </div>
   {% else %}
-  <p class="empty" style="padding: 1rem;">{{ t("admin-no-users") }}</p>
+  <div class="empty">
+    <span class="empty-icon"><svg class="ic" aria-hidden="true"><use href="#i-users"/></svg></span>
+    <div class="empty-text">No users yet. Create one from the CLI, or enable registration below.</div>
+  </div>
   {% endif %}
 </div>
 
 <!-- Groups -->
 <div class="card">
-  <h2>{{ t("admin-groups", count=group_count) }}</h2>
+  <div class="admin-card-head">
+    <span class="admin-card-icon"><svg class="ic" aria-hidden="true"><use href="#i-layers"/></svg></span>
+    <div class="admin-card-head-text">
+      <h2>Groups</h2>
+      <p>{{ group_count }} group(s) synced from your identity provider. Member weight sets round-robin priority — higher is assigned first.</p>
+    </div>
+  </div>
   {% if groups %}
-  <div style="margin-bottom: 1rem;">
-    <input type="text" id="group-search" placeholder="{{ t('admin-group-filter') }}" oninput="filterGroups()" style="width: 100%; max-width: 360px; padding: 0.5rem 0.875rem; border: 1px solid var(--border); border-radius: 9999px; font-size: 0.875rem; font-family: inherit; background: var(--surface); color: var(--text); outline: none; transition: border-color 0.15s ease, box-shadow 0.15s ease;" onfocus="this.style.borderColor='var(--accent)';this.style.boxShadow='0 0 0 3px var(--accent-subtle)'" onblur="this.style.borderColor='var(--border)';this.style.boxShadow='none'">
-  </div>
-  <div style="overflow-x: auto;">
-    <table style="width: 100%; border-collapse: collapse; font-size: 0.875rem;">
-      <thead>
-        <tr style="border-bottom: 2px solid var(--border); text-align: left;">
-          <th style="padding: 0.5rem 0.5rem 0.5rem 0;">{{ t("admin-group-name") }}</th>
-          <th style="padding: 0.5rem;">{{ t("team-form-members") }}</th>
-        </tr>
-      </thead>
-      <tbody id="group-list">
-        {% for g in groups %}
-        <tr class="group-item" data-name="{{ g.name | lower }}" style="border-bottom: 1px solid var(--border);">
-          <td style="padding: 0.5rem 0.5rem 0.5rem 0; vertical-align: top;">{{ g.name }}</td>
-          <td style="padding: 0.5rem;">
-            {% if g.members %}
-            <div class="group-members" style="display: flex; flex-direction: column; gap: 0.25rem;">
-              {% for m in g.members %}
-              <form method="POST" action="/dashboard/admin/groups/{{ g.id }}/members/{{ m.user_id }}/weight"{% if loop.index > 5 %} class="group-member-extra" data-group="{{ g.id }}" style="display: none; align-items: center; gap: 0.5rem;"{% else %} style="display: flex; align-items: center; gap: 0.5rem;"{% endif %}>
-                <span style="min-width: 100px;">{{ m.name }}</span>
-                <label style="font-size: 0.8rem; color: var(--text-muted);">{{ t("admin-weight") }}</label>
-                <input type="number" name="weight" value="{{ m.weight }}" min="1" max="100" style="width: 60px; padding: 0.25rem; border: 1px solid var(--border); border-radius: var(--radius); font-size: 0.8rem; background: var(--surface); color: var(--text);">
-                <button type="submit" style="padding: 0.25rem 0.5rem; font-size: 0.75rem; background: var(--btn-primary-bg); color: white; border: none; border-radius: var(--radius); cursor: pointer;">{{ t("source-write-save") }}</button>
-              </form>
-              {% endfor %}
-              {% if g.members | length > 5 %}
-              <button type="button" class="group-expand-btn" data-group="{{ g.id }}" onclick="toggleGroupMembers('{{ g.id }}')" style="background: none; border: none; color: var(--accent); font-size: 0.8rem; cursor: pointer; padding: 0.25rem 0; text-align: left;">{{ t("admin-show-more", count=g.members | length - 5) }}&hellip;</button>
-              {% endif %}
-            </div>
-            {% else %}
-            {{ g.member_count }}
-            {% endif %}
-          </td>
-        </tr>
+  <input type="search" id="group-search" class="admin-filter" placeholder="Filter by group name" oninput="filterGroups()" aria-label="Filter groups">
+  <div id="group-list" class="group-list">
+    {% for g in groups %}
+    <div class="group-item" data-name="{{ g.name | lower }}">
+      <div class="group-head">
+        <span class="group-name">{{ g.name }}</span>
+        <span class="badge badge-muted">{{ g.member_count }} member{% if g.member_count != 1 %}s{% endif %}</span>
+      </div>
+      {% if g.members %}
+      <div class="group-members">
+        {% for m in g.members %}
+        <form method="POST" action="/dashboard/admin/groups/{{ g.id }}/members/{{ m.user_id }}/weight" class="group-member-row{% if loop.index > 5 %} group-member-extra{% endif %}"{% if loop.index > 5 %} data-group="{{ g.id }}" style="display: none;"{% endif %}>
+          <span class="group-member-name">{{ m.name }}</span>
+          <span class="weight-label">weight</span>
+          <input type="number" name="weight" value="{{ m.weight }}" min="1" max="100" class="weight-input" aria-label="Round-robin weight for {{ m.name }}">
+          <button type="submit" class="btn btn-xs btn-secondary">Save</button>
+        </form>
         {% endfor %}
-      </tbody>
-    </table>
+        {% if g.members | length > 5 %}
+        <button type="button" class="group-expand-btn" data-group="{{ g.id }}" onclick="toggleGroupMembers('{{ g.id }}')">Show {{ g.members | length - 5 }} more&hellip;</button>
+        {% endif %}
+      </div>
+      {% endif %}
+    </div>
+    {% endfor %}
   </div>
-  <div id="group-pagination" style="display: flex; align-items: center; justify-content: center; gap: 0.5rem; margin-top: 1rem;"></div>
-  <div id="group-no-results" style="display: none; padding: 1rem; color: var(--text-muted); font-size: 0.875rem;">{{ t("admin-no-groups-match") }}</div>
+  <div id="group-pagination" class="admin-pagination"></div>
+  <div id="group-no-results" class="empty" style="display: none;">
+    <span class="empty-icon"><svg class="ic" aria-hidden="true"><use href="#i-search"/></svg></span>
+    <div class="empty-text">No groups match that filter.</div>
+  </div>
   {% else %}
-  <p class="empty" style="padding: 1rem; color: var(--text-muted); font-size: 0.875rem;">{{ t("admin-no-groups") }}</p>
+  <div class="empty">
+    <span class="empty-icon"><svg class="ic" aria-hidden="true"><use href="#i-layers"/></svg></span>
+    <div class="empty-text">No groups synced yet. They arrive automatically from your OIDC provider.</div>
+  </div>
   {% endif %}
 </div>
 
 <!-- Auth settings -->
 <div class="card">
-  <h2>{{ t("admin-auth-settings") }}</h2>
+  <div class="admin-card-head">
+    <span class="admin-card-icon"><svg class="ic" aria-hidden="true"><use href="#i-lock"/></svg></span>
+    <div class="admin-card-head-text">
+      <h2>Sign-in &amp; registration</h2>
+      <p>Who is allowed to create a local account on this instance.</p>
+    </div>
+  </div>
   <form method="post" action="/dashboard/admin/auth">
-    <div style="margin-bottom: 1rem;">
-      <label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.925rem; cursor: pointer;">
-        <input type="checkbox" name="registration_enabled" value="on" {% if registration_enabled %}checked{% endif %} style="width: 1rem; height: 1rem;">
-        {{ t("admin-registration-enabled") }}
-      </label>
-    </div>
-    <div class="form-group">
-      <label>{{ t("admin-allowed-domains") }} <span class="hint">{{ t("admin-allowed-domains-hint") }}</span></label>
-      <input type="text" name="allowed_email_domains" value="{{ allowed_email_domains }}" placeholder="example.com, company.org">
-    </div>
-    <button type="submit" class="slot-btn" style="cursor: pointer; font-weight: 600; color: var(--accent); border-color: var(--accent);">{{ t("admin-save-auth") }}</button>
-  </form>
-</div>
-
-<!-- System settings (base URL, SSRF private-host allowlist) -->
-<div class="card">
-  <h2>{{ t("admin-system-settings") }}</h2>
-  <p style="color: var(--text-muted); font-size: 0.875rem; margin-bottom: 1rem;">
-    {{ t("admin-system-settings-help") | safe }}
-  </p>
-  <form method="post" action="/dashboard/admin/general">
-    <div class="form-group">
-      <label>{{ t("admin-base-url") }}
-        {% if base_url_from_env %}<span class="hint" style="color: var(--warning-text, #b45309);">{{ t("admin-set-by-env", var="CALRS_BASE_URL") }}</span>{% endif %}
-      </label>
-      <input type="url" name="base_url"
-        value="{% if base_url_from_env %}{{ base_url }}{% else %}{{ base_url_db }}{% endif %}"
-        placeholder="https://cal.example.com"
-        {% if base_url_from_env %}readonly style="opacity: 0.6; cursor: not-allowed;"{% endif %}>
-      <span style="font-size: 0.8rem; color: var(--text-muted);">
-        {{ t("admin-base-url-help") }}
-        {% if base_url_from_env %}{{ t("admin-unset-env") }}{% endif %}
+    <label class="toggle-field">
+      <input type="checkbox" name="registration_enabled" value="on" {% if registration_enabled %}checked{% endif %}>
+      <span class="toggle-field-text">
+        <strong>Registration enabled</strong>
+        <span>Anyone reaching the sign-up page can create an account, subject to the domain allowlist below.</span>
       </span>
-    </div>
+    </label>
     <div class="form-group">
-      <label>{{ t("admin-private-hosts") }}
-        {% if allow_private_hosts_from_env %}<span class="hint" style="color: var(--warning-text, #b45309);">{{ t("admin-set-by-env", var="CALRS_ALLOW_PRIVATE_HOSTS") }}</span>{% endif %}
-      </label>
-      <input type="text" name="allow_private_hosts"
-        value="{% if allow_private_hosts_from_env %}{{ allow_private_hosts }}{% else %}{{ allow_private_hosts_db }}{% endif %}"
-        placeholder="radicale, 127.0.0.1"
-        {% if allow_private_hosts_from_env %}readonly style="opacity: 0.6; cursor: not-allowed;"{% endif %}>
-      <span style="font-size: 0.8rem; color: var(--text-muted);">
-        {{ t("admin-private-hosts-help") }}
-        {% if allow_private_hosts_from_env %}{{ t("admin-unset-env") }}{% endif %}
-      </span>
+      <label for="allowed_email_domains">Allowed email domains</label>
+      <input type="text" id="allowed_email_domains" name="allowed_email_domains" value="{{ allowed_email_domains }}" placeholder="example.com, company.org">
+      <span class="field-hint">Comma-separated. Leave empty to accept any domain.</span>
     </div>
-    <button type="submit" class="slot-btn" style="cursor: pointer; font-weight: 600; color: var(--accent); border-color: var(--accent);">{{ t("admin-save-system") }}</button>
+    <div class="admin-actions">
+      <button type="submit" class="btn btn-sm">Save sign-in settings</button>
+    </div>
   </form>
 </div>
 
 <!-- OIDC settings -->
 <div class="card">
-  <h2>{{ t("admin-oidc-settings") }}</h2>
-  <div style="margin-bottom: 1rem; font-size: 0.875rem; color: var(--text-secondary);">
-    {{ t("admin-status") }} {% if oidc_enabled %}<strong style="color: var(--success);">{{ t("admin-status-enabled") }}</strong>{% else %}<span style="color: var(--text-muted);">{{ t("admin-status-disabled") }}</span>{% endif %}
-    {% if oidc_issuer_url %}&middot; {{ t("admin-issuer") }} <span style="color: var(--text-muted);">{{ oidc_issuer_url }}</span>{% endif %}
-    {% if oidc_client_id %}&middot; {{ t("admin-client-id") }} <span style="color: var(--text-muted);">{{ oidc_client_id }}</span>{% endif %}
+  <div class="admin-card-head">
+    <span class="admin-card-icon"><svg class="ic" aria-hidden="true"><use href="#i-key"/></svg></span>
+    <div class="admin-card-head-text">
+      <h2>Single sign-on (OIDC)</h2>
+      <p>Authorization code flow with PKCE. Tested against Keycloak; any compliant OpenID Connect provider works.</p>
+    </div>
+  </div>
+  <div class="admin-status">
+    <span class="admin-status-item">
+      <span class="label">Status</span>
+      {% if oidc_enabled %}<span class="badge badge-success">enabled</span>{% else %}<span class="badge badge-muted">disabled</span>{% endif %}
+    </span>
+    {% if oidc_issuer_url %}
+    <span class="admin-status-item"><span class="label">Issuer</span> <span class="mono-val">{{ oidc_issuer_url }}</span></span>
+    {% endif %}
+    {% if oidc_client_id %}
+    <span class="admin-status-item"><span class="label">Client</span> <span class="mono-val">{{ oidc_client_id }}</span></span>
+    {% endif %}
   </div>
   <form method="post" action="/dashboard/admin/oidc">
-    <div style="margin-bottom: 1rem;">
-      <label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.925rem; cursor: pointer;">
-        <input type="checkbox" name="oidc_enabled" value="on" {% if oidc_enabled %}checked{% endif %} style="width: 1rem; height: 1rem;">
-        {{ t("admin-oidc-enabled") }}
-      </label>
+    <label class="toggle-field">
+      <input type="checkbox" name="oidc_enabled" value="on" {% if oidc_enabled %}checked{% endif %}>
+      <span class="toggle-field-text">
+        <strong>OIDC enabled</strong>
+        <span>Shows the SSO button on the login page.</span>
+      </span>
+    </label>
+    <div class="form-group">
+      <label for="oidc_issuer_url">Issuer URL</label>
+      <input type="url" id="oidc_issuer_url" name="oidc_issuer_url" value="{{ oidc_issuer_url }}" placeholder="https://auth.example.com">
     </div>
     <div class="form-group">
-      <label>{{ t("admin-issuer-url") }}</label>
-      <input type="url" name="oidc_issuer_url" value="{{ oidc_issuer_url }}" placeholder="https://auth.example.com">
+      <label for="oidc_client_id">Client ID</label>
+      <input type="text" id="oidc_client_id" name="oidc_client_id" value="{{ oidc_client_id }}" placeholder="cascade-calendar">
     </div>
     <div class="form-group">
-      <label>{{ t("admin-client-id-label") }}</label>
-      <input type="text" name="oidc_client_id" value="{{ oidc_client_id }}" placeholder="cascade-calendar">
+      <label for="oidc_client_secret">Client secret <span class="hint">(leave empty to keep current)</span></label>
+      <input type="password" id="oidc_client_secret" name="oidc_client_secret" value="" placeholder="Leave empty to keep unchanged">
     </div>
-    <div class="form-group">
-      <label>{{ t("admin-client-secret") }} <span class="hint">{{ t("admin-keep-current-hint") }}</span></label>
-      <input type="password" name="oidc_client_secret" value="" placeholder="{{ t('admin-keep-unchanged') }}">
+    <label class="toggle-field">
+      <input type="checkbox" name="oidc_auto_register" value="on" {% if oidc_auto_register %}checked{% endif %}>
+      <span class="toggle-field-text">
+        <strong>Auto-register new users from OIDC</strong>
+        <span>First-time sign-ins create an account instead of being refused.</span>
+      </span>
+    </label>
+    <div class="admin-actions">
+      <button type="submit" class="btn btn-sm">Save OIDC settings</button>
     </div>
-    <div style="margin-bottom: 1rem;">
-      <label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.925rem; cursor: pointer;">
-        <input type="checkbox" name="oidc_auto_register" value="on" {% if oidc_auto_register %}checked{% endif %} style="width: 1rem; height: 1rem;">
-        {{ t("admin-oidc-auto-register") }}
-      </label>
-    </div>
-    <button type="submit" class="slot-btn" style="cursor: pointer; font-weight: 600; color: var(--accent); border-color: var(--accent);">{{ t("admin-save-oidc") }}</button>
   </form>
 </div>
 
-<!-- Google Calendar OAuth2 -->
+<!-- ══════════════════════════════════════════════════════════════════════
+     Instance
+     ══════════════════════════════════════════════════════════════════════ -->
+<div class="admin-section-label">Instance</div>
+
+<!-- System settings (base URL, SSRF private-host allowlist) -->
 <div class="card">
-  <h2>{{ t("admin-google") }}</h2>
-  <div style="margin-bottom: 1rem; font-size: 0.875rem; color: var(--text-secondary);">
-    {{ t("admin-status") }} {% if google_oauth2_configured %}<strong style="color: var(--success);">{{ t("admin-status-configured") }}</strong>{% else %}<span style="color: var(--text-muted);">{{ t("admin-status-not-configured") }}</span>{% endif %}
-    {% if google_oauth2_client_id %}&middot; {{ t("admin-client-id") }} <span style="color: var(--text-muted);">{{ google_oauth2_client_id }}</span>{% endif %}
+  <div class="admin-card-head">
+    <span class="admin-card-icon"><svg class="ic" aria-hidden="true"><use href="#i-server"/></svg></span>
+    <div class="admin-card-head-text">
+      <h2>System settings</h2>
+      <p>Public URL and network-security policy. Deployment environment settings, when present, take precedence over the values stored here.</p>
+    </div>
   </div>
-  <form method="post" action="/dashboard/admin/google-oauth2">
-    <p style="font-size: 0.825rem; color: var(--text-muted); margin-bottom: 1rem;">
-      {{ t("admin-google-help", redirect_uri='<code>' ~ (base_url | escape) ~ '/dashboard/sources/google/callback</code>') | safe }}
-    </p>
+  {% if base_url_from_env or allow_private_hosts_from_env %}
+  <div class="notice notice-warning">
+    <svg class="ic" aria-hidden="true"><use href="#i-info"/></svg>
+    <span>One or more of these values is set by the deployment environment and cannot be edited here. Unset the environment variable to manage it from this page.</span>
+  </div>
+  {% endif %}
+  <form method="post" action="/dashboard/admin/general">
     <div class="form-group">
-      <label>{{ t("admin-client-id-label") }}</label>
-      <input type="text" name="google_oauth2_client_id" value="{{ google_oauth2_client_id }}" placeholder="123456789.apps.googleusercontent.com">
+      <label for="base_url">Base URL
+        {% if base_url_from_env %}<span class="badge badge-warning">from environment</span>{% endif %}
+      </label>
+      <input type="url" id="base_url" name="base_url"
+        value="{% if base_url_from_env %}{{ base_url }}{% else %}{{ base_url_db }}{% endif %}"
+        placeholder="https://cal.example.com"
+        {% if base_url_from_env %}readonly{% endif %}>
+      <span class="field-hint">
+        Public URL of this instance. Used for OIDC redirects and every link in outbound email — approve, decline, cancel, reminders.
+      </span>
     </div>
     <div class="form-group">
-      <label>{{ t("admin-client-secret") }} <span class="hint">{{ t("admin-keep-current-hint") }}</span></label>
-      <input type="password" name="google_oauth2_client_secret" value="" placeholder="{{ t('admin-keep-unchanged') }}">
+      <label for="allow_private_hosts">Private-host allowlist
+        {% if allow_private_hosts_from_env %}<span class="badge badge-warning">from environment</span>{% endif %}
+      </label>
+      <input type="text" id="allow_private_hosts" name="allow_private_hosts"
+        value="{% if allow_private_hosts_from_env %}{{ allow_private_hosts }}{% else %}{{ allow_private_hosts_db }}{% endif %}"
+        placeholder="radicale, 127.0.0.1"
+        {% if allow_private_hosts_from_env %}readonly{% endif %}>
+      <span class="field-hint">
+        Comma-separated hostnames allowed to resolve to private or reserved IPs for CalDAV/EWS sources — an SSRF-guard opt-out.
+        Add only hosts you control, such as a calendar server on the same Docker network. Empty keeps the guard active everywhere.
+      </span>
     </div>
-    <button type="submit" class="slot-btn" style="cursor: pointer; font-weight: 600; color: var(--accent); border-color: var(--accent);">{{ t("admin-save-google") }}</button>
+    <div class="admin-actions">
+      <button type="submit" class="btn btn-sm">Save system settings</button>
+    </div>
   </form>
 </div>
 
 <!-- Captcha settings -->
 <div class="card">
-  <h2>{{ t("admin-captcha") }}</h2>
-  <div style="margin-bottom: 1rem; font-size: 0.875rem; color: var(--text-secondary);">
-    {{ t("admin-status") }} {% if captcha_configured %}<strong style="color: var(--success);">{{ t("admin-status-enabled") }}</strong>{% else %}<span style="color: var(--text-muted);">{{ t("admin-status-disabled") }}</span>{% endif %}
-    {% if captcha_instance_url %}&middot; {{ t("admin-instance") }} <span style="color: var(--text-muted);">{{ captcha_instance_url }}</span>{% endif %}
+  <div class="admin-card-head">
+    <span class="admin-card-icon"><svg class="ic" aria-hidden="true"><use href="#i-shield"/></svg></span>
+    <div class="admin-card-head-text">
+      <h2>Captcha</h2>
+      <p>A privacy-first proof-of-work challenge on guest booking forms. Never shown on registration or dashboard routes.</p>
+    </div>
+  </div>
+  <div class="admin-status">
+    <span class="admin-status-item">
+      <span class="label">Status</span>
+      {% if captcha_configured %}<span class="badge badge-success">enabled</span>{% else %}<span class="badge badge-muted">disabled</span>{% endif %}
+    </span>
+    {% if captcha_instance_url %}
+    <span class="admin-status-item"><span class="label">Instance</span> <span class="mono-val">{{ captcha_instance_url }}</span></span>
+    {% endif %}
   </div>
   <form method="post" action="/dashboard/admin/captcha">
     <div class="form-group">
-      <label>{{ t("admin-instance-url") }}</label>
-      <input type="url" name="captcha_instance_url" value="{{ captcha_instance_url }}" placeholder="https://captcha.example.com">
+      <label for="captcha_instance_url">Instance URL</label>
+      <input type="url" id="captcha_instance_url" name="captcha_instance_url" value="{{ captcha_instance_url }}" placeholder="https://captcha.example.com">
     </div>
     <div class="form-group">
-      <label>{{ t("admin-site-key") }}</label>
-      <input type="text" name="captcha_site_key" value="{{ captcha_site_key }}" placeholder="your-site-key">
+      <label for="captcha_site_key">Site key</label>
+      <input type="text" id="captcha_site_key" name="captcha_site_key" value="{{ captcha_site_key }}" placeholder="your-site-key">
     </div>
     <div class="form-group">
-      <label>{{ t("admin-secret") }} <span class="hint">{{ t("admin-keep-current-hint") }}</span></label>
-      <input type="password" name="captcha_secret" value="" placeholder="{{ t('admin-keep-unchanged') }}">
+      <label for="captcha_secret">Secret <span class="hint">(leave empty to keep current)</span></label>
+      <input type="password" id="captcha_secret" name="captcha_secret" value="" placeholder="Leave empty to keep unchanged">
     </div>
     <div class="form-group">
-      <label>{{ t("admin-widget-url") }} <span class="hint">{{ t("team-form-optional") }}</span></label>
-      <input type="url" name="captcha_widget_url" value="{{ captcha_widget_url }}" placeholder="https://cdn.jsdelivr.net/npm/cap-widget">
-      <span style="font-size: 0.8rem; color: var(--text-muted);">{{ t("admin-widget-url-help") }}</span>
+      <label for="captcha_widget_url">Widget script URL <span class="hint">(optional)</span></label>
+      <input type="url" id="captcha_widget_url" name="captcha_widget_url" value="{{ captcha_widget_url }}" placeholder="https://cdn.jsdelivr.net/npm/cap-widget">
+      <span class="field-hint">Override if the CDN is blocked. Changes take effect immediately after saving.</span>
     </div>
-    <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.75rem;">{{ t("admin-captcha-disable-help") }}</p>
-    <button type="submit" class="slot-btn" style="cursor: pointer; font-weight: 600; color: var(--accent); border-color: var(--accent);">{{ t("admin-save-captcha") }}</button>
+    <p class="admin-note">Leave instance URL, site key and secret empty to disable the captcha on booking pages.</p>
+    <div class="admin-actions">
+      <button type="submit" class="btn btn-sm">Save captcha settings</button>
+    </div>
   </form>
 </div>
 
 <!-- Shared bookable resources -->
 <div class="card">
-  <h2>{{ t("admin-resources") }}</h2>
-  <p style="color: var(--text-muted); font-size: 0.875rem; margin-bottom: 1rem;">
-    {{ t("admin-resources-help") }}
-  </p>
+  <div class="admin-card-head">
+    <span class="admin-card-icon"><svg class="ic" aria-hidden="true"><use href="#i-briefcase"/></svg></span>
+    <div class="admin-card-head-text">
+      <h2>Shared resources</h2>
+      <p>Instance-level bookable things — a demo lab, a meeting room — backed by a calendar feed. Attached to an event type, a busy resource blocks its slots.</p>
+    </div>
+  </div>
+
   {% if resource_notice %}
-  <p style="color: var(--success); font-size: 0.875rem; margin-bottom: 1rem;">{{ resource_notice }}</p>
+  <div class="notice notice-success">
+    <svg class="ic" aria-hidden="true"><use href="#i-circle-check"/></svg>
+    <span>{{ resource_notice }}</span>
+  </div>
   {% endif %}
   {% if resource_error %}
-  <p style="color: var(--error-text); font-size: 0.875rem; margin-bottom: 1rem;">{{ resource_error }}</p>
+  <div class="notice notice-error">
+    <svg class="ic" aria-hidden="true"><use href="#i-alert"/></svg>
+    <span>{{ resource_error }}</span>
+  </div>
   {% endif %}
 
   {% if resources %}
-  <div style="display: flex; flex-direction: column; gap: 0.75rem; margin-bottom: 1.5rem;">
+  <div class="res-list">
     {% for r in resources %}
-    <div style="border: 1px solid var(--border); border-radius: var(--radius); padding: 0.75rem;">
-      <div style="font-weight: 600; font-size: 0.925rem;">{{ r.name }}</div>
-      <div style="color: var(--text-muted); font-size: 0.8rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ r.feed_url }}</div>
-      <div style="font-size: 0.825rem; color: var(--text-secondary); margin-top: 0.25rem;">
-        {{ t("admin-resource-stats", events=r.event_count, attached=r.attached_count) }} &middot; {{ t("sources-last-sync") }} {% if r.last_synced_at %}{{ r.last_synced_at }}{% else %}{{ t("admin-never") }}{% endif %}{% if r.last_sync_error %} <span style="color: var(--error-text);">{{ t("admin-resource-sync-failed", error=r.last_sync_error) }}</span>{% endif %}
+    <div class="res-item">
+      <div class="res-name">{{ r.name }}</div>
+      <div class="res-url">{{ r.feed_url }}</div>
+      <div class="res-meta">
+        {{ r.event_count }} event(s) cached &middot; attached to {{ r.attached_count }} event type(s) &middot; last sync
+        <span class="mono-val">{% if r.last_synced_at %}{{ r.last_synced_at }}{% else %}never{% endif %}</span>
       </div>
-      <div style="font-size: 0.825rem; margin-top: 0.25rem;">
-        {% if r.write_configured %}<span style="color: var(--success);">{{ t("admin-writeback-enabled", via=r.write_via) }}</span>{% else %}<span style="color: var(--text-muted);">{{ t("admin-writeback-readonly") }}</span>{% endif %}
+      <div class="res-meta">
+        Teams allowed: {% if r.allowed_team_names %}{{ r.allowed_team_names }}{% else %}<span class="text-muted">none — global admins only</span>{% endif %}
+        {% if r.write_configured %}<br>Reservations written back via {{ r.write_via }}.{% endif %}
       </div>
-      <div style="font-size: 0.825rem; margin-top: 0.25rem; color: var(--text-secondary);">
-        {{ t("admin-teams-allowed") }} {% if r.allowed_team_names %}{{ r.allowed_team_names }}{% else %}<span style="color: var(--text-muted);">{{ t("admin-teams-allowed-none") }}</span>{% endif %}
+      <div class="res-badges">
+        {% if r.write_configured %}
+        <span class="badge badge-success">write-back</span>
+        {% else %}
+        <span class="badge badge-muted">read-only</span>
+        {% endif %}
+        {% if r.last_sync_error %}
+        <span class="badge badge-error">sync failing</span>
+        {% endif %}
       </div>
-      <div style="margin-top: 0.5rem; display: flex; flex-wrap: wrap; gap: 0.375rem;">
+      {% if r.last_sync_error %}
+      <div class="notice notice-error" style="margin: 0.625rem 0 0;">
+        <svg class="ic" aria-hidden="true"><use href="#i-alert"/></svg>
+        <span>Last fetch failed: {{ r.last_sync_error }}</span>
+      </div>
+      {% endif %}
+      <div class="res-actions">
         <form method="post" action="/dashboard/admin/resources/{{ r.id }}/sync" style="margin: 0;">
-          <button type="submit" class="slot-btn" style="font-size: 0.8rem; cursor: pointer;">{{ t("admin-sync-now") }}</button>
+          <button type="submit" class="btn btn-sm btn-secondary">
+            <svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg> Sync now
+          </button>
         </form>
         {% if r.write_configured %}
         <form method="post" action="/dashboard/admin/resources/{{ r.id }}/test-write" style="margin: 0;">
-          <button type="submit" class="slot-btn" style="font-size: 0.8rem; cursor: pointer;">{{ t("admin-test-write") }}</button>
+          <button type="submit" class="btn btn-sm btn-ghost">Test write</button>
         </form>
         {% endif %}
         <form method="post" action="/dashboard/admin/resources/{{ r.id }}/delete" style="margin: 0;">
-          <button type="submit" class="slot-btn" style="font-size: 0.8rem; cursor: pointer; color: var(--error-text); border-color: var(--error-text);" data-confirm="{{ t('admin-delete-resource-confirm') }}" onclick="return confirm(this.dataset.confirm)">{{ t("admin-delete") }}</button>
+          <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Delete this resource? Event types using it will stop checking it.')">
+            <svg class="ic" aria-hidden="true"><use href="#i-trash"/></svg> Delete
+          </button>
         </form>
       </div>
-      <details style="margin-top: 0.5rem;">
-        <summary style="cursor: pointer; font-size: 0.825rem; color: var(--accent);">{{ t("sources-edit") }}</summary>
-        <form method="post" action="/dashboard/admin/resources/{{ r.id }}" style="margin-top: 0.75rem;">
+      <details class="admin-details">
+        <summary><svg class="ic ic-sm" aria-hidden="true"><use href="#i-pencil"/></svg> Edit resource</summary>
+        <form method="post" action="/dashboard/admin/resources/{{ r.id }}">
           <div class="form-group">
-            <label>{{ t("admin-name") }}</label>
-            <input type="text" name="name" value="{{ r.name }}">
+            <label for="res-name-{{ r.id }}">Name</label>
+            <input type="text" id="res-name-{{ r.id }}" name="name" value="{{ r.name }}">
           </div>
           <div class="form-group">
-            <label>{{ t("admin-feed-url") }}</label>
-            <input type="url" name="feed_url" value="{{ r.feed_url }}">
+            <label for="res-feed-{{ r.id }}">ICS feed URL <span class="hint">(publish address)</span></label>
+            <input type="url" id="res-feed-{{ r.id }}" name="feed_url" value="{{ r.feed_url }}">
           </div>
           <div class="form-group">
-            <label>{{ t("admin-caldav-url") }}</label>
-            <input type="url" name="caldav_url" value="{{ r.caldav_url }}">
-            <span style="font-size: 0.8rem; color: var(--text-muted);">{{ t("admin-caldav-url-help") }}</span>
+            <label for="res-caldav-{{ r.id }}">CalDAV collection URL</label>
+            <input type="url" id="res-caldav-{{ r.id }}" name="caldav_url" value="{{ r.caldav_url }}">
+            <span class="field-hint">Optional, and only needed for write-back. For BlueMind it is derived from the feed URL automatically.</span>
           </div>
           <div class="form-group">
-            <label>{{ t("admin-caldav-username") }}</label>
-            <input type="text" name="caldav_username" value="{{ r.caldav_username }}">
+            <label for="res-user-{{ r.id }}">CalDAV username</label>
+            <input type="text" id="res-user-{{ r.id }}" name="caldav_username" value="{{ r.caldav_username }}">
           </div>
           <div class="form-group">
-            <label>{{ t("admin-caldav-password") }}</label>
-            <input type="password" name="caldav_password" value="" placeholder="{{ t('admin-keep-unchanged') }}">
+            <label for="res-pass-{{ r.id }}">CalDAV password</label>
+            <input type="password" id="res-pass-{{ r.id }}" name="caldav_password" value="" placeholder="Leave empty to keep unchanged">
           </div>
           <div class="form-group">
-            <label>{{ t("admin-resource-teams") }}</label>
+            <span class="field-label">Teams allowed to use this resource</span>
             {% if resource_teams_all %}
             {% set allowed_padded = "," ~ r.allowed_team_ids ~ "," %}
-            <div style="display: flex; flex-wrap: wrap; gap: 0.5rem 1rem;">
+            <div class="check-grid">
               {% for t in resource_teams_all %}
-              <label style="display: flex; align-items: center; gap: 0.375rem; font-weight: 400; font-size: 0.875rem;">
+              <label class="check-inline">
                 <input type="checkbox" class="res-team-check" value="{{ t.id }}" {% if ("," ~ t.id ~ ",") in allowed_padded %}checked{% endif %}>
                 {{ t.name }}
               </label>
               {% endfor %}
             </div>
-            <span style="font-size: 0.8rem; color: var(--text-muted);">{{ t("admin-resource-teams-help") }}</span>
+            <span class="field-hint">Team admins of these teams can attach this resource to their team event types. Empty means global admins only.</span>
             {% else %}
-            <span style="font-size: 0.8rem; color: var(--text-muted);">{{ t("admin-no-teams") }}</span>
+            <span class="field-hint">No teams yet.</span>
             {% endif %}
             <input type="hidden" name="team_ids" value="{{ r.allowed_team_ids }}">
           </div>
-          <button type="submit" class="slot-btn" style="cursor: pointer; font-weight: 600; color: var(--accent); border-color: var(--accent);">{{ t("admin-save-resource") }}</button>
+          <div class="admin-actions">
+            <button type="submit" class="btn btn-sm">Save resource</button>
+          </div>
         </form>
       </details>
     </div>
     {% endfor %}
   </div>
+  {% else %}
+  <div class="empty">
+    <span class="empty-icon"><svg class="ic" aria-hidden="true"><use href="#i-briefcase"/></svg></span>
+    <div class="empty-text">No shared resources yet. Add one below to make a room or a device bookable.</div>
+  </div>
   {% endif %}
 
-  <h3 style="font-size: 0.95rem; margin-bottom: 0.75rem;">{{ t("admin-add-resource") }}</h3>
-  <form method="post" action="/dashboard/admin/resources">
-    <div class="form-group">
-      <label>{{ t("admin-feed-url") }}</label>
-      <input type="url" name="feed_url" required placeholder="https://mail.example.com/calendar/publish/...">
-      <span style="font-size: 0.8rem; color: var(--text-muted);">{{ t("admin-feed-url-help") }}</span>
-    </div>
-    <div class="form-group">
-      <label>{{ t("admin-name") }} <span class="hint">{{ t("team-form-optional") }}</span></label>
-      <input type="text" name="name" value="">
-      <span style="font-size: 0.8rem; color: var(--text-muted);">{{ t("admin-name-help") }}</span>
-    </div>
-    <div class="form-group">
-      <label>{{ t("admin-caldav-url") }}</label>
-      <input type="url" name="caldav_url" value="">
-      <span style="font-size: 0.8rem; color: var(--text-muted);">{{ t("admin-caldav-url-help") }}</span>
-    </div>
-    <div class="form-group">
-      <label>{{ t("admin-caldav-username") }}</label>
-      <input type="text" name="caldav_username" value="">
-    </div>
-    <div class="form-group">
-      <label>{{ t("admin-caldav-password") }}</label>
-      <input type="password" name="caldav_password" value="">
-    </div>
-    <div class="form-group">
-      <label>{{ t("admin-resource-teams") }}</label>
-      {% if resource_teams_all %}
-      <div style="display: flex; flex-wrap: wrap; gap: 0.5rem 1rem;">
-        {% for t in resource_teams_all %}
-        <label style="display: flex; align-items: center; gap: 0.375rem; font-weight: 400; font-size: 0.875rem;">
-          <input type="checkbox" class="res-team-check" value="{{ t.id }}">
-          {{ t.name }}
-        </label>
-        {% endfor %}
+  <hr class="divider">
+
+  <details class="admin-details" {% if not resources %}open{% endif %}>
+    <summary><svg class="ic ic-sm" aria-hidden="true"><use href="#i-plus"/></svg> Add a resource</summary>
+    <form method="post" action="/dashboard/admin/resources">
+      <div class="form-group">
+        <label for="new-res-feed">ICS feed URL <span class="hint">(publish address)</span></label>
+        <input type="url" id="new-res-feed" name="feed_url" required placeholder="https://mail.example.com/calendar/publish/...">
+        <span class="field-hint">BlueMind: the resource calendar's public or private calendar address.</span>
       </div>
-      <span style="font-size: 0.8rem; color: var(--text-muted);">{{ t("admin-resource-teams-help") }}</span>
-      {% else %}
-      <span style="font-size: 0.8rem; color: var(--text-muted);">{{ t("admin-no-teams") }}</span>
-      {% endif %}
-      <input type="hidden" name="team_ids" value="">
-    </div>
-    <button type="submit" class="slot-btn" style="cursor: pointer; font-weight: 600; color: var(--accent); border-color: var(--accent);">{{ t("admin-add-resource") }}</button>
-  </form>
+      <div class="form-group">
+        <label for="new-res-name">Name <span class="hint">(optional)</span></label>
+        <input type="text" id="new-res-name" name="name" value="">
+        <span class="field-hint">Leave empty to take the name from the feed.</span>
+      </div>
+      <div class="form-group">
+        <label for="new-res-caldav">CalDAV collection URL</label>
+        <input type="url" id="new-res-caldav" name="caldav_url" value="">
+        <span class="field-hint">Optional, and only needed for write-back. For BlueMind it is derived from the feed URL automatically.</span>
+      </div>
+      <div class="form-group">
+        <label for="new-res-user">CalDAV username</label>
+        <input type="text" id="new-res-user" name="caldav_username" value="">
+      </div>
+      <div class="form-group">
+        <label for="new-res-pass">CalDAV password</label>
+        <input type="password" id="new-res-pass" name="caldav_password" value="">
+      </div>
+      <div class="form-group">
+        <span class="field-label">Teams allowed to use this resource</span>
+        {% if resource_teams_all %}
+        <div class="check-grid">
+          {% for t in resource_teams_all %}
+          <label class="check-inline">
+            <input type="checkbox" class="res-team-check" value="{{ t.id }}">
+            {{ t.name }}
+          </label>
+          {% endfor %}
+        </div>
+        <span class="field-hint">Team admins of these teams can attach this resource to their team event types. Empty means global admins only.</span>
+        {% else %}
+        <span class="field-hint">No teams yet.</span>
+        {% endif %}
+        <input type="hidden" name="team_ids" value="">
+      </div>
+      <div class="admin-actions">
+        <button type="submit" class="btn btn-sm">
+          <svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg> Add resource
+        </button>
+      </div>
+    </form>
+  </details>
   <script>
     document.querySelectorAll('.res-team-check').forEach(function (cb) {
       cb.addEventListener('change', function () {
@@ -554,34 +847,231 @@ document.querySelectorAll('input[type="color"]').forEach(function(picker) {
   </script>
 </div>
 
+<!-- ══════════════════════════════════════════════════════════════════════
+     Integrations
+     ══════════════════════════════════════════════════════════════════════ -->
+<div class="admin-section-label">Integrations</div>
+
+<!-- SMTP settings -->
+<div class="card">
+  <div class="admin-card-head">
+    <span class="admin-card-icon"><svg class="ic" aria-hidden="true"><use href="#i-mail"/></svg></span>
+    <div class="admin-card-head-text">
+      <h2>Email (SMTP)</h2>
+      <p>Confirmations, reminders, approval requests and cancellations all leave through this server. Without it, no booking email is sent.</p>
+    </div>
+  </div>
+
+  {% if smtp_test_result == "sent" %}
+  <div class="notice notice-success">
+    <svg class="ic" aria-hidden="true"><use href="#i-circle-check"/></svg>
+    <span>Test email sent.</span>
+  </div>
+  {% elif smtp_test_result == "error" %}
+  <div class="notice notice-error">
+    <svg class="ic" aria-hidden="true"><use href="#i-circle-x"/></svg>
+    <span>Test email could not be sent. Check the server logs and your SMTP settings.</span>
+  </div>
+  {% endif %}
+
+  {% if smtp_error %}
+  <div class="notice notice-error">
+    <svg class="ic" aria-hidden="true"><use href="#i-alert"/></svg>
+    <span><strong>Environment configuration error.</strong> {{ smtp_error }}</span>
+  </div>
+  <p class="admin-note">Fix the deployment's SMTP environment settings, or unset them to manage SMTP from the database here.</p>
+
+  {% elif smtp_from_env %}
+  <div class="admin-status">
+    <span class="admin-status-item">
+      <span class="label">Status</span>
+      <span class="badge badge-success">configured</span>
+      {% if not smtp_enabled %}<span class="badge badge-error">disabled</span>{% endif %}
+      <span class="badge badge-warning">from environment</span>
+    </span>
+    <span class="admin-status-item"><span class="label">Host</span> <span class="mono-val">{{ smtp_host }}:{{ smtp_port }} ({{ smtp_tls_mode }})</span></span>
+    <span class="admin-status-item"><span class="label">From</span> <span class="mono-val">{% if smtp_from_name %}{{ smtp_from_name }} {% endif %}&lt;{{ smtp_from_email }}&gt;</span></span>
+  </div>
+  <p class="admin-note">Managed by deployment environment settings, which override the database. Edit those settings to change it, or unset them to manage SMTP from here.</p>
+  <form method="post" action="/dashboard/admin/smtp/test" style="margin-top: 1.25rem;">
+    <div class="form-group">
+      <label for="smtp_test_to_env">Send a test email to <span class="hint">(defaults to your account email)</span></label>
+      <input type="email" id="smtp_test_to_env" name="to" value="" placeholder="you@example.com">
+    </div>
+    <div class="admin-actions">
+      <button type="submit" class="btn btn-sm btn-secondary">
+        <svg class="ic" aria-hidden="true"><use href="#i-send"/></svg> Send test email
+      </button>
+    </div>
+  </form>
+
+  {% else %}
+  <div class="admin-status">
+    <span class="admin-status-item">
+      <span class="label">Status</span>
+      {% if smtp_configured %}
+      <span class="badge badge-success">configured</span>{% if not smtp_enabled %}<span class="badge badge-error">disabled</span>{% endif %}
+      {% else %}
+      <span class="badge badge-muted">not configured</span>
+      {% endif %}
+    </span>
+  </div>
+  <form method="post" action="/dashboard/admin/smtp">
+    <label class="toggle-field">
+      <input type="checkbox" name="enabled" value="on" {% if smtp_enabled or not smtp_configured %}checked{% endif %}>
+      <span class="toggle-field-text">
+        <strong>SMTP enabled</strong>
+        <span>Turn off to suppress all outbound email without discarding the credentials.</span>
+      </span>
+    </label>
+    <div class="form-grid-2 grid-2-1">
+      <div class="form-group">
+        <label for="smtp_host">Host</label>
+        <input type="text" id="smtp_host" name="host" value="{{ smtp_host }}" placeholder="smtp.example.com" required>
+      </div>
+      <div class="form-group">
+        <label for="smtp_port">Port</label>
+        <input type="number" id="smtp_port" name="port" min="1" max="65535" value="{% if smtp_configured %}{{ smtp_port }}{% else %}587{% endif %}" placeholder="587">
+      </div>
+    </div>
+    <div class="form-group">
+      <label for="smtp_tls_mode">TLS mode</label>
+      <select id="smtp_tls_mode" name="tls_mode">
+        <option value="starttls" {% if smtp_tls_mode != "tls" %}selected{% endif %}>STARTTLS (port 587)</option>
+        <option value="tls" {% if smtp_tls_mode == "tls" %}selected{% endif %}>Implicit TLS (port 465)</option>
+      </select>
+    </div>
+    <div class="form-grid-2">
+      <div class="form-group">
+        <label for="smtp_username">Username</label>
+        <input type="text" id="smtp_username" name="username" value="{{ smtp_username }}" placeholder="user@example.com">
+      </div>
+      <div class="form-group">
+        <label for="smtp_password">Password <span class="hint">(keep current)</span></label>
+        <input type="password" id="smtp_password" name="password" value="" placeholder="Leave empty to keep unchanged">
+      </div>
+    </div>
+    <div class="form-grid-2">
+      <div class="form-group">
+        <label for="smtp_from_email">From email</label>
+        <input type="email" id="smtp_from_email" name="from_email" value="{{ smtp_from_email }}" placeholder="noreply@example.com" required>
+      </div>
+      <div class="form-group">
+        <label for="smtp_from_name">From name <span class="hint">(optional)</span></label>
+        <input type="text" id="smtp_from_name" name="from_name" value="{{ smtp_from_name }}" placeholder="Cascade Calendar">
+      </div>
+    </div>
+    <div class="admin-actions">
+      <button type="submit" class="btn btn-sm">Save SMTP settings</button>
+    </div>
+  </form>
+
+  {% if smtp_configured %}
+  <hr class="divider">
+  <form method="post" action="/dashboard/admin/smtp/test">
+    <div class="form-group">
+      <label for="smtp_test_to">Send a test email to <span class="hint">(defaults to your account email)</span></label>
+      <input type="email" id="smtp_test_to" name="to" value="" placeholder="you@example.com">
+    </div>
+    <div class="admin-actions">
+      <button type="submit" class="btn btn-sm btn-secondary">
+        <svg class="ic" aria-hidden="true"><use href="#i-send"/></svg> Send test email
+      </button>
+    </div>
+  </form>
+  <form method="post" action="/dashboard/admin/smtp/clear" style="margin-top: 1.25rem;" onsubmit="return confirm('Delete the database SMTP configuration?');">
+    <button type="submit" class="btn btn-sm btn-danger">
+      <svg class="ic" aria-hidden="true"><use href="#i-trash"/></svg> Clear database config
+    </button>
+  </form>
+  {% endif %}
+
+  <p class="admin-note" style="margin-top: 1.25rem;">SMTP can also be configured through the deployment environment, which overrides everything above.</p>
+  {% endif %}
+</div>
+
+<!-- Google Calendar OAuth2 -->
+<div class="card">
+  <div class="admin-card-head">
+    <span class="admin-card-icon"><svg class="ic" aria-hidden="true"><use href="#i-calendar"/></svg></span>
+    <div class="admin-card-head-text">
+      <h2>Google Calendar</h2>
+      <p>Lets people connect a Google calendar over OAuth2 instead of CalDAV credentials.</p>
+    </div>
+  </div>
+  <div class="admin-status">
+    <span class="admin-status-item">
+      <span class="label">Status</span>
+      {% if google_oauth2_configured %}<span class="badge badge-success">configured</span>{% else %}<span class="badge badge-muted">not configured</span>{% endif %}
+    </span>
+    {% if google_oauth2_client_id %}
+    <span class="admin-status-item"><span class="label">Client</span> <span class="mono-val">{{ google_oauth2_client_id }}</span></span>
+    {% endif %}
+  </div>
+  <form method="post" action="/dashboard/admin/google-oauth2">
+    <p class="admin-note" style="margin-bottom: 1.25rem;">
+      Create OAuth2 credentials in the
+      <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener">Google Cloud Console</a>,
+      enable the <strong>Google Calendar API</strong>, then register
+      <code>{{ base_url }}/dashboard/sources/google/callback</code>
+      as an authorized redirect URI.
+    </p>
+    <div class="form-group">
+      <label for="google_oauth2_client_id">Client ID</label>
+      <input type="text" id="google_oauth2_client_id" name="google_oauth2_client_id" value="{{ google_oauth2_client_id }}" placeholder="123456789.apps.googleusercontent.com">
+    </div>
+    <div class="form-group">
+      <label for="google_oauth2_client_secret">Client secret <span class="hint">(leave empty to keep current)</span></label>
+      <input type="password" id="google_oauth2_client_secret" name="google_oauth2_client_secret" value="" placeholder="Leave empty to keep unchanged">
+    </div>
+    <div class="admin-actions">
+      <button type="submit" class="btn btn-sm">Save Google settings</button>
+    </div>
+  </form>
+</div>
+
 <!-- Jitsi auto-generated meeting links -->
 <div class="card">
-  <h2>{{ t("admin-jitsi") }}</h2>
-  <div style="margin-bottom: 1rem; font-size: 0.875rem; color: var(--text-secondary);">
-    {{ t("admin-status") }} {% if jitsi_configured %}<strong style="color: var(--success);">{{ t("admin-status-enabled") }}</strong>{% else %}<span style="color: var(--text-muted);">{{ t("admin-status-disabled") }}</span>{% endif %}
-    {% if jitsi_base_url %}&middot; {{ t("admin-base-url") }}: <span style="color: var(--text-muted);">{{ jitsi_base_url }}</span>{% endif %}
+  <div class="admin-card-head">
+    <span class="admin-card-icon"><svg class="ic" aria-hidden="true"><use href="#i-video"/></svg></span>
+    <div class="admin-card-head-text">
+      <h2>Jitsi meeting links</h2>
+      <p>When an event type's location is "Jitsi (auto-generated room)", Cascade builds a fresh room URL per booking from the pattern below. No external API call is involved.</p>
+    </div>
   </div>
-  <p style="color: var(--text-muted); font-size: 0.875rem; margin-bottom: 0.75rem;">
-    {{ t("admin-jitsi-help") }}
-  </p>
+  <div class="admin-status">
+    <span class="admin-status-item">
+      <span class="label">Status</span>
+      {% if jitsi_configured %}<span class="badge badge-success">enabled</span>{% else %}<span class="badge badge-muted">disabled</span>{% endif %}
+    </span>
+    {% if jitsi_base_url %}
+    <span class="admin-status-item"><span class="label">Base URL</span> <span class="mono-val">{{ jitsi_base_url }}</span></span>
+    {% endif %}
+  </div>
   <form method="post" action="/dashboard/admin/jitsi">
     <div class="form-group">
-      <label>{{ t("admin-base-url") }}</label>
-      <input type="url" name="jitsi_base_url" value="{{ jitsi_base_url }}" placeholder="https://meet.example.com">
+      <label for="jitsi_base_url">Base URL</label>
+      <input type="url" id="jitsi_base_url" name="jitsi_base_url" value="{{ jitsi_base_url }}" placeholder="https://meet.example.com">
+      <span class="field-hint">Leave empty to disable Jitsi auto-generation.</span>
     </div>
     <div class="form-group">
-      <label>{{ t("admin-display-name") }} <span class="hint">{{ t("team-form-optional") }}</span></label>
-      <input type="text" name="jitsi_display_name" value="{{ jitsi_display_name }}" placeholder="{{ t('admin-jitsi-display-name-placeholder') }}">
-      <span style="font-size: 0.8rem; color: var(--text-muted);">{{ t("admin-jitsi-display-name-help") }}</span>
+      <label for="jitsi_display_name">Display name <span class="hint">(optional)</span></label>
+      <input type="text" id="jitsi_display_name" name="jitsi_display_name" value="{{ jitsi_display_name }}" placeholder="e.g. Meet DYB">
+      <span class="field-hint">Shown to guests on the slot picker and booking form. Defaults to "Video call".</span>
     </div>
     <div class="form-group">
-      <label>{{ t("admin-room-pattern") }}</label>
+      <label for="jitsi_pattern">Room name pattern</label>
       <input type="text" id="jitsi_pattern" name="jitsi_pattern" value="{{ jitsi_pattern }}" placeholder="{{ jitsi_default_pattern }}" oninput="updateJitsiRandomWarning()">
-      <span style="font-size: 0.8rem; color: var(--text-muted);">
-        {{ t("admin-room-pattern-help", default='<code>' ~ (jitsi_default_pattern | escape) ~ '</code>') | safe }}
+      <span class="field-hint">
+        Tokens: <code>{username}</code> host, <code>{event}</code> event type slug, <code>{date}</code> YYYYMMDD, <code>{random}</code> 8 characters.
+        Default: <code>{{ jitsi_default_pattern }}</code>.
       </span>
-      <span id="jitsi_pattern_random_warning" style="display: none; font-size: 0.8rem; color: var(--warning-text, #b45309); margin-top: 0.25rem;">
-        ⚠ {{ t("admin-room-pattern-warning") | safe }}
+    </div>
+    <div id="jitsi_pattern_random_warning" class="notice notice-warning" style="display: none;">
+      <svg class="ic" aria-hidden="true"><use href="#i-alert"/></svg>
+      <span>
+        Without <code>{random}</code> the room name is predictable: two guests booking the same event type on the same day land in the same room and can see each other's meeting.
+        Stable rooms are legitimate — one personal room per host — but only enable this if that trade-off is intended.
       </span>
     </div>
     <script>
@@ -594,296 +1084,213 @@ document.querySelectorAll('input[type="color"]').forEach(function(picker) {
       }
       updateJitsiRandomWarning();
     </script>
-    <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.75rem;">{{ t("admin-jitsi-disable-help") }}</p>
-    <button type="submit" class="slot-btn" style="cursor: pointer; font-weight: 600; color: var(--accent); border-color: var(--accent);">{{ t("admin-save-jitsi") }}</button>
+    <div class="admin-actions">
+      <button type="submit" class="btn btn-sm">Save Jitsi settings</button>
+    </div>
   </form>
 </div>
 
 <!-- Generic meeting webhook -->
 <div class="card">
-  <h2>{{ t("admin-meeting-webhook") }}</h2>
-  <div style="margin-bottom: 1rem; font-size: 0.875rem; color: var(--text-secondary);">
-    {{ t("admin-status") }} {% if meeting_webhook_configured %}<strong style="color: var(--success);">{{ t("admin-status-enabled") }}</strong>{% else %}<span style="color: var(--text-muted);">{{ t("admin-status-disabled") }}</span>{% endif %}
-    {% if meeting_webhook_url %}&middot; URL: <span style="color: var(--text-muted);">{{ meeting_webhook_url }}</span>{% endif %}
+  <div class="admin-card-head">
+    <span class="admin-card-icon"><svg class="ic" aria-hidden="true"><use href="#i-code"/></svg></span>
+    <div class="admin-card-head-text">
+      <h2>Meeting webhook</h2>
+      <p>Bring your own conferencing provider. When an event type's location is "Webhook (custom provider)", Cascade POSTs the booking payload here on confirmation and expects <code>{"url": "https://..."}</code> back.</p>
+    </div>
   </div>
-  <p style="color: var(--text-muted); font-size: 0.875rem; margin-bottom: 0.75rem;">
-    {{ t("admin-meeting-webhook-help") | safe }}
-  </p>
+  <div class="admin-status">
+    <span class="admin-status-item">
+      <span class="label">Status</span>
+      {% if meeting_webhook_configured %}<span class="badge badge-success">enabled</span>{% else %}<span class="badge badge-muted">disabled</span>{% endif %}
+    </span>
+    {% if meeting_webhook_url %}
+    <span class="admin-status-item"><span class="label">Endpoint</span> <span class="mono-val">{{ meeting_webhook_url }}</span></span>
+    {% endif %}
+  </div>
   <form method="post" action="/dashboard/admin/meeting-webhook">
     <div class="form-group">
-      <label>{{ t("admin-webhook-url") }}</label>
-      <input type="url" name="meeting_webhook_url" value="{{ meeting_webhook_url }}" placeholder="https://hooks.example.com/calendar">
+      <label for="meeting_webhook_url">Webhook URL</label>
+      <input type="url" id="meeting_webhook_url" name="meeting_webhook_url" value="{{ meeting_webhook_url }}" placeholder="https://hooks.example.com/calendar">
+      <span class="field-hint">Leave empty to disable the meeting webhook.</span>
     </div>
     <div class="form-group">
-      <label>{{ t("admin-display-name") }} <span class="hint">{{ t("team-form-optional") }}</span></label>
-      <input type="text" name="meeting_webhook_display_name" value="{{ meeting_webhook_display_name }}" placeholder="{{ t('admin-webhook-display-name-placeholder') }}">
-      <span style="font-size: 0.8rem; color: var(--text-muted);">{{ t("admin-webhook-display-name-help") }}</span>
+      <label for="meeting_webhook_display_name">Display name <span class="hint">(optional)</span></label>
+      <input type="text" id="meeting_webhook_display_name" name="meeting_webhook_display_name" value="{{ meeting_webhook_display_name }}" placeholder="e.g. Zoom, Whereby, Custom Meet">
+      <span class="field-hint">Shown to guests instead of the generic "Video call" badge.</span>
     </div>
     <div class="form-group">
-      <label>{{ t("admin-authentication") }}</label>
-      <select name="meeting_webhook_auth_mode">
-        <option value="none"{% if meeting_webhook_auth_mode == "none" %} selected{% endif %}>{{ t("admin-auth-none") }}</option>
-        <option value="hmac"{% if meeting_webhook_auth_mode == "hmac" %} selected{% endif %}>{{ t("admin-auth-hmac") }}</option>
+      <label for="meeting_webhook_auth_mode">Authentication</label>
+      <select id="meeting_webhook_auth_mode" name="meeting_webhook_auth_mode">
+        <option value="none"{% if meeting_webhook_auth_mode == "none" %} selected{% endif %}>None</option>
+        <option value="hmac"{% if meeting_webhook_auth_mode == "hmac" %} selected{% endif %}>HMAC-SHA256 signature</option>
       </select>
-      <span style="font-size: 0.8rem; color: var(--text-muted);">{{ t("admin-auth-hmac-help") | safe }}</span>
+      <span class="field-hint">With HMAC, Cascade signs the raw request body before sending it.</span>
     </div>
     <div class="form-group">
-      <label>{{ t("admin-shared-secret") }} <span class="hint">{% if meeting_webhook_has_secret %}{{ t("admin-keep-current-set-hint") }}{% else %}{{ t("admin-keep-current-hint") }}{% endif %}</span></label>
-      <input type="password" name="meeting_webhook_secret" value="" placeholder="{{ t('admin-keep-unchanged') }}">
+      <label for="meeting_webhook_secret">Shared secret <span class="hint">(leave empty to keep current{% if meeting_webhook_has_secret %} — currently set{% endif %})</span></label>
+      <input type="password" id="meeting_webhook_secret" name="meeting_webhook_secret" value="" placeholder="Leave empty to keep unchanged">
     </div>
-    <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.75rem;">{{ t("admin-webhook-disable-help") }}</p>
-    <button type="submit" class="slot-btn" style="cursor: pointer; font-weight: 600; color: var(--accent); border-color: var(--accent);">{{ t("admin-save-webhook") }}</button>
+    <div class="admin-actions">
+      <button type="submit" class="btn btn-sm">Save webhook settings</button>
+    </div>
   </form>
 </div>
 
-<!-- SMTP settings -->
+<!-- ══════════════════════════════════════════════════════════════════════
+     Appearance
+     ══════════════════════════════════════════════════════════════════════ -->
+<div class="admin-section-label">Appearance</div>
+
+<!-- Logo -->
 <div class="card">
-  <h2>{{ t("admin-smtp") }}</h2>
-
-  {% if smtp_test_result == "sent" %}
-  <p style="color: var(--success); font-size: 0.875rem;">✓ {{ t("admin-smtp-test-sent") }}</p>
-  {% elif smtp_test_result == "error" %}
-  <p style="color: var(--error-text); font-size: 0.875rem;">✗ {{ t("admin-smtp-test-failed") }}</p>
-  {% endif %}
-
-  {% if smtp_error %}
-  <p style="color: var(--error-text); font-size: 0.875rem;">{{ t("admin-smtp-env-error") }} {{ smtp_error }}</p>
-  <p style="color: var(--text-muted); font-size: 0.8rem; margin-top: 0.75rem;">{{ t("admin-smtp-env-error-help") | safe }}</p>
-
-  {% elif smtp_from_env %}
-  <div style="border: 1px solid var(--border); border-radius: 6px; padding: 0.75rem 1rem; margin-bottom: 1rem; font-size: 0.85rem; color: var(--text-secondary);">
-    {{ t("admin-smtp-env-managed") | safe }}
+  <div class="admin-card-head">
+    <span class="admin-card-icon"><svg class="ic" aria-hidden="true"><use href="#i-building"/></svg></span>
+    <div class="admin-card-head-text">
+      <h2>Company logo</h2>
+      <p>Displayed on public booking pages.</p>
+    </div>
   </div>
-  <div style="font-size: 0.875rem; color: var(--text-secondary); line-height: 1.8;">
-    <div>{{ t("admin-status") }} <strong style="color: var(--success);">{{ t("admin-status-configured") }}</strong>{% if not smtp_enabled %} <span style="color: var(--error-text);">{{ t("admin-status-disabled-paren") }}</span>{% endif %} <span style="color: var(--text-muted);">{{ t("admin-via-environment") }}</span></div>
-    <div>{{ t("admin-smtp-host") }} <span style="color: var(--text-muted);">{{ smtp_host }}:{{ smtp_port }}</span> ({{ smtp_tls_mode }})</div>
-    <div>{{ t("admin-smtp-from") }} <span style="color: var(--text-muted);">{% if smtp_from_name %}{{ smtp_from_name }} {% endif %}&lt;{{ smtp_from_email }}&gt;</span></div>
+  {% if has_logo %}
+  <div class="logo-preview">
+    <img src="/logo" alt="Company logo">
   </div>
-  <form method="post" action="/dashboard/admin/smtp/test" style="margin-top: 1rem;">
-    <div class="form-group">
-      <label>{{ t("admin-send-test-email") }} <span class="hint">{{ t("admin-send-test-email-hint") }}</span></label>
-      <input type="email" name="to" value="" placeholder="you@example.com">
-    </div>
-    <button type="submit" class="slot-btn" style="cursor: pointer; font-weight: 600;">{{ t("admin-send-test-email-btn") }}</button>
-  </form>
-
-  {% else %}
-  <div style="margin-bottom: 1rem; font-size: 0.875rem; color: var(--text-secondary);">
-    {{ t("admin-status") }} {% if smtp_configured %}<strong style="color: var(--success);">{{ t("admin-status-configured") }}</strong>{% if not smtp_enabled %} <span style="color: var(--error-text);">{{ t("admin-status-disabled-paren") }}</span>{% endif %}{% else %}<span style="color: var(--text-muted);">{{ t("admin-status-not-configured") }}</span>{% endif %}
+  {% endif %}
+  <div class="btn-row" style="align-items: flex-start; gap: 0.75rem;">
+    <form method="post" action="/dashboard/admin/logo" enctype="multipart/form-data" class="upload-row">
+      <input type="file" name="logo" accept="image/*" required aria-label="Company logo file">
+      <button type="submit" class="btn btn-sm">
+        <svg class="ic" aria-hidden="true"><use href="#i-upload"/></svg> Upload
+      </button>
+    </form>
+    {% if has_logo %}
+    <form method="post" action="/dashboard/admin/logo/delete" style="margin: 0;">
+      <button type="submit" class="btn btn-sm btn-danger">
+        <svg class="ic" aria-hidden="true"><use href="#i-trash"/></svg> Remove
+      </button>
+    </form>
+    {% endif %}
   </div>
-  <form method="post" action="/dashboard/admin/smtp">
-    <div style="margin-bottom: 1rem;">
-      <label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.925rem; cursor: pointer;">
-        <input type="checkbox" name="enabled" value="on" {% if smtp_enabled or not smtp_configured %}checked{% endif %} style="width: 1rem; height: 1rem;">
-        {{ t("admin-smtp-enabled") }}
-      </label>
-    </div>
-    <div class="form-group">
-      <label>{{ t("admin-host") }}</label>
-      <input type="text" name="host" value="{{ smtp_host }}" placeholder="smtp.example.com" required>
-    </div>
-    <div class="form-group">
-      <label>{{ t("admin-port") }}</label>
-      <input type="number" name="port" min="1" max="65535" value="{% if smtp_configured %}{{ smtp_port }}{% else %}587{% endif %}" placeholder="587">
-    </div>
-    <div class="form-group">
-      <label>{{ t("admin-tls-mode") }}</label>
-      <select name="tls_mode">
-        <option value="starttls" {% if smtp_tls_mode != "tls" and smtp_tls_mode != "none" %}selected{% endif %}>{{ t("admin-tls-starttls") }}</option>
-        <option value="tls" {% if smtp_tls_mode == "tls" %}selected{% endif %}>{{ t("admin-tls-implicit") }}</option>
-        <option value="none" {% if smtp_tls_mode == "none" %}selected{% endif %}>{{ t("admin-tls-none") }}</option>
-      </select>
-      <p class="hint" style="margin-top: 0.35rem;">{{ t("admin-tls-none-warning") | safe }}</p>
-    </div>
-    <div class="form-group">
-      <label>{{ t("source-form-username") }} <span class="hint">{{ t("admin-smtp-username-hint") }}</span></label>
-      <input type="text" name="username" value="{{ smtp_username }}" placeholder="user@example.com">
-    </div>
-    <div class="form-group">
-      <label>{{ t("source-form-password") }} <span class="hint">{{ t("admin-keep-current-hint") }}</span></label>
-      <input type="password" name="password" value="" placeholder="{{ t('admin-keep-unchanged') }}">
-    </div>
-    <div class="form-group">
-      <label>{{ t("admin-from-email") }}</label>
-      <input type="email" name="from_email" value="{{ smtp_from_email }}" placeholder="noreply@example.com" required>
-    </div>
-    <div class="form-group">
-      <label>{{ t("admin-from-name") }} <span class="hint">{{ t("team-form-optional") }}</span></label>
-      <input type="text" name="from_name" value="{{ smtp_from_name }}" placeholder="Cascade Calendar">
-    </div>
-    <button type="submit" class="slot-btn" style="cursor: pointer; font-weight: 600; color: var(--accent); border-color: var(--accent);">{{ t("admin-save-smtp") }}</button>
-  </form>
+  <p class="field-hint" style="margin-top: 0.5rem;">PNG or SVG, 2 MB maximum.</p>
 
-  {% if smtp_configured %}
-  <form method="post" action="/dashboard/admin/smtp/test" style="margin-top: 1.25rem;">
-    <div class="form-group">
-      <label>{{ t("admin-send-test-email") }} <span class="hint">{{ t("admin-send-test-email-hint") }}</span></label>
-      <input type="email" name="to" value="" placeholder="you@example.com">
-    </div>
-    <button type="submit" class="slot-btn" style="cursor: pointer; font-weight: 600;">{{ t("admin-send-test-email-btn") }}</button>
-  </form>
-  <form method="post" action="/dashboard/admin/smtp/clear" style="margin-top: 1rem;" data-confirm="{{ t('admin-smtp-clear-confirm') }}" onsubmit="return confirm(this.dataset.confirm);">
-    <button type="submit" class="slot-btn" style="cursor: pointer; color: var(--error-text); border-color: var(--error-text);">{{ t("admin-clear-db-config") }}</button>
-  </form>
-  {% endif %}
+  <hr class="divider">
 
-  <p style="color: var(--text-muted); font-size: 0.8rem; margin-top: 1rem;">{{ t("admin-smtp-env-help") | safe }}</p>
-  {% endif %}
+  <form method="post" action="/dashboard/admin/company-link">
+    <div class="form-group" style="margin-bottom: 0;">
+      <label for="company_link">Company link</label>
+      <input type="url" id="company_link" name="company_link" value="{{ company_link }}" placeholder="https://yourcompany.com">
+      <span class="field-hint">The logo links here on public booking pages. Leave empty for no link.</span>
+    </div>
+    <div class="admin-actions"><button type="submit" class="btn btn-sm">Save link</button></div>
+  </form>
 </div>
 
-<!-- SMS gateway settings -->
+<!-- Theme -->
 <div class="card">
-  <h2>{{ t("admin-sms") }}</h2>
-  <p style="color: var(--text-muted); font-size: 0.85rem; margin-top: -0.5rem; margin-bottom: 1rem;">
-    {{ t("admin-sms-help") }}
-  </p>
-
-  {% if sms_test_result == "sent" %}
-  <p style="color: var(--success); font-size: 0.875rem;">✓ {{ sms_test_detail or t("admin-sms-test-sent") }}</p>
-  {% elif sms_test_result == "checked" %}
-  <p style="color: var(--success); font-size: 0.875rem;">✓ {{ sms_test_detail or t("admin-sms-test-checked") }}</p>
-  {% elif sms_test_result == "error" %}
-  <p style="color: var(--error-text); font-size: 0.875rem;">✗ {{ sms_test_detail or t("admin-sms-test-error") }}</p>
-  {% endif %}
-
-  {% if sms_trial_mode %}
-  <p style="color: var(--error-text); font-size: 0.85rem; border: 1px solid var(--error-text); border-radius: 6px; padding: 0.625rem 0.875rem;">
-    {{ t("admin-sms-trial-warning") | safe }}
-  </p>
-  {% endif %}
-
-  {% if sms_configured and not captcha_configured %}
-  <p style="color: var(--error-text); font-size: 0.85rem; border: 1px solid var(--error-text); border-radius: 6px; padding: 0.625rem 0.875rem;">
-    {{ t("admin-sms-captcha-warning") }}
-  </p>
-  {% endif %}
-
-  {% if sms_configured %}
-  <div style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 1rem;">
-    {{ t("admin-sms-sent-today") }} <strong>{{ sms_sent_today }}</strong>{% if sms_daily_cap > 0 %} {{ t("admin-sms-of-cap", cap=sms_daily_cap) }}{% endif %}{% if sms_cost_currency %} &middot; {{ sms_cost_today }} {{ sms_cost_currency }}{% endif %}
-  </div>
-  {% endif %}
-
-  {% if sms_error %}
-  <p style="color: var(--error-text); font-size: 0.875rem;">{{ t("admin-sms-config-error") }} {{ sms_error }}</p>
-  <p style="color: var(--text-muted); font-size: 0.8rem; margin-top: 0.75rem;">{{ t("admin-sms-env-error-help") | safe }}</p>
-
-  {% elif sms_from_env %}
-  <div style="border: 1px solid var(--border); border-radius: 6px; padding: 0.75rem 1rem; margin-bottom: 1rem; font-size: 0.85rem; color: var(--text-secondary);">
-    {{ t("admin-sms-env-managed") | safe }}
-  </div>
-  <div style="font-size: 0.875rem; color: var(--text-secondary); line-height: 1.8;">
-    <div>{{ t("admin-status") }} <strong style="color: var(--success);">{{ t("admin-status-configured") }}</strong> <span style="color: var(--text-muted);">{{ t("admin-via-environment") }}</span></div>
-    <div>{{ t("admin-sms-gateway") }} <span style="color: var(--text-muted);">{{ sms_provider }}</span></div>
-    {% if sms_api_key %}<div>{{ t("admin-sms-account") }} <span style="color: var(--text-muted);">{{ sms_api_key }}</span></div>{% endif %}
-    <div>{{ t("admin-sms-sender") }} <span style="color: var(--text-muted);">{{ sms_sender }}</span></div>
-  </div>
-  <form method="post" action="/dashboard/admin/sms/test" style="margin-top: 1rem;">
-    <div class="form-group">
-      <label>{{ t("admin-send-test-sms") }} <span class="hint">{% if sms_supports_check %}{{ t("admin-send-test-sms-hint-check") }}{% else %}{{ t("admin-send-test-sms-hint-e164") }}{% endif %}</span></label>
-      <input type="text" name="to" value="" placeholder="+15551234567">
+  <div class="admin-card-head">
+    <span class="admin-card-icon"><svg class="ic" aria-hidden="true"><use href="#i-palette"/></svg></span>
+    <div class="admin-card-head-text">
+      <h2>Theme</h2>
+      <p>The colour palette for every page. Each theme carries its own light and dark variant, so the dark/light toggle stays independent.</p>
     </div>
-    <button type="submit" class="slot-btn" style="cursor: pointer; font-weight: 600;">{{ t("admin-test-gateway") }}</button>
-  </form>
-
-  {% else %}
-  <div style="margin-bottom: 1rem; font-size: 0.875rem; color: var(--text-secondary);">
-    {{ t("admin-status") }} {% if sms_configured %}<strong style="color: var(--success);">{{ t("admin-status-configured") }}</strong>{% if not sms_enabled %} <span style="color: var(--error-text);">{{ t("admin-status-disabled-paren") }}</span>{% endif %}{% else %}<span style="color: var(--text-muted);">{{ t("admin-status-not-configured") }}</span>{% endif %}
   </div>
-  <form method="post" action="/dashboard/admin/sms">
-    <div style="margin-bottom: 1rem;">
-      <label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.925rem; cursor: pointer;">
-        <input type="checkbox" name="enabled" value="on" {% if sms_enabled or not sms_configured %}checked{% endif %} style="width: 1rem; height: 1rem;">
-        {{ t("admin-sms-enabled") }}
+  <form id="theme-form" method="post" action="/dashboard/admin/accent" style="margin: 0;">
+    <div class="theme-grid">
+      {% set themes = [
+        {"id": "default", "label": "Cascade", "desc": "Deep ocean on bone", "colors": ["#1A3A4A", "#E8F0F3", "#F5F3F0", "#22201D"]},
+        {"id": "nord", "label": "Nord", "desc": "Arctic frost", "colors": ["#5e81ac", "#e8eef5", "#eceff4", "#2e3440"]},
+        {"id": "dracula", "label": "Dracula", "desc": "Dark purple", "colors": ["#bd93f9", "#f3eefe", "#f0edf5", "#282a36"]},
+        {"id": "gruvbox", "label": "Gruvbox", "desc": "Retro warm", "colors": ["#d65d0e", "#fabd2f", "#f9f5d7", "#282828"]},
+        {"id": "solarized", "label": "Solarized", "desc": "Ethan's classic", "colors": ["#268bd2", "#859900", "#fdf6e3", "#002b36"]},
+        {"id": "tokyo-night", "label": "Tokyo Night", "desc": "Neon cityscape", "colors": ["#7a5af5", "#7aa2f7", "#f0f0f5", "#1a1b26"]},
+        {"id": "vates", "label": "Vates", "desc": "Rouge & Bleu Spatial", "colors": ["#be1621", "#ef7f18", "#1a1b38", "#2ca878"]},
+        {"id": "custom", "label": "Custom", "desc": "Your colours", "colors": []}
+      ] %}
+      {% for t in themes %}
+      <label class="theme-option">
+        <input type="radio" name="theme" value="{{ t.id }}" {% if current_theme == t.id %}checked{% endif %} onchange="themeChanged(this.value)">
+        <div class="theme-card{% if current_theme == t.id %} theme-card-active{% endif %}" data-theme="{{ t.id }}">
+          <span class="theme-check"><svg class="ic ic-sm ic-strong" aria-hidden="true"><use href="#i-check"/></svg></span>
+          {% if t.colors %}
+          <div class="theme-swatches">
+            {% for c in t.colors %}
+            <span class="theme-swatch" style="background: {{ c }};"></span>
+            {% endfor %}
+          </div>
+          {% else %}
+          <div class="theme-swatches">
+            <span class="theme-swatch" style="background: conic-gradient(#ef4444, #f59e0b, #10b981, #3b82f6, #8b5cf6, #ef4444);"></span>
+            <span class="theme-swatch" style="background: linear-gradient(135deg, #ddd, #888);"></span>
+          </div>
+          {% endif %}
+          <div class="theme-name">{{ t.label }}</div>
+          <div class="theme-desc">{{ t.desc }}</div>
+        </div>
       </label>
-    </div>
-    <div class="form-group">
-      <label>{{ t("admin-sms-gateway-label") }}</label>
-      <select name="provider" id="sms-provider" style="width: 100%;">
-        {% for p in sms_providers %}
-        <option value="{{ p.kind }}" {% if sms_provider == p.kind %}selected{% endif %}>{{ p.label }}</option>
-        {% endfor %}
-      </select>
+      {% endfor %}
     </div>
 
-    {# One block per gateway, all rendered from the provider registry and
-       toggled client-side. The labels differ per gateway ("Account SID" vs
-       "API token"), so adding a gateway in src/sms/factory.rs is enough. #}
-    {% for p in sms_providers %}
-    <div class="sms-provider-fields" data-provider="{{ p.kind }}" style="display: {% if sms_provider == p.kind %}block{% else %}none{% endif %};">
-      {% if p.api_key_label %}
-      <div class="form-group">
-        <label>{{ p.api_key_label }}</label>
-        <input type="text" name="api_key" value="{% if sms_provider == p.kind %}{{ sms_api_key }}{% endif %}"{% if sms_provider != p.kind %} disabled{% endif %}>
+    <!-- Custom color pickers (shown only when custom is selected) -->
+    <div id="custom-colors" class="custom-colors" style="display: {% if current_theme == 'custom' %}block{% else %}none{% endif %};">
+      <div class="field-label" style="margin-bottom: 0.75rem;">Custom colours</div>
+      <div class="custom-grid">
+        <div>
+          <label class="field-label" for="custom_accent_hex">Accent</label>
+          <div class="custom-swatch-row">
+            <input type="color" name="custom_accent" value="{{ custom_colors.accent }}" aria-label="Accent colour">
+            <input type="text" id="custom_accent_hex" class="hex-input" value="{{ custom_colors.accent }}" spellcheck="false" oninput="this.previousElementSibling.value=this.value" data-sync="custom_accent">
+          </div>
+        </div>
+        <div>
+          <label class="field-label" for="custom_accent_hover_hex">Accent hover</label>
+          <div class="custom-swatch-row">
+            <input type="color" name="custom_accent_hover" value="{{ custom_colors.accent_hover }}" aria-label="Accent hover colour">
+            <input type="text" id="custom_accent_hover_hex" class="hex-input" value="{{ custom_colors.accent_hover }}" spellcheck="false" oninput="this.previousElementSibling.value=this.value" data-sync="custom_accent_hover">
+          </div>
+        </div>
+        <div>
+          <label class="field-label" for="custom_bg_hex">Background</label>
+          <div class="custom-swatch-row">
+            <input type="color" name="custom_bg" value="{{ custom_colors.bg }}" aria-label="Background colour">
+            <input type="text" id="custom_bg_hex" class="hex-input" value="{{ custom_colors.bg }}" spellcheck="false" oninput="this.previousElementSibling.value=this.value" data-sync="custom_bg">
+          </div>
+        </div>
+        <div>
+          <label class="field-label" for="custom_surface_hex">Surface</label>
+          <div class="custom-swatch-row">
+            <input type="color" name="custom_surface" value="{{ custom_colors.surface }}" aria-label="Surface colour">
+            <input type="text" id="custom_surface_hex" class="hex-input" value="{{ custom_colors.surface }}" spellcheck="false" oninput="this.previousElementSibling.value=this.value" data-sync="custom_surface">
+          </div>
+        </div>
+        <div>
+          <label class="field-label" for="custom_text_hex">Text</label>
+          <div class="custom-swatch-row">
+            <input type="color" name="custom_text" value="{{ custom_colors.text }}" aria-label="Text colour">
+            <input type="text" id="custom_text_hex" class="hex-input" value="{{ custom_colors.text }}" spellcheck="false" oninput="this.previousElementSibling.value=this.value" data-sync="custom_text">
+          </div>
+        </div>
       </div>
-      {% endif %}
-      <div class="form-group">
-        <label>{{ p.api_secret_label }} <span class="hint">{{ t("admin-keep-current-hint") }}</span></label>
-        <input type="password" name="api_secret" value="" placeholder="{% if sms_provider == p.kind %}{{ t('admin-keep-unchanged') }}{% else %}{{ t('admin-required-on-switch') }}{% endif %}"{% if sms_provider != p.kind %} disabled{% endif %}>
-      </div>
-      <div class="form-group">
-        <label>{{ p.sender_label }} <span class="hint">{{ p.sender_hint }}</span></label>
-        <input type="text" name="sender" value="{% if sms_provider == p.kind %}{{ sms_sender }}{% endif %}"{% if sms_provider != p.kind %} disabled{% endif %}>
-      </div>
-      {% if p.base_url_label %}
-      <div class="form-group">
-        <label>{{ p.base_url_label }} <span class="hint">{{ p.base_url_hint }}</span></label>
-        <input type="text" name="base_url" value="{% if sms_provider == p.kind %}{{ sms_base_url }}{% endif %}"{% if sms_provider != p.kind %} disabled{% endif %}>
-      </div>
-      {% endif %}
-      {% if p.docs_url %}
-      <p style="color: var(--text-muted); font-size: 0.8rem; margin-top: -0.25rem;"><a href="{{ p.docs_url }}" target="_blank" rel="noopener noreferrer">{{ t("admin-sms-docs", provider=p.label) }}</a></p>
-      {% endif %}
+      <p class="field-hint" style="margin-top: 0.875rem;">Headings, status colours and focus rings are derived from these five values.</p>
     </div>
-    {% endfor %}
 
-    <div style="margin-top: 1rem;">
-      <label>{{ t("admin-sms-country") }} <span class="hint">{{ t("admin-sms-country-hint") }}</span></label>
-      <select name="default_country_code" style="width: 100%;">
-        {% for country in sms_country_codes %}
-        <option value="{{ country.code }}" {% if sms_default_country == country.code %}selected{% endif %}>{{ country.label }}</option>
-        {% endfor %}
-      </select>
-    </div>
-    <div class="form-group" style="margin-top: 1rem;">
-      <label>{{ t("admin-sms-daily-cap") }} <span class="hint">{{ t("admin-sms-daily-cap-hint") }}</span></label>
-      <input type="number" name="daily_cap" min="0" step="1" value="{{ sms_daily_cap }}">
-      <span class="hint" style="font-size: 0.8rem; color: var(--text-muted); display: block; margin-top: 0.25rem;">{{ t("admin-sms-daily-cap-help") }}</span>
-    </div>
-    <button type="submit" class="slot-btn" style="cursor: pointer; font-weight: 600; color: var(--accent); border-color: var(--accent);">{{ t("admin-save-sms") }}</button>
+    <div class="btn-row"><button type="submit" class="btn">Save theme</button></div>
   </form>
-
-  {% if sms_configured %}
-  <form method="post" action="/dashboard/admin/sms/test" style="margin-top: 1.25rem;">
-    <div class="form-group">
-      <label>{{ t("admin-send-test-sms") }} <span class="hint">{% if sms_supports_check %}{{ t("admin-send-test-sms-hint-check") }}{% else %}{{ t("admin-send-test-sms-hint-e164") }}{% endif %}</span></label>
-      <input type="text" name="to" value="" placeholder="+15551234567">
-    </div>
-    <button type="submit" class="slot-btn" style="cursor: pointer; font-weight: 600;">{{ t("admin-test-gateway") }}</button>
-  </form>
-  <form method="post" action="/dashboard/admin/sms/clear" style="margin-top: 1rem;" data-confirm="{{ t('admin-sms-clear-confirm') }}" onsubmit="return confirm(this.dataset.confirm);">
-    <button type="submit" class="slot-btn" style="cursor: pointer; color: var(--error-text); border-color: var(--error-text);">{{ t("admin-clear-db-config") }}</button>
-  </form>
-  {% endif %}
-
-  <p style="color: var(--text-muted); font-size: 0.8rem; margin-top: 1rem;">{{ t("admin-sms-env-help") | safe }}</p>
-  {% endif %}
-
-  {# Instance policy, not gateway config, so it stays editable even when the
-     environment block governs the gateway. #}
-  <form method="post" action="/dashboard/admin/sms/policy" style="margin-top: 1.25rem; padding-top: 1.25rem; border-top: 1px solid var(--border);">
-    <label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.925rem; cursor: pointer;">
-      <input type="checkbox" name="allow_all_users" value="on" {% if sms_allow_all_users %}checked{% endif %} style="width: 1rem; height: 1rem;">
-      {{ t("admin-sms-allow-all") }}
-    </label>
-    <span class="hint" style="font-size: 0.8rem; color: var(--text-muted); display: block; margin: 0.375rem 0 0.75rem;">{{ t("admin-sms-allow-all-help") }}</span>
-    <button type="submit" class="slot-btn" style="cursor: pointer; font-weight: 600;">{{ t("admin-save-policy") }}</button>
-  </form>
-
-  <p style="color: var(--text-muted); font-size: 0.8rem; margin-top: 1.25rem;">
-    {{ t("admin-sms-going-live") | safe }}
-  </p>
 </div>
+<script>
+function themeChanged(val) {
+  document.getElementById('custom-colors').style.display = val === 'custom' ? 'block' : 'none';
+  document.querySelectorAll('.theme-card').forEach(function(c) {
+    c.classList.toggle('theme-card-active', c.dataset.theme === val);
+  });
+}
+// Sync the colour picker into its hex text input.
+document.querySelectorAll('input[type="color"]').forEach(function(picker) {
+  picker.addEventListener('input', function() {
+    var text = this.nextElementSibling;
+    if (text) text.value = this.value;
+  });
+});
+</script>
 
 <script>
 (function() {
@@ -953,9 +1360,10 @@ var ADMIN_I18N = {
     if (!pag) return;
     if (totalPages <= 1) { pag.innerHTML = ''; return; }
 
-    var html = '<span style="font-size:0.8rem;color:var(--text-muted);">' + ADMIN_I18N.page.replace('%1', userPage).replace('%2', totalPages) + '</span> ';
-    if (userPage > 1) html += '<button onclick="window._userPageNav(-1)" class="slot-btn" style="font-size:0.8rem;cursor:pointer;padding:0.3rem 0.6rem;">&larr;</button> ';
-    if (userPage < totalPages) html += '<button onclick="window._userPageNav(1)" class="slot-btn" style="font-size:0.8rem;cursor:pointer;padding:0.3rem 0.6rem;">&rarr;</button>';
+    var html = '';
+    if (userPage > 1) html += '<button type="button" onclick="window._userPageNav(-1)" class="btn btn-sm btn-ghost" aria-label="Previous page">&larr;</button>';
+    html += '<span class="pager-status">Page ' + userPage + ' of ' + totalPages + '</span>';
+    if (userPage < totalPages) html += '<button type="button" onclick="window._userPageNav(1)" class="btn btn-sm btn-ghost" aria-label="Next page">&rarr;</button>';
     pag.innerHTML = html;
   }
 
@@ -1003,9 +1411,10 @@ var ADMIN_I18N = {
     if (!pag) return;
     if (totalPages <= 1) { pag.innerHTML = ''; return; }
 
-    var html = '<span style="font-size:0.8rem;color:var(--text-muted);">' + ADMIN_I18N.page.replace('%1', groupPage).replace('%2', totalPages) + '</span> ';
-    if (groupPage > 1) html += '<button onclick="window._groupPageNav(-1)" class="slot-btn" style="font-size:0.8rem;cursor:pointer;padding:0.3rem 0.6rem;">&larr;</button> ';
-    if (groupPage < totalPages) html += '<button onclick="window._groupPageNav(1)" class="slot-btn" style="font-size:0.8rem;cursor:pointer;padding:0.3rem 0.6rem;">&rarr;</button>';
+    var html = '';
+    if (groupPage > 1) html += '<button type="button" onclick="window._groupPageNav(-1)" class="btn btn-sm btn-ghost" aria-label="Previous page">&larr;</button>';
+    html += '<span class="pager-status">Page ' + groupPage + ' of ' + totalPages + '</span>';
+    if (groupPage < totalPages) html += '<button type="button" onclick="window._groupPageNav(1)" class="btn btn-sm btn-ghost" aria-label="Next page">&rarr;</button>';
     pag.innerHTML = html;
   }
 
@@ -1023,9 +1432,8 @@ window.toggleGroupMembers = function(groupId) {
   extras.forEach(function(el) {
     el.style.display = hidden ? 'flex' : 'none';
   });
-  btn.textContent = hidden
-    ? ADMIN_I18N.showFewer
-    : ADMIN_I18N.showMore.replace('%1', extras.length) + '\u2026';
+  btn.textContent = hidden ? 'Show fewer' : 'Show ' + extras.length + ' more…';
 };
 </script>
+</div>
 {% endblock dashboard_content %}

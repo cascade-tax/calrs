@@ -1,9 +1,13 @@
 {% extends "base.html" %}
 {% block title %}{{ t("already-claimed-page-title") }}{% endblock %}
+{% block head %}{% include "_booking_action_head.html" %}{% endblock %}
 {% block content %}
-<div class="card" style="text-align: center;">
-  <div class="check" style="background: var(--text-muted);">!</div>
-  <h1>{{ t("already-claimed-heading") }}</h1>
-  <p class="subtitle">{{ t("already-claimed-subtitle", name=claimed_by_name) }}</p>
+<div class="card">
+  <div class="action-head">
+    <div class="check check-warn"><svg class="ic" aria-hidden="true"><use href="#i-info"/></svg></div>
+    <h1>{{ t("already-claimed-heading") }}</h1>
+    <p class="subtitle">{{ t("already-claimed-subtitle", name=claimed_by_name) }}</p>
+  </div>
 </div>
+<p class="action-note">{{ t("common-close-page") }}</p>
 {% endblock %}

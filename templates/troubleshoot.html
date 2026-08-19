@@ -4,108 +4,279 @@
 {% block dashboard_content %}
 
 {% if no_event_types %}
+<div class="page-head">
+  <div class="page-head-text">
+    <h1>Troubleshoot availability</h1>
+    <p>Inspect why a given day offers the slots it does.</p>
+  </div>
+</div>
 <div class="card">
-  <h1>{{ t("troubleshoot-heading") }}</h1>
-  {% if has_team_event_types %}
-  <p class="empty">{{ t("troubleshoot-empty-team-only") }}</p>
-  {% else %}
-  <p class="empty">{{ t("troubleshoot-empty", link='<a href="/dashboard/event-types/new" style="color: var(--accent); text-decoration: none;">' ~ (t("troubleshoot-empty-link-label") | escape) ~ '</a>') | safe }}</p>
-  {% endif %}
+  <div class="empty">
+    <div class="empty-icon"><svg class="ic" aria-hidden="true"><use href="#i-search"/></svg></div>
+    {% if has_team_event_types %}
+    <p class="empty-text">Troubleshooting covers personal event types only. Team event types are not listed here.</p>
+    {% else %}
+    <p class="empty-text">No event types yet. <a href="/dashboard/event-types/new">Create one</a> to start troubleshooting availability.</p>
+    {% endif %}
+  </div>
 </div>
 {% else %}
-<div class="card">
-  <h1>{{ t("troubleshoot-heading") }}</h1>
-  <p class="subtitle">{{ t("troubleshoot-subtitle", title='<strong>' ~ (et_title | escape) ~ '</strong>') | safe }} ({{ t("troubleshoot-duration", minutes=duration) }}{% if buf_before %}, {{ t("troubleshoot-buffer-before", minutes=buf_before) }}{% endif %}{% if buf_after %}, {{ t("troubleshoot-buffer-after", minutes=buf_after) }}{% endif %}{% if min_notice %}, {{ t("troubleshoot-min-notice", minutes=min_notice) }}{% endif %}).</p>
+<style>
+  /* ══════════════════════════════════════════════════════════════════
+     Availability timeline — categorical palette
+     Six categories, derived from Cascade tokens so both themes track the
+     rest of the product. Hue alone never carries a category: lightness
+     and texture separate the three that read as "blocked".
 
-  <form id="troubleshoot-form" method="get" action="/dashboard/troubleshoot" style="display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; margin: 1rem 0;">
-    <select name="event_type" style="padding: 0.375rem 0.625rem; border: 1px solid var(--border); border-radius: var(--radius); font-size: 0.85rem; font-family: inherit; background: var(--surface); color: var(--text);">
+       available    lightest fill, no texture
+       outside      recessed neutral, no texture
+       buffer       45° hatch            (texture)
+       resource     amber + vertical rule (texture)
+       busy         coral, solid          — the attention category
+       booking      accent, solid         — darkest in light, lightest in dark
+     ══════════════════════════════════════════════════════════════════ */
+  .tl {
+    --tl-available: color-mix(in srgb, var(--success) 34%, var(--surface));
+    --tl-outside: color-mix(in srgb, var(--text-muted) 11%, var(--surface));
+    --tl-hatch: var(--text-muted);
+    --tl-busy: var(--coral);
+    --tl-booking: var(--accent);
+    --tl-resource: var(--warning);
+    --tl-resource-rule: color-mix(in srgb, var(--warning) 45%, var(--surface));
+  }
+
+  /* ── Controls ────────────────────────────────────────────────────── */
+  .tl-controls {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    flex-wrap: wrap;
+    margin-bottom: 1.25rem;
+  }
+  .tl-controls select[name="event_type"] { min-width: 13rem; }
+  .tl-date { display: flex; align-items: center; gap: 0.375rem; }
+  .tl-step {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.25rem;
+    height: 2.25rem;
+    padding: 0;
+    flex: none;
+  }
+
+  .tl-day {
+    font-family: var(--font-display);
+    font-size: 0.9375rem;
+    font-weight: 600;
+    letter-spacing: -0.015em;
+    color: var(--heading);
+    margin-bottom: 0.75rem;
+  }
+
+  /* ── Legend ──────────────────────────────────────────────────────── */
+  .tl-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.375rem 1rem;
+    margin-bottom: 0.75rem;
+    font-size: 0.8125rem;
+    color: var(--text-secondary);
+  }
+  .tl-legend span { display: inline-flex; align-items: center; gap: 0.4375rem; }
+
+  .tl-swatch {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    flex: none;
+    border-radius: 3px;
+    border: 1px solid var(--border-strong);
+    background-color: var(--tl-outside);
+  }
+  .tl-dot {
+    display: inline-block;
+    width: 9px;
+    height: 9px;
+    flex: none;
+    border-radius: 2px;
+    background-color: var(--tl-outside);
+  }
+
+  /* Category fills — shared by legend swatches, timeline blocks and the
+     breakdown dots, so a colour is never defined twice. */
+  .tl-available { background-color: var(--tl-available); }
+  .tl-outside { background-color: var(--tl-outside); }
+  .tl-busy_event { background-color: var(--tl-busy); }
+  .tl-booking { background-color: var(--tl-booking); }
+  .tl-resource_busy {
+    background-color: var(--tl-resource);
+    background-image: repeating-linear-gradient(90deg, transparent 0 3px, var(--tl-resource-rule) 3px 5px);
+  }
+  .tl-buffer, .tl-min_notice {
+    background-color: var(--tl-outside);
+    background-image: repeating-linear-gradient(45deg, var(--tl-hatch) 0 2px, transparent 2px 5px);
+  }
+
+  /* ── Timeline ────────────────────────────────────────────────────── */
+  .tl-track {
+    position: relative;
+    height: 48px;
+    background: var(--surface-sunken);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    margin-bottom: 0.25rem;
+  }
+  .tl-block {
+    position: absolute;
+    top: 0;
+    height: 100%;
+    box-shadow: inset -1px 0 0 var(--surface);
+  }
+
+  .tl-hours {
+    position: relative;
+    height: 20px;
+    margin-bottom: 1.5rem;
+    font-family: var(--font-mono);
+    font-size: 0.625rem;
+    letter-spacing: 0.03em;
+    color: var(--text-muted);
+  }
+  .tl-hours span {
+    position: absolute;
+    transform: translateX(-50%);
+    white-space: nowrap;
+  }
+
+  /* ── Breakdown ───────────────────────────────────────────────────── */
+  .tl-row {
+    display: flex;
+    align-items: baseline;
+    gap: 0.625rem;
+    padding: 0.4375rem 0;
+    font-size: 0.875rem;
+  }
+  .tl-row + .tl-row { border-top: 1px solid var(--border); }
+  .tl-row time {
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+    color: var(--text-muted);
+    white-space: nowrap;
+    min-width: 9.25rem;
+    font-variant-numeric: tabular-nums;
+  }
+  .tl-row .tl-dot { align-self: center; }
+  /* A 9px hatch reads as noise — the breakdown dots go solid, keyed to the
+     same variables so they still match the legend by colour. */
+  .tl-dot.tl-buffer, .tl-dot.tl-min_notice { background-image: none; background-color: var(--tl-hatch); }
+  .tl-dot.tl-resource_busy { background-image: none; }
+  .tl-row .tl-reason { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+  .tl-row .tl-detail { color: var(--text-muted); font-size: 0.8125rem; }
+
+  @media (max-width: 640px) {
+    .tl-controls select[name="event_type"] { min-width: 0; flex: 1 1 100%; }
+    .tl-date { flex: 1 1 auto; }
+    .tl-date input[type="date"] { flex: 1; min-width: 0; }
+    /* Twelve hour labels will not fit 390px — thin them out rather than
+       letting them collide. */
+    .tl-hours span:nth-child(even) { display: none; }
+    .tl-row { flex-wrap: wrap; row-gap: 0.125rem; }
+    .tl-row time { min-width: 100%; }
+  }
+</style>
+
+<div class="page-head">
+  <div class="page-head-text">
+    <h1>Troubleshoot availability</h1>
+    <p class="subtitle">See why time slots are available or blocked for <strong>{{ et_title }}</strong> ({{ duration }}min{% if buf_before %}, {{ buf_before }}min buffer before{% endif %}{% if buf_after %}, {{ buf_after }}min buffer after{% endif %}{% if min_notice %}, {{ min_notice }}min notice{% endif %}).</p>
+  </div>
+</div>
+
+<div class="card tl">
+  <form id="troubleshoot-form" method="get" action="/dashboard/troubleshoot" class="tl-controls">
+    <select name="event_type" aria-label="Event type">
       {% for et in event_types %}
         <option value="{{ et.slug }}" {% if et.selected %}selected{% endif %}>{{ et.title }}</option>
       {% endfor %}
     </select>
-    <div style="display: flex; align-items: center; gap: 0.375rem;">
-      <a href="/dashboard/troubleshoot?date={{ prev_date }}&event_type={{ selected_slug }}" class="slot-btn" style="text-decoration: none; padding: 0.375rem 0.625rem;">&larr;</a>
-      <input type="date" name="date" value="{{ selected_date }}" style="padding: 0.375rem 0.625rem; border: 1px solid var(--border); border-radius: var(--radius); font-size: 0.85rem; font-family: inherit; background: var(--surface); color: var(--text);">
-      <a href="/dashboard/troubleshoot?date={{ next_date }}&event_type={{ selected_slug }}" class="slot-btn" style="text-decoration: none; padding: 0.375rem 0.625rem;">&rarr;</a>
+    <div class="tl-date">
+      <a href="/dashboard/troubleshoot?date={{ prev_date }}&event_type={{ selected_slug }}" class="btn btn-secondary btn-sm tl-step" aria-label="Previous day"><svg class="ic" aria-hidden="true"><use href="#i-arrow-left"/></svg></a>
+      <input type="date" name="date" value="{{ selected_date }}" aria-label="Date">
+      <a href="/dashboard/troubleshoot?date={{ next_date }}&event_type={{ selected_slug }}" class="btn btn-secondary btn-sm tl-step" aria-label="Next day"><svg class="ic" aria-hidden="true"><use href="#i-arrow-right"/></svg></a>
     </div>
   </form>
 
   <div id="troubleshoot-content">
-  <p style="font-size: 0.9rem; font-weight: 600; margin-bottom: 0.5rem;">{{ date_label }}</p>
+  <p class="tl-day">{{ date_label }}</p>
 
   {% if date_is_blocked is defined and date_is_blocked %}
-  <div style="padding: 0.5rem 0.75rem; background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.3); border-radius: var(--radius); margin-bottom: 0.75rem; font-size: 0.85rem; color: #ef4444;">
-    {{ t("troubleshoot-blocked-override") }}
+  <div class="notice notice-error">
+    <svg class="ic" aria-hidden="true"><use href="#i-ban"/></svg>
+    <span>Blocked by date override — this day is marked off.</span>
   </div>
   {% elif has_custom_hours is defined and has_custom_hours %}
-  <div style="padding: 0.5rem 0.75rem; background: rgba(59,130,246,0.1); border: 1px solid rgba(59,130,246,0.3); border-radius: var(--radius); margin-bottom: 0.75rem; font-size: 0.85rem; color: #3b82f6;">
-    {{ t("troubleshoot-custom-hours-active") }}
+  <div class="notice notice-info">
+    <svg class="ic" aria-hidden="true"><use href="#i-info"/></svg>
+    <span>Custom hours override active — it replaces the weekly rules for this date.</span>
   </div>
   {% endif %}
 
   {# Legend #}
-  <div style="display: flex; gap: 1rem; flex-wrap: wrap; font-size: 0.75rem; margin-bottom: 0.75rem; color: var(--text-muted);">
-    <span><span style="display: inline-block; width: 12px; height: 12px; border-radius: 2px; background: #22c55e; vertical-align: middle; margin-right: 3px;"></span> {{ t("troubleshoot-legend-available") }}</span>
-    <span><span style="display: inline-block; width: 12px; height: 12px; border-radius: 2px; background: #ef4444; vertical-align: middle; margin-right: 3px;"></span> {{ t("troubleshoot-legend-calendar-event") }}</span>
-    <span><span style="display: inline-block; width: 12px; height: 12px; border-radius: 2px; background: #f97316; vertical-align: middle; margin-right: 3px;"></span> {{ t("troubleshoot-legend-booking") }}</span>
-    <span><span style="display: inline-block; width: 12px; height: 12px; border-radius: 2px; background: #8b5cf6; vertical-align: middle; margin-right: 3px;"></span> {{ t("troubleshoot-legend-resource") }}</span>
-    <span><span style="display: inline-block; width: 12px; height: 12px; border-radius: 2px; background: #94a3b8; vertical-align: middle; margin-right: 3px;"></span> {{ t("troubleshoot-legend-outside") }}</span>
-    <span><span style="display: inline-block; width: 12px; height: 12px; border-radius: 2px; background: repeating-linear-gradient(45deg, #94a3b8, #94a3b8 2px, #cbd5e1 2px, #cbd5e1 4px); vertical-align: middle; margin-right: 3px;"></span> {{ t("troubleshoot-legend-buffer") }}</span>
+  <div class="tl-legend">
+    <span><i class="tl-swatch tl-available"></i> Available</span>
+    <span><i class="tl-swatch tl-busy_event"></i> Calendar event</span>
+    <span><i class="tl-swatch tl-booking"></i> Booking</span>
+    <span><i class="tl-swatch tl-resource_busy"></i> Resource busy</span>
+    <span><i class="tl-swatch tl-buffer"></i> Buffer / min. notice</span>
+    <span><i class="tl-swatch tl-outside"></i> Outside hours</span>
   </div>
 
   {# Timeline #}
-  <div style="position: relative; height: 48px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; margin-bottom: 0.25rem;">
+  <div class="tl-track">
     {% for block in blocks %}
-    <div title="{{ block.start }} – {{ block.end }}: {{ block.label }}{% if block.detail %} ({{ block.detail }}){% endif %}"
-         style="position: absolute; top: 0; height: 100%; left: {{ block.left_pct }}%; width: {{ block.width_pct }}%;
-         {% if block.status == 'available' %}background: #22c55e; opacity: 0.45;
-         {% elif block.status == 'busy_event' %}background: #ef4444; opacity: 0.7;
-         {% elif block.status == 'booking' %}background: #f97316; opacity: 0.7;
-         {% elif block.status == 'resource_busy' %}background: #8b5cf6; opacity: 0.7;
-         {% elif block.status == 'beyond_horizon' %}background: #0ea5e9; opacity: 0.5;
-         {% elif block.status == 'buffer' or block.status == 'min_notice' %}background: repeating-linear-gradient(45deg, #94a3b8, #94a3b8 2px, #cbd5e1 2px, #cbd5e1 4px); opacity: 0.6;
-         {% else %}background: #94a3b8; opacity: 0.2;
-         {% endif %}
-         border-right: 1px solid rgba(255,255,255,0.3);"></div>
+    <div class="tl-block {% if block.status == 'available' %}tl-available{% elif block.status == 'busy_event' %}tl-busy_event{% elif block.status == 'booking' %}tl-booking{% elif block.status == 'resource_busy' %}tl-resource_busy{% elif block.status == 'buffer' or block.status == 'min_notice' %}tl-buffer{% else %}tl-outside{% endif %}"
+         title="{{ block.start }} – {{ block.end }}: {{ block.label }}{% if block.detail %} ({{ block.detail }}){% endif %}"
+         style="left: {{ block.left_pct }}%; width: {{ block.width_pct }}%;"></div>
     {% endfor %}
   </div>
 
   {# Hour labels #}
-  <div style="position: relative; height: 20px; font-size: 0.65rem; color: var(--text-muted); margin-bottom: 1.5rem;">
+  <div class="tl-hours">
     {% for marker in hour_markers %}
-    <span style="position: absolute; left: {{ marker.left_pct }}%; transform: translateX(-50%);">{{ marker.label }}</span>
+    <span style="left: {{ marker.left_pct }}%;">{{ marker.label }}</span>
     {% endfor %}
   </div>
 
   {# Breakdown #}
   {% if breakdown %}
-  <h3 style="font-size: 0.9rem; margin-bottom: 0.5rem;">{{ t("troubleshoot-blocked-slots") }}</h3>
-  <div style="font-size: 0.85rem;">
+  <h3>Blocked slots</h3>
+  <div style="margin-top: 0.375rem;">
     {% for item in breakdown %}
-    <div style="display: flex; align-items: center; gap: 0.5rem; padding: 0.375rem 0; {% if not loop.last %}border-bottom: 1px solid var(--border);{% endif %}">
-      <span style="font-family: monospace; color: var(--text-muted); white-space: nowrap; min-width: 100px;">{{ item.start }} – {{ item.end }}</span>
-      <span style="display: inline-block; width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0;
-        {% if item.status == 'busy_event' %}background: #ef4444;
-        {% elif item.status == 'booking' %}background: #f97316;
-        {% elif item.status == 'resource_busy' %}background: #8b5cf6;
-        {% elif item.status == 'beyond_horizon' %}background: #0ea5e9;
-        {% elif item.status == 'buffer' or item.status == 'min_notice' %}background: #94a3b8;
-        {% endif %}"></span>
-      <span>{{ item.reason }}</span>
-      {% if item.detail %}<span style="color: var(--text-muted);">({{ item.detail }})</span>{% endif %}
+    <div class="tl-row">
+      <time>{{ item.start }} – {{ item.end }}</time>
+      <i class="tl-dot {% if item.status == 'busy_event' %}tl-busy_event{% elif item.status == 'booking' %}tl-booking{% elif item.status == 'resource_busy' %}tl-resource_busy{% elif item.status == 'buffer' or item.status == 'min_notice' %}tl-buffer{% else %}tl-outside{% endif %}"></i>
+      <span class="tl-reason">{{ item.reason }}{% if item.detail %} <span class="tl-detail">({{ item.detail }})</span>{% endif %}</span>
     </div>
     {% endfor %}
   </div>
   {% else %}
+  <div class="empty">
     {% if date_is_blocked is defined and date_is_blocked %}
-  <p style="font-size: 0.85rem; color: #ef4444;">{{ t("troubleshoot-none-date-blocked") }}</p>
+    <div class="empty-icon"><svg class="ic" aria-hidden="true"><use href="#i-calendar-x"/></svg></div>
+    <p class="empty-text">This date is blocked by an availability override. No slots are offered.</p>
     {% elif has_custom_hours is defined and has_custom_hours and not has_rules %}
-  <p style="font-size: 0.85rem; color: var(--text-muted);">{{ t("troubleshoot-none-custom-hours") }}</p>
+    <div class="empty-icon"><svg class="ic" aria-hidden="true"><use href="#i-alert"/></svg></div>
+    <p class="empty-text">A custom hours override is active but matches no window. Check the override settings.</p>
     {% elif not has_rules %}
-  <p style="font-size: 0.85rem; color: var(--text-muted);">{{ t("troubleshoot-none-no-rules", date=date_label) }}</p>
+    <div class="empty-icon"><svg class="ic" aria-hidden="true"><use href="#i-calendar-x"/></svg></div>
+    <p class="empty-text">No availability rules for this weekday, so this event type is not bookable on {{ date_label }}.</p>
     {% else %}
-  <p style="font-size: 0.85rem; color: var(--text-muted);">{{ t("troubleshoot-none-all-bookable") }}</p>
+    <div class="empty-icon"><svg class="ic" aria-hidden="true"><use href="#i-circle-check"/></svg></div>
+    <p class="empty-text">Nothing blocked during availability hours — every time in range is bookable.</p>
     {% endif %}
+  </div>
   {% endif %}
   </div>{# troubleshoot-content #}
 </div>
@@ -130,8 +301,8 @@
       var newForm = doc.getElementById('troubleshoot-form');
       if (newForm) {
         // Update prev/next links
-        var links = document.querySelectorAll('#troubleshoot-form .slot-btn[href]');
-        var newLinks = newForm.querySelectorAll('.slot-btn[href]');
+        var links = document.querySelectorAll('#troubleshoot-form .tl-step[href]');
+        var newLinks = newForm.querySelectorAll('.tl-step[href]');
         links.forEach(function(l, i) { if (newLinks[i]) l.href = newLinks[i].href; });
         // Update date input
         var dateInput = document.querySelector('input[name="date"]');
@@ -150,7 +321,7 @@
 
   // Intercept prev/next links
   document.addEventListener('click', function(e) {
-    var link = e.target.closest('a.slot-btn');
+    var link = e.target.closest('a.tl-step');
     if (link && link.closest('#troubleshoot-form')) {
       e.preventDefault();
       loadPage(link.href);

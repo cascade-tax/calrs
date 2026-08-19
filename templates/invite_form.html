@@ -4,145 +4,342 @@
 
 {% block dashboard_content %}
 
+<style>
+  /* ── Page rhythm ─────────────────────────────────────────────────── */
+  .section-desc {
+    color: var(--text-secondary);
+    font-size: 0.8125rem;
+    line-height: 1.55;
+    margin: -0.625rem 0 1.125rem;
+    max-width: 46ch;
+  }
+  .section-head .section-desc { margin: 0; }
+
+  /* ── Quick link ──────────────────────────────────────────────────── */
+  .quick-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+  }
+  .quick-head h2 { margin-bottom: 0.3125rem; }
+  .quick-head .section-desc { margin: 0; }
+  .quick-out {
+    margin-top: 1.125rem;
+    padding: 0.8125rem 0.9375rem;
+    border: 1px solid var(--accent-border);
+    background: var(--accent-subtle);
+    border-radius: var(--radius);
+  }
+  .quick-out[hidden] { display: none; }
+  .quick-out-label {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    font-weight: 500;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 0.4375rem;
+  }
+  .quick-out-url {
+    display: block;
+    background: transparent;
+    border: 0;
+    padding: 0;
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+    line-height: 1.6;
+    color: var(--text);
+    overflow-wrap: anywhere;
+    -webkit-user-select: all;
+    user-select: all;
+  }
+
+  /* ── Bulk send form ──────────────────────────────────────────────── */
+  #recipients {
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+    line-height: 1.6;
+  }
+  .field-narrow { max-width: 16rem; }
+  .check-option, .form-group label.check-option {
+    display: flex;
+    margin-bottom: 0;
+    font-weight: 400;
+    align-items: center;
+    gap: 0.625rem;
+    padding: 0.625rem 0.8125rem;
+    min-height: 2.5rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+    font-size: 0.875rem;
+    color: var(--text);
+    cursor: pointer;
+    transition: border-color 0.15s var(--ease), background 0.15s var(--ease);
+  }
+  .check-option:hover { border-color: var(--border-hover); background: var(--surface-hover); }
+  .check-option:has(input:checked) { border-color: var(--accent); background: var(--accent-subtle); }
+  .check-option input { flex: none; width: 1.0625rem; height: 1.0625rem; cursor: pointer; accent-color: var(--accent); }
+  .check-option > span { flex: 1; min-width: 0; }
+  .check-option strong { display: block; font-size: 0.875rem; font-weight: 600; }
+  .check-option-desc { display: block; color: var(--text-muted); font-size: 0.8125rem; line-height: 1.5; }
+
+  /* ── Sent invites ────────────────────────────────────────────────── */
+  .inv-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.875rem;
+    padding: 0.875rem 0;
+  }
+  .inv-row:first-child { padding-top: 0; }
+  .inv-row:last-child { padding-bottom: 0; }
+  .inv-row + .inv-row { border-top: 1px solid var(--border); }
+  .inv-row.is-spent .inv-name strong,
+  .inv-row.is-spent .inv-email { color: var(--text-muted); }
+  .inv-info { flex: 1; min-width: 0; }
+  .inv-name {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.4375rem;
+  }
+  .inv-name strong { font-size: 0.9375rem; font-weight: 600; }
+  .inv-email {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    overflow-wrap: anywhere;
+    margin-top: 0.1875rem;
+  }
+  .inv-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.125rem 0.75rem;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin-top: 0.3125rem;
+  }
+  .inv-meta span { display: inline-flex; align-items: center; gap: 0.3125rem; }
+  .inv-meta .ic { color: var(--text-muted); opacity: 0.8; }
+  .inv-actions { display: flex; gap: 0.375rem; flex-shrink: 0; flex-wrap: wrap; justify-content: flex-end; }
+
+  .issue-list { margin: 0; padding: 0; list-style: none; }
+  .issue-list li + li { margin-top: 0.375rem; }
+  .issue-list .mono { overflow-wrap: anywhere; }
+
+  @media (max-width: 560px) {
+    .inv-row { flex-direction: column; align-items: stretch; gap: 0.625rem; }
+    .inv-actions { justify-content: flex-start; }
+    .quick-head .btn { width: 100%; justify-content: center; }
+  }
+</style>
+
+<div class="page-head">
+  <div class="page-head-text">
+    <h1>Invites</h1>
+    <p>
+      Booking links for <strong>{{ event_type_title }}</strong>{% if owner_name is defined and owner_name %} &middot; {{ owner_name }}{% endif %}
+    </p>
+  </div>
+  <div class="page-head-actions">
+    {% if team_slug %}
+    <a href="/dashboard/teams" class="btn btn-sm btn-ghost">
+      <svg class="ic" aria-hidden="true"><use href="#i-arrow-left"/></svg> Teams
+    </a>
+    {% else %}
+    <a href="/dashboard/event-types" class="btn btn-sm btn-ghost">
+      <svg class="ic" aria-hidden="true"><use href="#i-arrow-left"/></svg> Event types
+    </a>
+    {% endif %}
+  </div>
+</div>
+
+{% if error %}
+  <div class="notice notice-error">
+    <svg class="ic" aria-hidden="true"><use href="#i-alert"/></svg>
+    <span>{{ error }}</span>
+  </div>
+{% endif %}
+
+{% if bulk_result %}
+  {% if bulk_result.sent_count > 0 %}
+  <div class="notice notice-success">
+    <svg class="ic" aria-hidden="true"><use href="#i-circle-check"/></svg>
+    <span>Sent <strong>{{ bulk_result.sent_count }}</strong> invite{% if bulk_result.sent_count != 1 %}s{% endif %}.</span>
+  </div>
+  {% endif %}
+  {% if bulk_result.has_issues %}
+  <div class="notice notice-warning">
+    <svg class="ic" aria-hidden="true"><use href="#i-alert"/></svg>
+    <ul class="issue-list">
+      {% if bulk_result.over_limit %}
+      <li><strong>Capped at {{ bulk_result.max_recipients }} recipients per submission.</strong> Submit the rest in another batch.</li>
+      {% endif %}
+      {% if bulk_result.invalid %}
+      <li>
+        <strong>Skipped {{ bulk_result.invalid|length }} invalid {% if bulk_result.invalid|length == 1 %}row{% else %}rows{% endif %}:</strong>
+        <span class="mono">{{ bulk_result.invalid|join(", ") }}</span>
+      </li>
+      {% endif %}
+      {% if bulk_result.duplicates %}
+      <li>
+        <strong>Skipped {{ bulk_result.duplicates|length }} duplicate {% if bulk_result.duplicates|length == 1 %}row{% else %}rows{% endif %}:</strong>
+        <span class="mono">{{ bulk_result.duplicates|join(", ") }}</span>
+      </li>
+      {% endif %}
+      {% if bulk_result.failed %}
+      <li>
+        <strong>{{ bulk_result.failed|length }} {% if bulk_result.failed|length == 1 %}invite{% else %}invites{% endif %} failed (DB or SMTP):</strong>
+        <span class="mono">{{ bulk_result.failed|join(", ") }}</span> &mdash; check the server logs for details.
+      </li>
+      {% endif %}
+    </ul>
+  </div>
+  {% endif %}
+{% endif %}
+
+<!-- Quick link ─────────────────────────────────────────────────────── -->
 <div class="card">
-  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
-    <h1 style="margin-bottom: 0;">{{ t("invites-heading") }}</h1>
-    {% if team_slug %}<a href="/dashboard/teams" class="slot-btn" style="text-decoration: none; font-size: 0.8rem;">{{ t("invites-back-teams") }}</a>{% else %}<a href="/dashboard/event-types" class="slot-btn" style="text-decoration: none; font-size: 0.8rem;">{{ t("invites-back-event-types") }}</a>{% endif %}
-  </div>
-  <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 1.25rem;">
-    {{ t("invites-intro", title='<strong>' ~ (event_type_title | escape) ~ '</strong>') | safe }}
-    {% if owner_name is defined and owner_name %}<span style="font-size: 0.85rem;">({{ owner_name }})</span>{% endif %}
-  </p>
-
-  {% if error %}
-    <div class="error" style="margin-bottom: 1rem;">{{ error }}</div>
-  {% endif %}
-
-  {% if bulk_result %}
-    {% if bulk_result.sent_count > 0 %}
-      <div style="padding: 0.75rem 1rem; background: rgba(34,197,94,0.1); border: 1px solid rgba(34,197,94,0.3); color: var(--success, #16a34a); border-radius: var(--radius); margin-bottom: 0.75rem; font-size: 0.9rem;">
-        <strong>{{ t("invites-sent-count", count=bulk_result.sent_count) }}</strong>
-      </div>
-    {% endif %}
-    {% if bulk_result.has_issues %}
-      <div style="padding: 0.75rem 1rem; background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.3); border-radius: var(--radius); margin-bottom: 1.25rem; font-size: 0.9rem;">
-        {% if bulk_result.over_limit %}
-          <div style="margin-bottom: 0.4rem;">{{ t("invites-capped", max=bulk_result.max_recipients | escape) | safe }}</div>
-        {% endif %}
-        {% if bulk_result.invalid %}
-          <div style="margin-bottom: 0.4rem;"><strong>{{ t("invites-skipped-invalid", count=bulk_result.invalid|length) }}</strong>
-            <span style="color: var(--text-muted);">{{ bulk_result.invalid|join(", ") }}</span>
-          </div>
-        {% endif %}
-        {% if bulk_result.duplicates %}
-          <div style="margin-bottom: 0.4rem;"><strong>{{ t("invites-skipped-duplicate", count=bulk_result.duplicates|length) }}</strong>
-            <span style="color: var(--text-muted);">{{ bulk_result.duplicates|join(", ") }}</span>
-          </div>
-        {% endif %}
-        {% if bulk_result.failed %}
-          <div><strong>{{ t("invites-failed", count=bulk_result.failed|length) }}</strong>
-            <span style="color: var(--text-muted);">{{ bulk_result.failed|join(", ") }}</span>
-            {{ t("invites-failed-hint") }}
-          </div>
-        {% endif %}
-      </div>
-    {% endif %}
-  {% endif %}
-
-  <!-- Quick link generator -->
-  <div style="padding: 1rem; background: var(--accent-subtle, rgba(99,102,241,0.06)); border: 1px solid var(--accent-border, rgba(99,102,241,0.2)); border-radius: var(--radius); margin-bottom: 1.25rem; display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap;">
+  <div class="quick-head">
     <div>
-      <div style="font-weight: 600; font-size: 0.9rem;">{{ t("invites-quick-link") }}</div>
-      <div style="font-size: 0.8rem; color: var(--text-muted);">{{ t("invites-quick-link-help") }}</div>
+      <h2>Quick link</h2>
+      <p class="section-desc">Generate a single-use booking link and copy it to your clipboard. It expires in 7 days; the guest fills in their own details.</p>
     </div>
-    <button type="button" id="quick-link-btn" class="slot-btn" style="cursor: pointer; font-weight: 600; color: var(--accent); border-color: var(--accent); white-space: nowrap;">{{ t("invites-get-link") }}</button>
+    <button type="button" id="quick-link-btn" class="btn">
+      <svg class="ic" aria-hidden="true"><use href="#i-link"/></svg> Get link
+    </button>
   </div>
+  <div class="quick-out" id="quick-link-out" hidden>
+    <div class="quick-out-label" id="quick-link-status">
+      <svg class="ic ic-sm" aria-hidden="true"><use href="#i-check"/></svg> Copied to clipboard
+    </div>
+    <code class="quick-out-url" id="quick-link-url"></code>
+  </div>
+</div>
 
-  <form method="POST" action="/dashboard/invites/{{ event_type_id }}/send" style="border-bottom: 1px solid var(--border); padding-bottom: 1.25rem; margin-bottom: 1.25rem;">
-    <h2 style="font-size: 1rem; margin-bottom: 0.75rem;">{{ t("invites-or-email") }}</h2>
+<!-- Send by email ──────────────────────────────────────────────────── -->
+<div class="card">
+  <h2>Send by email</h2>
+  <p class="section-desc">Each recipient gets their own personalised link, tracked in the list below.</p>
+
+  <form method="POST" action="/dashboard/invites/{{ event_type_id }}/send">
+    <div class="form-group">
+      <label for="recipients">Recipients <span class="hint">one email per line, max {{ bulk_result.max_recipients if bulk_result else 100 }}</span></label>
+      <textarea id="recipients" name="recipients" required rows="6" placeholder="alice@example.com&#10;bob@example.com&#10;carol@example.com"></textarea>
+    </div>
 
     <div class="form-group">
-      <label for="recipients">{{ t("invites-recipients") }} <span class="hint">{{ t("invites-recipients-hint", max=(bulk_result.max_recipients if bulk_result else 100)) }}</span></label>
-      <textarea id="recipients" name="recipients" required rows="6" placeholder="alice@example.com&#10;bob@example.com&#10;carol@example.com" style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.9rem;"></textarea>
+      <label for="message">Personal message <span class="hint">optional, sent to every recipient</span></label>
+      <textarea id="message" name="message" placeholder="Looking forward to showing you a demo..." rows="2"></textarea>
+    </div>
+
+    <div class="form-group field-narrow">
+      <label for="expires_days">Expires in</label>
+      <select id="expires_days" name="expires_days">
+        <option value="7" selected>7 days</option>
+        <option value="14">14 days</option>
+        <option value="30">30 days</option>
+        <option value="0">Never</option>
+      </select>
     </div>
 
     <div class="form-group">
-      <label for="message">{{ t("invites-message") }} <span class="hint">{{ t("invites-message-hint") }}</span></label>
-      <textarea id="message" name="message" placeholder="{{ t('invites-message-placeholder') }}" rows="2"></textarea>
+      <label class="check-option">
+        <input type="checkbox" name="single_use">
+        <span>
+          <strong>Allow multiple bookings per recipient</strong>
+          <span class="check-option-desc">Leave off and each link works exactly once.</span>
+        </span>
+      </label>
     </div>
 
-    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;" class="form-grid-2">
-      <div class="form-group">
-        <label for="expires_days">{{ t("invites-expires-in") }}</label>
-        <select id="expires_days" name="expires_days" style="padding: 0.625rem 0.75rem; border: 1px solid var(--border); border-radius: var(--radius); font-size: 0.925rem; font-family: inherit; background: var(--surface); color: var(--text); width: 100%;">
-          <option value="7" selected>{{ t("invites-expires-days", days=7) }}</option>
-          <option value="14">{{ t("invites-expires-days", days=14) }}</option>
-          <option value="30">{{ t("invites-expires-days", days=30) }}</option>
-          <option value="0">{{ t("invites-expires-never") }}</option>
-        </select>
-      </div>
-      <div class="form-group" style="display: flex; align-items: end; padding-bottom: 0.25rem;">
-        <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
-          <input type="checkbox" name="single_use" style="accent-color: var(--accent); width: 1rem; height: 1rem;">
-          <span style="font-size: 0.9rem;">{{ t("invites-allow-multiple") }}</span>
-        </label>
-      </div>
-    </div>
-
-    <button type="submit" class="btn" style="margin-top: 0.75rem;">{{ t("invites-send") }}</button>
+    <button type="submit" class="btn">
+      <svg class="ic" aria-hidden="true"><use href="#i-send"/></svg> Send invites
+    </button>
   </form>
+</div>
+
+<!-- Sent invites ───────────────────────────────────────────────────── -->
+<div class="card">
+  <div class="section-head">
+    <h2>Sent invites</h2>
+    {% if invites %}<span class="label">{{ invites|length }} total</span>{% endif %}
+  </div>
 
   {% if invites %}
-  <h2 style="font-size: 1rem; margin-bottom: 0.75rem;">{{ t("invites-sent-heading") }}</h2>
-  <div style="display: flex; flex-direction: column; gap: 0.5rem;">
     {% for inv in invites %}
-    <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.75rem; border: 1px solid var(--border); border-radius: var(--radius); {% if inv.is_expired or inv.is_used %}opacity: 0.6;{% endif %}">
-      <div>
-        <strong style="font-size: 0.9rem;">{{ inv.guest_name }}</strong>
-        <span style="color: var(--text-muted); font-size: 0.85rem;">&middot; {{ inv.guest_email }}</span>
-        {% if inv.is_expired %}
-          <span class="badge badge-disabled" style="margin-left: 0.25rem;">{{ t("invites-badge-expired") }}</span>
-        {% elif inv.is_used %}
-          <span class="badge badge-disabled" style="margin-left: 0.25rem;">{{ t("invites-badge-used") }}</span>
-        {% else %}
-          <span class="badge badge-success" style="margin-left: 0.25rem;">{{ t("invites-badge-active") }}</span>
-        {% endif %}
-        <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;">
-          {{ t("invites-sent-by", name=inv.created_by) }} &middot; {{ t("invites-uses", used=inv.used_count, max=inv.max_uses) }}
-          {% if inv.expires_at %} &middot; {{ t("invites-expires-at", date=inv.expires_at) }}{% endif %}
+    <div class="inv-row{% if inv.is_expired or inv.is_used %} is-spent{% endif %}">
+      <div class="inv-info">
+        <div class="inv-name">
+          <strong>{{ inv.guest_name }}</strong>
+          {% if inv.is_expired %}
+            <span class="badge badge-muted">expired</span>
+          {% elif inv.is_used %}
+            <span class="badge badge-muted">used up</span>
+          {% else %}
+            <span class="badge badge-success">active</span>
+          {% endif %}
+        </div>
+        <div class="inv-email">{{ inv.guest_email }}</div>
+        <div class="inv-meta">
+          <span><svg class="ic ic-sm" aria-hidden="true"><use href="#i-user"/></svg>{{ inv.created_by }}</span>
+          <span><svg class="ic ic-sm" aria-hidden="true"><use href="#i-check"/></svg>{{ inv.used_count }}/{{ inv.max_uses }} uses</span>
+          {% if inv.expires_at %}<span><svg class="ic ic-sm" aria-hidden="true"><use href="#i-clock"/></svg>Expires {{ inv.expires_at | split(" ") | first }}</span>{% endif %}
         </div>
       </div>
-      <div style="display: flex; gap: 0.5rem; align-items: center;">
+      <div class="inv-actions">
         {% if not inv.is_expired and not inv.is_used %}
-          <button type="button" class="slot-btn copy-invite-btn" data-invite-url="{{ inv.invite_url }}" style="font-size: 0.8rem; cursor: pointer;">{{ t("invites-copy-link") }}</button>
+        <button type="button" class="btn btn-sm btn-ghost copy-invite-btn" data-invite-url="{{ inv.invite_url }}">
+          <svg class="ic" aria-hidden="true"><use href="#i-copy"/></svg> <span class="copy-label">Copy link</span>
+        </button>
         {% endif %}
         {% if can_delete_invites %}
         <form method="POST" action="/dashboard/invites/{{ inv.id }}/delete" style="margin: 0;">
-          <button type="submit" class="slot-btn" style="font-size: 0.8rem; color: var(--error-text); cursor: pointer;" data-confirm="{{ t('invites-delete-confirm') }}" onclick="return confirm(this.dataset.confirm);">{{ t("invites-delete") }}</button>
+          <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Delete this invite?');">Delete</button>
         </form>
         {% endif %}
       </div>
     </div>
     {% endfor %}
-  </div>
   {% else %}
-  <div class="empty" style="padding: 1.5rem 1rem;">
-    <div class="empty-icon">&#9993;</div>
-    <div class="empty-text">{{ t("invites-empty") }}</div>
-  </div>
+    <div class="empty">
+      <div class="empty-icon"><svg class="ic" aria-hidden="true"><use href="#i-mail"/></svg></div>
+      <div class="empty-text">No invites sent yet. Generate a quick link, or email a personalised one from the form above.</div>
+    </div>
   {% endif %}
 </div>
+
 <script>
 (function() {
   var btn = document.getElementById('quick-link-btn');
   if (!btn) return;
+  var out = document.getElementById('quick-link-out');
+  var urlEl = document.getElementById('quick-link-url');
+  var statusEl = document.getElementById('quick-link-status');
+  var idle = btn.innerHTML;
+
   function getCsrfToken() {
     var match = document.cookie.match(/(?:^|;\s*)__Host-calrs_csrf=([^;]+)/);
     return match ? match[1] : '';
   }
+  function setStatus(text) {
+    statusEl.lastChild.nodeValue = ' ' + text;
+  }
+  function show(url, copied) {
+    urlEl.textContent = url;
+    setStatus(copied ? 'Copied to clipboard' : 'Link ready — select to copy');
+    out.hidden = false;
+  }
+
   btn.addEventListener('click', function() {
     btn.disabled = true;
-    btn.textContent = {{ t('invites-js-generating') | tojson }};
+    btn.textContent = 'Generating…';
     fetch('/dashboard/invites/{{ event_type_id }}/quick-link', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -150,43 +347,40 @@
     })
     .then(function(r) { return r.json(); })
     .then(function(data) {
-      if (data.url) {
-        navigator.clipboard.writeText(data.url).then(function() {
-          btn.textContent = {{ t('invites-js-copied') | tojson }};
-          btn.style.color = 'var(--success)';
-          btn.style.borderColor = 'var(--success)';
-          setTimeout(function() {
-            btn.textContent = {{ t('invites-get-link') | tojson }};
-            btn.style.color = 'var(--accent)';
-            btn.style.borderColor = 'var(--accent)';
-            btn.disabled = false;
-          }, 2000);
-        });
+      if (!data.url) throw new Error('no url');
+      function done(copied) {
+        show(data.url, copied);
+        btn.textContent = copied ? 'Copied!' : 'Link ready';
+        setTimeout(function() {
+          btn.innerHTML = idle;
+          btn.disabled = false;
+        }, 2000);
       }
+      navigator.clipboard.writeText(data.url).then(function() { done(true); }, function() { done(false); });
     })
     .catch(function() {
       btn.textContent = {{ t('invites-js-error') | tojson }};
       btn.disabled = false;
-      setTimeout(function() { btn.textContent = {{ t('invites-get-link') | tojson }}; }, 1500);
+      setTimeout(function() { btn.innerHTML = idle; }, 1500);
     });
   });
 })();
 (function() {
   document.querySelectorAll('.copy-invite-btn').forEach(function(btn) {
+    var label = btn.querySelector('.copy-label');
     btn.addEventListener('click', function() {
       var url = btn.getAttribute('data-invite-url');
-      if (!url) return;
+      if (!url || !label) return;
       navigator.clipboard.writeText(url).then(function() {
-        var original = btn.textContent;
-        btn.textContent = {{ t('invites-js-copied') | tojson }};
-        btn.style.color = 'var(--success)';
+        label.textContent = 'Copied!';
+        btn.classList.add('btn-success');
         setTimeout(function() {
-          btn.textContent = original;
-          btn.style.color = '';
+          label.textContent = 'Copy link';
+          btn.classList.remove('btn-success');
         }, 1500);
       }).catch(function() {
-        btn.textContent = {{ t('invites-js-error') | tojson }};
-        setTimeout(function() { btn.textContent = {{ t('invites-copy-link') | tojson }}; }, 1500);
+        label.textContent = 'Error';
+        setTimeout(function() { label.textContent = 'Copy link'; }, 1500);
       });
     });
   });

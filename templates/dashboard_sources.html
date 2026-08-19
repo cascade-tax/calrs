@@ -1,64 +1,103 @@
 {% extends "dashboard_base.html" %}
 {% block title %}{{ t("sources-page-title") }} — Cascade{% endblock %}
 {% block dashboard_content %}
-<div class="card">
-  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-    <h1 style="margin-bottom: 0;">{{ t("sources-heading") }}</h1>
-    <a href="/dashboard/sources/new" class="slot-btn" style="text-decoration: none; font-size: 0.85rem; font-weight: 600; color: var(--accent); border-color: var(--accent);">+ {{ t("sources-add") }}</a>
+<style>
+  .src-row { padding: 0.875rem 0; }
+  .src-row:first-child { padding-top: 0; }
+  .src-row:last-child { padding-bottom: 0; }
+  .src-row + .src-row { border-top: 1px solid var(--border); }
+  .src-title { display: flex; align-items: center; flex-wrap: wrap; gap: 0.375rem; }
+  .src-url {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    overflow-wrap: anywhere;
+    margin-top: 0.25rem;
+  }
+  .src-meta { font-size: 0.75rem; color: var(--text-muted); overflow-wrap: anywhere; }
+  .src-write {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin: 0.625rem 0 0;
+  }
+  .src-write select { flex: 1 1 200px; max-width: 320px; font-size: 0.8125rem; padding: 0.375rem 2.125rem 0.375rem 0.625rem; }
+  .src-write .field-label { margin-bottom: 0; color: var(--text-muted); font-weight: 500; white-space: nowrap; }
+</style>
+
+<div class="page-head">
+  <div class="page-head-text">
+    <h1>Calendar sources</h1>
+    <p>The calendars Cascade reads for busy time, and writes confirmed bookings back to.</p>
   </div>
+  <div class="page-head-actions">
+    <a href="/dashboard/sources/new" class="btn">
+      <svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg> Add source
+    </a>
+  </div>
+</div>
+
+<div class="card">
   {% if sources %}
     {% for s in sources %}
-    <div style="padding: 0.75rem 0; {% if not loop.last %}border-bottom: 1px solid var(--border);{% endif %}">
-      <div style="display: flex; justify-content: space-between; align-items: center;">
-        <div style="flex: 1; min-width: 0;">
-          <strong>{{ s.name }}</strong>
-          {% if s.provider_label %}
-            <span style="margin-left: 0.5rem; font-size: 0.7rem; padding: 0.125rem 0.5rem; border: 1px solid var(--border); border-radius: 999px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em;">{{ s.provider_label }}</span>
-          {% endif %}
-          <div style="color: var(--text-muted); font-size: 0.8rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ s.url }}</div>
-          <div style="color: var(--text-muted); font-size: 0.75rem;">{% if s.auth_type == "oauth2" %}<span style="background: var(--btn-primary-bg); color: white; padding: 0.1rem 0.4rem; border-radius: 3px; font-size: 0.7rem; font-weight: 600;">OAuth2</span> {{ s.username }}{% else %}{{ s.username }}{% endif %} &middot; {{ t("sources-last-sync") }} {{ s.last_synced }}</div>
+    <div class="src-row">
+      <div class="et-row" style="padding: 0;">
+        <div class="et-info">
+          <div class="src-title">
+            <strong>{{ s.name }}</strong>
+            {% if s.provider_label %}<span class="badge badge-muted">{{ s.provider_label }}</span>{% endif %}
+            {% if s.auth_type == "oauth2" %}<span class="badge badge-info">oauth2</span>{% endif %}
+          </div>
+          <div class="src-url">{{ s.url }}</div>
+          <div class="src-meta">{{ s.username }} &middot; Last sync: <span class="mono">{{ s.last_synced }}</span></div>
         </div>
-        <div style="display: flex; gap: 0.375rem; align-items: center; flex-shrink: 0; margin-left: 0.75rem;">
+        <div class="et-actions">
           <form method="post" action="/dashboard/sources/{{ s.id }}/sync" style="margin: 0;">
-            <button type="submit" class="slot-btn" style="font-size: 0.8rem; cursor: pointer; color: var(--accent); border-color: var(--accent);">{{ t("sources-sync") }}</button>
+            <button type="submit" class="btn btn-sm">
+              <svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg> Sync
+            </button>
           </form>
           <form method="post" action="/dashboard/sources/{{ s.id }}/force-sync" style="margin: 0;">
-            <button type="submit" class="slot-btn" style="font-size: 0.8rem; cursor: pointer;" title="{{ t('sources-full-resync-title') }}">{{ t("sources-full-resync") }}</button>
+            <button type="submit" class="btn btn-sm btn-ghost" title="Clear cache and re-fetch all events from server">Full resync</button>
           </form>
           <form method="post" action="/dashboard/sources/{{ s.id }}/test" style="margin: 0;">
-            <button type="submit" class="slot-btn" style="font-size: 0.8rem; cursor: pointer;">{{ t("sources-test") }}</button>
+            <button type="submit" class="btn btn-sm btn-ghost">Test</button>
           </form>
-          {% if s.auth_type == "oauth2" %}
-          <a href="/dashboard/sources/google/connect" class="slot-btn" style="font-size: 0.8rem; cursor: pointer; text-decoration: none;" title="{{ t('sources-reconnect-title') }}">{{ t("sources-reconnect") }}</a>
-          {% else %}
-          <a href="/dashboard/sources/{{ s.id }}/edit" class="slot-btn" style="font-size: 0.8rem; cursor: pointer; text-decoration: none;">{{ t("sources-edit") }}</a>
-          {% endif %}
-          <button type="button" class="slot-btn" style="font-size: 0.8rem; color: var(--error-text); cursor: pointer;" data-confirm="{{ t('sources-remove-confirm', name=s.name) }}" onclick="if(confirm(this.dataset.confirm)) this.closest('div').querySelector('.remove-form').submit();">{{ t("sources-remove") }}</button>
+          <a href="/dashboard/sources/{{ s.id }}/edit" class="btn btn-sm btn-ghost">Edit</a>
+          <button type="button" class="btn btn-sm btn-danger" data-confirm="Remove source '{{ s.name }}'? This will delete all synced events from this source." onclick="if(confirm(this.dataset.confirm)) this.closest('div').querySelector('.remove-form').submit();">Remove</button>
           <form method="post" action="/dashboard/sources/{{ s.id }}/remove" class="remove-form" style="display: none;"></form>
         </div>
       </div>
       {% if s.calendars %}
-      <div style="margin-top: 0.5rem;">
         {% if not s.write_calendar_href %}
-        <div style="margin-bottom: 0.4rem; padding: 0.4rem 0.6rem; background: rgba(234, 179, 8, 0.12); border: 1px solid rgba(234, 179, 8, 0.4); border-radius: var(--radius); color: var(--text); font-size: 0.78rem;">
-          ⚠ {{ t("sources-no-write-calendar") }}
+        <div class="notice notice-warning" style="margin: 0.75rem 0 0;">
+          <svg class="ic" aria-hidden="true"><use href="#i-alert"/></svg>
+          <span>No write calendar selected. Confirmed bookings stay in Cascade and are not pushed to this calendar. Pick one below to enable write-back.</span>
         </div>
         {% endif %}
-        <form method="post" action="/dashboard/sources/{{ s.id }}/write-calendar" style="margin: 0; display: flex; align-items: center; gap: 0.5rem;">
-          <label style="font-size: 0.8rem; color: var(--text-muted); white-space: nowrap;">{{ t("sources-write-bookings-to") }}</label>
-          <select name="calendar_href" style="flex: 1; padding: 0.25rem 0.5rem; border: 1px solid var(--border); border-radius: var(--radius); font-size: 0.8rem; font-family: inherit; background: var(--surface); color: var(--text); max-width: 300px;" onchange="this.form.submit()">
-            <option value="">{{ t("sources-write-none") }}</option>
+        <form method="post" action="/dashboard/sources/{{ s.id }}/write-calendar" class="src-write">
+          <label class="field-label" for="write-cal-{{ s.id }}">Write bookings to</label>
+          <select id="write-cal-{{ s.id }}" name="calendar_href" onchange="this.form.submit()">
+            <option value="">None (don't write)</option>
             {% for cal in s.calendars %}
             <option value="{{ cal.href }}" {% if cal.href == s.write_calendar_href %}selected{% endif %}>{{ cal.name }}</option>
             {% endfor %}
           </select>
         </form>
-      </div>
       {% endif %}
     </div>
     {% endfor %}
   {% else %}
-    <p class="empty" style="padding: 1rem;">{{ t("sources-empty", link='<a href="/dashboard/sources/new" style="color: var(--accent); text-decoration: none;">' ~ (t("sources-empty-link-label") | escape) ~ '</a>') | safe }}</p>
+    <div class="empty">
+      <div class="empty-icon"><svg class="ic" aria-hidden="true"><use href="#i-server"/></svg></div>
+      <div class="empty-text">No calendar sources connected. Add one so Cascade knows when you are busy.</div>
+      <div class="btn-row" style="justify-content: center; margin-top: 1rem;">
+        <a href="/dashboard/sources/new" class="btn btn-sm">
+          <svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg> Add source
+        </a>
+      </div>
+    </div>
   {% endif %}
 </div>
 {% endblock %}

@@ -6,86 +6,244 @@
 
 {% set override_times = ["00:00", "00:30", "01:00", "01:30", "02:00", "02:30", "03:00", "03:30", "04:00", "04:30", "05:00", "05:30", "06:00", "06:30", "07:00", "07:30", "08:00", "08:30", "09:00", "09:30", "10:00", "10:30", "11:00", "11:30", "12:00", "12:30", "13:00", "13:30", "14:00", "14:30", "15:00", "15:30", "16:00", "16:30", "17:00", "17:30", "18:00", "18:30", "19:00", "19:30", "20:00", "20:30", "21:00", "21:30", "22:00", "22:30", "23:00", "23:30"] %}
 
-<div class="card">
-  <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem;">
-    <h1 style="margin-bottom: 0;">{{ t("overrides-heading") }}</h1>
-    {% if is_team %}<a href="/dashboard/teams" class="slot-btn" style="text-decoration: none; font-size: 0.8rem;">{{ t("overrides-back-teams") }}</a>{% else %}<a href="/dashboard/event-types" class="slot-btn" style="text-decoration: none; font-size: 0.8rem;">{{ t("overrides-back-event-types") }}</a>{% endif %}
+<style>
+  /* ── Page rhythm ─────────────────────────────────────────────────── */
+  .section-desc {
+    color: var(--text-secondary);
+    font-size: 0.8125rem;
+    line-height: 1.55;
+    margin: -0.625rem 0 1.25rem;
+    max-width: 52ch;
+  }
+  .field-narrow { max-width: 15rem; }
+
+  /* ── Override-type chooser ───────────────────────────────────────── */
+  .type-choice {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.625rem;
+    margin-bottom: 1.25rem;
+  }
+  .type-option {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.6875rem;
+    padding: 0.8125rem 0.875rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+    cursor: pointer;
+    transition: border-color 0.15s var(--ease), background 0.15s var(--ease);
+  }
+  .type-option:hover { border-color: var(--border-hover); background: var(--surface-hover); }
+  .type-option input { flex: none; margin-top: 0.1875rem; width: 1.0625rem; height: 1.0625rem; cursor: pointer; }
+  .type-option strong { display: block; font-size: 0.875rem; font-weight: 600; color: var(--text); }
+  .type-option-desc { display: block; color: var(--text-muted); font-size: 0.8125rem; line-height: 1.5; margin-top: 0.125rem; }
+  .type-option:has(input:checked) { border-color: var(--accent); background: var(--accent-subtle); }
+
+  /* Custom-hours panel: reads as a continuation of the "custom" choice. */
+  .hours-panel {
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface-sunken);
+    padding: 1rem 1.0625rem 0.25rem;
+    margin: -0.625rem 0 1.25rem;
+  }
+  .hours-panel[hidden] { display: none; }
+  .hours-panel .form-group { margin-bottom: 0.875rem; }
+  .hours-panel .form-grid-2 { grid-template-columns: repeat(2, minmax(0, 13rem)); }
+
+  /* ── Existing overrides ──────────────────────────────────────────── */
+  .ovr-row {
+    display: flex;
+    align-items: center;
+    gap: 0.875rem;
+    padding: 0.8125rem 0;
+  }
+  .ovr-row:first-child { padding-top: 0; }
+  .ovr-row:last-child { padding-bottom: 0; }
+  .ovr-row + .ovr-row { border-top: 1px solid var(--border); }
+  .ovr-icon {
+    flex: none;
+    width: 2.25rem;
+    height: 2.25rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-sm);
+    border: 1px solid transparent;
+  }
+  .ovr-icon .ic { width: 1.0625rem; height: 1.0625rem; }
+  .ovr-blocked .ovr-icon {
+    background: var(--error-bg);
+    border-color: var(--error-border);
+    color: var(--error-text);
+  }
+  .ovr-custom .ovr-icon {
+    background: var(--info-bg);
+    border-color: var(--info-border);
+    color: var(--info);
+  }
+  .ovr-info { flex: 1; min-width: 0; }
+  .ovr-date {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.4375rem;
+    font-size: 0.9375rem;
+    font-weight: 600;
+    color: var(--text);
+  }
+  .ovr-sub {
+    font-size: 0.8125rem;
+    color: var(--text-muted);
+    margin-top: 0.1875rem;
+  }
+  .ovr-hours {
+    display: inline-block;
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    background: var(--surface-sunken);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 0.0625rem 0.3125rem;
+    margin: 0 0.125rem;
+    white-space: nowrap;
+  }
+  .ovr-actions { flex: none; }
+
+  @media (max-width: 560px) {
+    .type-choice { grid-template-columns: 1fr; }
+    .hours-panel .form-grid-2 { grid-template-columns: 1fr; }
+    .ovr-row { flex-wrap: wrap; align-items: flex-start; }
+    .ovr-actions { width: 100%; display: flex; justify-content: flex-end; }
+  }
+</style>
+
+<div class="page-head">
+  <div class="page-head-text">
+    <h1>Date overrides</h1>
+    <p>One-off exceptions to the weekly hours of <strong>{{ event_type_title }}</strong>.</p>
   </div>
-  <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 1.25rem;">
-    {{ t("overrides-intro", title='<strong>' ~ (event_type_title | escape) ~ '</strong>') | safe }}
-  </p>
+  <div class="page-head-actions">
+    {% if is_team %}
+    <a href="/dashboard/teams" class="btn btn-sm btn-ghost">
+      <svg class="ic" aria-hidden="true"><use href="#i-arrow-left"/></svg> Teams
+    </a>
+    {% else %}
+    <a href="/dashboard/event-types" class="btn btn-sm btn-ghost">
+      <svg class="ic" aria-hidden="true"><use href="#i-arrow-left"/></svg> Event types
+    </a>
+    {% endif %}
+  </div>
+</div>
 
-  {% if error %}
-    <div class="error" style="margin-bottom: 1rem;">{{ error }}</div>
-  {% endif %}
+{% if error %}
+  <div class="notice notice-error">
+    <svg class="ic" aria-hidden="true"><use href="#i-alert"/></svg>
+    <span>{{ error }}</span>
+  </div>
+{% endif %}
 
-  <form method="POST" action="/dashboard/event-types/{{ event_type_slug }}/overrides" style="border-bottom: 1px solid var(--border); padding-bottom: 1.25rem; margin-bottom: 1.25rem;">
-    <h2 style="font-size: 1rem; margin-bottom: 0.75rem;">{{ t("overrides-add-heading") }}</h2>
+<div class="card">
+  <h2>Add an override</h2>
+  <p class="section-desc">Block a single date entirely, or replace that day's weekly hours with a different window.</p>
 
-    <div class="form-group">
-      <label for="override_date">{{ t("overrides-date") }}</label>
-      <input type="date" id="override_date" name="date" required style="padding: 0.625rem 0.75rem; border: 1px solid var(--border); border-radius: var(--radius); font-size: 0.925rem; font-family: inherit; background: var(--surface); color: var(--text); width: 100%; max-width: 220px;">
+  <form method="POST" action="/dashboard/event-types/{{ event_type_slug }}/overrides">
+    <div class="form-group field-narrow">
+      <label for="override_date">Date</label>
+      <input type="date" id="override_date" name="date" required>
     </div>
 
-    <div class="form-group" style="margin-bottom: 0.75rem;">
-      <label style="display: block; margin-bottom: 0.5rem;">{{ t("overrides-type") }}</label>
-      <div style="display: flex; flex-wrap: wrap; gap: 0.75rem 1.5rem;">
-        <label style="display: flex; align-items: center; gap: 0.4rem; cursor: pointer; font-size: 0.9rem;">
-          <input type="radio" name="override_type" value="blocked" checked style="accent-color: var(--accent);">
-          {{ t("overrides-type-blocked") }}
-        </label>
-        <label style="display: flex; align-items: center; gap: 0.4rem; cursor: pointer; font-size: 0.9rem;">
-          <input type="radio" name="override_type" value="custom" style="accent-color: var(--accent);">
-          {{ t("overrides-type-custom") }}
-        </label>
-      </div>
+    <div class="field-label" id="override-type-label">Override type</div>
+    <div class="type-choice" role="radiogroup" aria-labelledby="override-type-label">
+      <label class="type-option">
+        <input type="radio" name="override_type" value="blocked" checked>
+        <span>
+          <strong>Block entire day</strong>
+          <span class="type-option-desc">No bookable slots on this date.</span>
+        </span>
+      </label>
+      <label class="type-option">
+        <input type="radio" name="override_type" value="custom">
+        <span>
+          <strong>Custom hours</strong>
+          <span class="type-option-desc">Bookable only inside the window below.</span>
+        </span>
+      </label>
     </div>
 
-    <div id="custom-hours-fields" style="display: none;">
-      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; max-width: 440px;" class="form-grid-2">
+    <div class="hours-panel" id="custom-hours-fields" hidden>
+      <div class="form-grid-2">
         <div class="form-group">
-          <label for="start_time">{{ t("overrides-start-time") }}</label>
-          <select id="start_time" name="start_time" style="padding: 0.625rem 0.75rem; border: 1px solid var(--border); border-radius: var(--radius); font-size: 0.925rem; font-family: inherit; background: var(--surface); color: var(--text); width: 100%;">
+          <label for="start_time">Start time</label>
+          <select id="start_time" name="start_time">
             {% for time in override_times %}<option value="{{ time }}" {% if time == "09:00" %}selected{% endif %}>{{ time | time12h }}</option>{% endfor %}
           </select>
         </div>
         <div class="form-group">
-          <label for="end_time">{{ t("overrides-end-time") }}</label>
-          <select id="end_time" name="end_time" style="padding: 0.625rem 0.75rem; border: 1px solid var(--border); border-radius: var(--radius); font-size: 0.925rem; font-family: inherit; background: var(--surface); color: var(--text); width: 100%;">
+          <label for="end_time">End time</label>
+          <select id="end_time" name="end_time">
             {% for time in override_times %}<option value="{{ time }}" {% if time == "17:00" %}selected{% endif %}>{{ time | time12h }}</option>{% endfor %}
           </select>
         </div>
       </div>
     </div>
 
-    <button type="submit" class="btn" style="margin-top: 0.75rem;">{{ t("overrides-add-submit") }}</button>
+    <button type="submit" class="btn">
+      <svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg> Add override
+    </button>
   </form>
+</div>
+
+<div class="card">
+  <div class="section-head">
+    <h2>Scheduled overrides</h2>
+    {% if overrides %}<span class="label">{{ overrides|length }} total</span>{% endif %}
+  </div>
 
   {% if overrides %}
-  <h2 style="font-size: 1rem; margin-bottom: 0.75rem;">{{ t("overrides-existing") }}</h2>
-  <div style="display: flex; flex-direction: column; gap: 0.5rem;">
     {% for o in overrides %}
-    <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 0.5rem; padding: 0.75rem; border: 1px solid var(--border); border-radius: var(--radius);">
-      <div>
-        <strong style="font-size: 0.9rem;">{{ o.date_label }}</strong>
+    <div class="ovr-row {% if o.is_blocked %}ovr-blocked{% else %}ovr-custom{% endif %}">
+      <div class="ovr-icon">
         {% if o.is_blocked %}
-          <span class="badge badge-error" style="margin-left: 0.5rem;">{{ t("overrides-badge-blocked") }}</span>
+        <svg class="ic" aria-hidden="true"><use href="#i-calendar-x"/></svg>
         {% else %}
-          <span class="badge badge-info" style="margin-left: 0.5rem;">{{ t("overrides-badge-custom") }}</span>
-          <span style="color: var(--text-muted); font-size: 0.85rem; margin-left: 0.25rem;">{{ o.start_time }} &ndash; {{ o.end_time }}</span>
+        <svg class="ic" aria-hidden="true"><use href="#i-clock"/></svg>
         {% endif %}
       </div>
-      <form method="POST" action="/dashboard/event-types/{{ event_type_slug }}/overrides/{{ o.id }}/delete" style="margin: 0;">
-        <button type="submit" class="slot-btn" style="font-size: 0.8rem; color: var(--error-text); cursor: pointer;" data-confirm="{{ t('overrides-delete-confirm') }}" onclick="return confirm(this.dataset.confirm);">{{ t("overrides-delete") }}</button>
-      </form>
+      <div class="ovr-info">
+        <div class="ovr-date">
+          {{ o.date_label }}
+          {% if o.is_blocked %}
+          <span class="badge badge-error">blocked</span>
+          {% else %}
+          <span class="badge badge-info">custom hours</span>
+          {% endif %}
+        </div>
+        <div class="ovr-sub">
+          {% if o.is_blocked %}
+            No bookings accepted on this date.
+          {% else %}
+            Bookable <span class="ovr-hours">{{ o.start_time }} &ndash; {{ o.end_time }}</span> instead of the weekly hours.
+          {% endif %}
+        </div>
+      </div>
+      <div class="ovr-actions">
+        <form method="POST" action="/dashboard/event-types/{{ event_type_slug }}/overrides/{{ o.id }}/delete" style="margin: 0;">
+          <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Delete this override?');">
+            <svg class="ic" aria-hidden="true"><use href="#i-trash"/></svg> Delete
+          </button>
+        </form>
+      </div>
     </div>
     {% endfor %}
-  </div>
   {% else %}
-  <div class="empty" style="padding: 1.5rem 1rem;">
-    <div class="empty-icon">&#128197;</div>
-    <div class="empty-text">{{ t("overrides-empty") | safe }}</div>
-  </div>
+    <div class="empty">
+      <div class="empty-icon"><svg class="ic" aria-hidden="true"><use href="#i-calendar-days"/></svg></div>
+      <div class="empty-text">No overrides yet. Add one to take a holiday off the calendar, or to open a different window on a single day.</div>
+    </div>
   {% endif %}
 </div>
 
@@ -99,11 +257,11 @@
     function toggle() {
       var selected = document.querySelector('input[name="override_type"]:checked').value;
       if (selected === 'custom') {
-        customFields.style.display = 'block';
+        customFields.hidden = false;
         startInput.required = true;
         endInput.required = true;
       } else {
-        customFields.style.display = 'none';
+        customFields.hidden = true;
         startInput.required = false;
         endInput.required = false;
       }

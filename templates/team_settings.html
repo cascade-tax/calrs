@@ -1,30 +1,342 @@
 {% extends "dashboard_base.html" %}
-{% block title %}{{ team_name }} {{ t("team-settings-page-title") }} — Cascade{% endblock %}
+{% block title %}{{ team_name }} settings — Cascade{% endblock %}
 {% block dashboard_content %}
-<div class="card">
-  <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
-    <h1 style="margin-bottom: 0;">{{ team_name }}</h1>
-    {% if visibility == "public" %}
-      <span class="badge badge-success">{{ t("teams-badge-public") }}</span>
-    {% else %}
-      <span class="badge badge-muted">{{ t("teams-badge-private") }}</span>
-    {% endif %}
-  </div>
-  <p style="color: var(--text-muted); font-size: 0.875rem; margin-top: 0.25rem;">{{ t("team-settings-subtitle") }}</p>
 
-  {% if success %}
-    <div class="success" style="margin-top: 1rem; padding: 0.75rem 1rem; border-radius: var(--radius); background: var(--success-bg, #e6f9e6); color: var(--success, #2d7a2d); border: 1px solid var(--success, #2d7a2d);">{{ success }}</div>
-  {% endif %}
+<style>
+  /* ── Page rhythm ─────────────────────────────────────────────────── */
+  .title-row { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+  .section-desc {
+    color: var(--text-secondary);
+    font-size: 0.8125rem;
+    line-height: 1.55;
+    margin: -0.625rem 0 1.125rem;
+  }
+  .field-hint { display: block; margin-top: 0.375rem; }
+
+  .team-form .form-group > input { max-width: 26rem; }
+  .team-form .form-group > .md-shell { max-width: 38rem; }
+
+  /* ── Avatar block ────────────────────────────────────────────────── */
+  .avatar-block { display: flex; align-items: center; gap: 1.125rem; flex-wrap: wrap; }
+  .avatar-circle.avatar-xl {
+    width: 68px;
+    height: 68px;
+    font-size: 1.0625rem;
+    letter-spacing: 0.04em;
+  }
+  .avatar-actions { display: flex; flex-direction: column; gap: 0.5rem; min-width: 0; }
+  .avatar-controls { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+  .file-input {
+    flex: 0 1 13.5rem;
+    min-width: 0;
+    font-family: inherit;
+    font-size: 0.8125rem;
+    color: var(--text-secondary);
+  }
+  .file-input::file-selector-button {
+    font-family: inherit;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--text);
+    background: var(--surface);
+    border: 1px solid var(--field-border);
+    border-radius: var(--radius-sm);
+    padding: 0.3125rem 0.6875rem;
+    margin-right: 0.625rem;
+    cursor: pointer;
+    transition: border-color 0.15s var(--ease), background 0.15s var(--ease);
+  }
+  .file-input::file-selector-button:hover {
+    border-color: var(--accent);
+    background: var(--surface-hover);
+  }
+
+  /* ── Machine text: the shareable link ────────────────────────────── */
+  .link-out { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; max-width: 38rem; }
+  .link-out input {
+    flex: 1 1 18rem;
+    min-width: 0;
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+  }
+  .btn.is-copied {
+    color: var(--success);
+    border-color: var(--success-border);
+    background: var(--success-bg);
+  }
+
+  /* ── Radio cards ─────────────────────────────────────────────────── */
+  fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+  legend {
+    font-weight: 600;
+    font-size: 0.8125rem;
+    margin-bottom: 0.375rem;
+    color: var(--text);
+  }
+  .radio-row { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+  .radio-card {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.875rem;
+    border: 1px solid var(--field-border);
+    border-radius: var(--radius);
+    cursor: pointer;
+    font-size: 0.875rem;
+    font-weight: 500;
+    background: var(--surface);
+    transition: border-color 0.15s var(--ease), background 0.15s var(--ease);
+  }
+  .radio-card:hover { border-color: var(--accent); }
+  .radio-card:has(input:checked) { border-color: var(--accent); background: var(--accent-subtle); }
+
+  /* ── Member rows ─────────────────────────────────────────────────── */
+  .member-list { margin-bottom: 1.125rem; }
+  .member-list:empty { display: none; }
+  .member-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.625rem 0;
+  }
+  .member-row + .member-row { border-top: 1px solid var(--border); }
+  .member-row:first-child { padding-top: 0; }
+  .avatar-circle.avatar-md { width: 32px; height: 32px; font-size: 0.6875rem; }
+  .avatar-circle.avatar-xs { width: 22px; height: 22px; font-size: 0.5625rem; border: 2px solid var(--surface); }
+  .avatar-circle.avatar-sm { width: 26px; height: 26px; font-size: 0.625rem; }
+  .avatar-circle.avatar-group,
+  html:not(.dark) .avatar-circle.avatar-group {
+    background: var(--surface-sunken);
+    color: var(--text-muted);
+  }
+  .avatar-circle.avatar-group .ic { width: 0.9375rem; height: 0.9375rem; }
+  .avatar-circle.avatar-more,
+  html:not(.dark) .avatar-circle.avatar-more {
+    background: var(--surface-sunken);
+    color: var(--text-muted);
+  }
+  .avatar-stack { display: inline-flex; align-items: center; }
+  .avatar-stack .avatar-circle + .avatar-circle { margin-left: -8px; }
+
+  .member-identity {
+    flex: 1 1 9rem;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+  }
+  .member-name {
+    font-size: 0.875rem;
+    font-weight: 600;
+    overflow-wrap: anywhere;
+  }
+  .member-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex: none;
+    margin-left: auto;
+  }
+  .role-select {
+    width: auto;
+    padding: 0.3125rem 1.875rem 0.3125rem 0.625rem;
+    font-size: 0.8125rem;
+    background-position: right 0.8125rem center, right 0.5rem center;
+  }
+
+  /* ── Member search ───────────────────────────────────────────────── */
+  .combo { position: relative; max-width: 30rem; }
+  .combo > input { width: 100%; }
+  .combo-results {
+    display: none;
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    right: 0;
+    background: var(--surface);
+    border: 1px solid var(--border-hover);
+    border-radius: var(--radius);
+    max-height: 300px;
+    overflow-y: auto;
+    z-index: 20;
+    box-shadow: var(--shadow-lg);
+    padding: 0.25rem;
+  }
+  .combo-label {
+    font-family: var(--font-mono);
+    font-size: 0.625rem;
+    font-weight: 500;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    padding: 0.4375rem 0.5rem 0.25rem;
+  }
+  .combo-row {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    padding: 0.375rem 0.5rem;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+  }
+  .combo-row:hover { background: var(--surface-hover); }
+  .combo-info { flex: 1; min-width: 0; }
+  .combo-name { font-size: 0.875rem; font-weight: 600; }
+  .combo-meta { font-size: 0.8125rem; color: var(--text-muted); overflow-wrap: anywhere; }
+  .combo-sep { height: 1px; background: var(--border); margin: 0.25rem 0; }
+
+  /* ── Markdown editor shell ───────────────────────────────────────── */
+  .md-shell { border: 1px solid var(--field-border); border-radius: var(--radius); overflow: hidden; }
+  .md-shell:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-subtle); }
+  .md-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.3125rem 0.4375rem;
+    background: var(--surface-sunken);
+    border-bottom: 1px solid var(--border);
+  }
+  .md-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.75rem;
+    height: 1.75rem;
+    padding: 0 0.4375rem;
+    background: none;
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
+    color: var(--text-secondary);
+    font-family: inherit;
+    font-size: 0.75rem;
+    line-height: 1;
+    cursor: pointer;
+  }
+  .md-preview-toggle {
+    margin-left: auto;
+    font-family: var(--font-mono);
+    font-size: 0.625rem;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+  }
+  .md-shell textarea, .md-shell .md-preview {
+    display: block;
+    width: 100%;
+    border: 0;
+    border-radius: 0;
+    padding: 0.625rem 0.8125rem;
+    font-size: 0.875rem;
+    background: var(--surface);
+    color: var(--text);
+  }
+  .md-shell textarea:focus { box-shadow: none; }
+  .md-shell .md-preview { min-height: 4.5rem; }
+
+  /* ── Danger zone ─────────────────────────────────────────────────── */
+  .card-danger {
+    margin-top: 2rem;
+    border-color: var(--error-border);
+    background: var(--surface);
+  }
+  .card-danger h2 {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: var(--error-text);
+    margin-bottom: 0.5rem;
+  }
+  .card-danger p {
+    color: var(--text-secondary);
+    font-size: 0.8125rem;
+    line-height: 1.55;
+    margin-bottom: 1rem;
+    max-width: 44rem;
+  }
+
+  @media (max-width: 560px) {
+    .member-row { flex-wrap: wrap; }
+    .member-actions {
+      width: 100%;
+      margin-left: 0;
+      padding-left: calc(32px + 0.75rem);
+      justify-content: flex-start;
+    }
+    .member-identity { flex: 1 1 auto; }
+    .member-row > .avatar-stack { margin-left: calc(32px + 0.75rem); }
+  }
+</style>
+
+{% if success %}
+  <div class="notice notice-success">
+    <svg class="ic" aria-hidden="true"><use href="#i-circle-check"/></svg>
+    <span>{{ success }}</span>
+  </div>
+{% endif %}
+
+<div class="page-head">
+  <div class="page-head-text">
+    <div class="title-row">
+      <h1>{{ team_name }}</h1>
+      {% if visibility == "public" %}
+        <span class="badge badge-success">public</span>
+      {% else %}
+        <span class="badge badge-muted">private</span>
+      {% endif %}
+    </div>
+    <p>Team settings — team admins can edit these.</p>
+  </div>
+  <div class="page-head-actions">
+    <a class="btn btn-ghost btn-sm" href="/dashboard/teams">
+      <svg class="ic" aria-hidden="true"><use href="#i-arrow-left"/></svg> All teams
+    </a>
+  </div>
+</div>
+
+<!-- Photo & share link — separate forms, so they sit outside the settings form -->
+<div class="card">
+  <h2>Photo</h2>
+  <p class="section-desc">Shown on the team page and next to team event types.</p>
+
+  <div class="avatar-block">
+    <span class="avatar-circle avatar-xl">
+      {% if team_has_avatar %}
+        <img src="/team-avatar/{{ team_id }}" alt="">
+      {% else %}
+        {{ team_initials }}
+      {% endif %}
+    </span>
+    <div class="avatar-actions">
+      <div class="avatar-controls">
+        <form method="post" action="/dashboard/teams/{{ team_id }}/avatar" enctype="multipart/form-data" class="avatar-controls" style="margin: 0">
+          <input type="file" name="avatar" accept="image/*" required class="file-input">
+          <button type="submit" class="btn btn-secondary btn-sm">
+            <svg class="ic" aria-hidden="true"><use href="#i-upload"/></svg> Upload
+          </button>
+        </form>
+        {% if team_has_avatar %}
+        <form method="post" action="/dashboard/teams/{{ team_id }}/avatar/delete" style="margin: 0">
+          <button type="submit" class="btn btn-danger btn-sm">Remove</button>
+        </form>
+        {% endif %}
+      </div>
+      <span class="field-hint">JPG, PNG, GIF or WebP. Up to 2&nbsp;MB.</span>
+    </div>
+  </div>
 
   {% if visibility == "public" and team_slug %}
-  <div style="margin-top: 1.25rem; padding: 1rem; border-radius: var(--radius); background: var(--accent-subtle, rgba(99,102,241,0.06)); border: 1px solid var(--accent-border, rgba(99,102,241,0.2));">
-    <label style="display: block; font-weight: 500; margin-bottom: 0.5rem; font-size: 0.875rem;">{{ t("team-settings-public-url") }}</label>
-    <p style="color: var(--text-muted); font-size: 0.8rem; margin-bottom: 0.5rem;">{{ t("team-settings-public-url-help") }}</p>
-    <div style="display: flex; gap: 0.5rem; align-items: center;">
-      <input type="text" id="public-url" readonly value="" style="flex: 1; font-size: 0.85rem; padding: 0.5rem 0.75rem; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); color: var(--text); font-family: monospace;">
-      <button type="button" id="copy-public-btn" class="slot-btn" style="cursor: pointer; font-weight: 600; color: var(--accent); border-color: var(--accent); white-space: nowrap;">{{ t("settings-copy") }}</button>
-      <a id="open-public-link" href="/team/{{ team_slug }}" target="_blank" rel="noopener noreferrer" class="slot-btn" style="text-decoration: none; font-size: 0.85rem; white-space: nowrap;">{{ t("settings-open") }} &#8599;</a>
-    </div>
+  <hr class="divider">
+  <span class="field-label">Public URL</span>
+  <p class="field-hint" style="margin: 0 0 0.5rem">Anyone can book through this link.</p>
+  <div class="link-out">
+    <input type="text" id="public-url" readonly value="" aria-label="Public team URL">
+    <button type="button" id="copy-public-btn" class="btn btn-secondary btn-sm">
+      <svg class="ic" aria-hidden="true"><use href="#i-copy"/></svg> Copy
+    </button>
+    <a id="open-public-link" href="/team/{{ team_slug }}" target="_blank" rel="noopener noreferrer" class="btn btn-ghost btn-sm">
+      Open <svg class="ic" aria-hidden="true"><use href="#i-arrow-up-right"/></svg>
+    </a>
   </div>
   <script>
   (function() {
@@ -34,23 +346,28 @@
     document.getElementById('copy-public-btn').addEventListener('click', function() {
       var btn = this;
       navigator.clipboard.writeText(url).then(function() {
-        btn.textContent = {{ t('settings-copied') | tojson }};
-        btn.style.color = 'var(--success)';
-        btn.style.borderColor = 'var(--success)';
-        setTimeout(function() { btn.textContent = {{ t('settings-copy') | tojson }}; btn.style.color = 'var(--accent)'; btn.style.borderColor = 'var(--accent)'; }, 1500);
+        btn.textContent = 'Copied';
+        btn.classList.add('is-copied');
+        setTimeout(function() {
+          btn.innerHTML = '<svg class="ic" aria-hidden="true"><use href="#i-copy"/></svg> Copy';
+          btn.classList.remove('is-copied');
+        }, 1500);
       });
     });
   })();
   </script>
   {% elif visibility == "private" and invite_token %}
-  <div style="margin-top: 1.25rem; padding: 1rem; border-radius: var(--radius); background: var(--accent-subtle, rgba(99,102,241,0.06)); border: 1px solid var(--accent-border, rgba(99,102,241,0.2));">
-    <label style="display: block; font-weight: 500; margin-bottom: 0.5rem; font-size: 0.875rem;">{{ t("team-settings-invite-link") }}</label>
-    <p style="color: var(--text-muted); font-size: 0.8rem; margin-bottom: 0.5rem;">{{ t("team-settings-invite-link-help") }}</p>
-    <div style="display: flex; gap: 0.5rem; align-items: center;">
-      <input type="text" id="invite-url" readonly value="" style="flex: 1; font-size: 0.85rem; padding: 0.5rem 0.75rem; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); color: var(--text); font-family: monospace;">
-      <button type="button" id="copy-invite-btn" class="slot-btn" style="cursor: pointer; font-weight: 600; color: var(--accent); border-color: var(--accent); white-space: nowrap;">{{ t("settings-copy") }}</button>
-      <a id="open-invite-link" href="/team/{{ team_slug }}?invite={{ invite_token }}" target="_blank" rel="noopener noreferrer" class="slot-btn" style="text-decoration: none; font-size: 0.85rem; white-space: nowrap;">{{ t("settings-open") }} &#8599;</a>
-    </div>
+  <hr class="divider">
+  <span class="field-label">Invite link</span>
+  <p class="field-hint" style="margin: 0 0 0.5rem">Share this link to give people access to this private team's booking page.</p>
+  <div class="link-out">
+    <input type="text" id="invite-url" readonly value="" aria-label="Team invite URL">
+    <button type="button" id="copy-invite-btn" class="btn btn-secondary btn-sm">
+      <svg class="ic" aria-hidden="true"><use href="#i-copy"/></svg> Copy
+    </button>
+    <a id="open-invite-link" href="/team/{{ team_slug }}?invite={{ invite_token }}" target="_blank" rel="noopener noreferrer" class="btn btn-ghost btn-sm">
+      Open <svg class="ic" aria-hidden="true"><use href="#i-arrow-up-right"/></svg>
+    </a>
   </div>
   <script>
   (function() {
@@ -60,47 +377,25 @@
     document.getElementById('copy-invite-btn').addEventListener('click', function() {
       var btn = this;
       navigator.clipboard.writeText(url).then(function() {
-        btn.textContent = {{ t('settings-copied') | tojson }};
-        btn.style.color = 'var(--success)';
-        btn.style.borderColor = 'var(--success)';
-        setTimeout(function() { btn.textContent = {{ t('settings-copy') | tojson }}; btn.style.color = 'var(--accent)'; btn.style.borderColor = 'var(--accent)'; }, 1500);
+        btn.textContent = 'Copied';
+        btn.classList.add('is-copied');
+        setTimeout(function() {
+          btn.innerHTML = '<svg class="ic" aria-hidden="true"><use href="#i-copy"/></svg> Copy';
+          btn.classList.remove('is-copied');
+        }, 1500);
       });
     });
   })();
   </script>
   {% endif %}
-
-  <!-- Avatar -->
-  <div style="margin-top: 1.25rem;">
-    <label style="display: block; font-weight: 500; margin-bottom: 0.5rem; font-size: 0.875rem;">{{ t("team-settings-avatar") }}</label>
-    <div style="display: flex; align-items: center; gap: 1rem;">
-      <div style="width: 64px; height: 64px; border-radius: 50%; background: var(--btn-primary-bg); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 1.25rem; flex-shrink: 0; overflow: hidden;">
-        {% if team_has_avatar %}
-          <img src="/team-avatar/{{ team_id }}" alt="" style="width: 100%; height: 100%; object-fit: cover;">
-        {% else %}
-          {{ team_initials }}
-        {% endif %}
-      </div>
-      <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
-        <form method="post" action="/dashboard/teams/{{ team_id }}/avatar" enctype="multipart/form-data" style="margin: 0; display: flex; gap: 0.5rem; align-items: center;">
-          <input type="file" name="avatar" accept="image/*" required style="font-size: 0.85rem;">
-          <button type="submit" class="slot-btn" style="cursor: pointer; font-weight: 600; color: var(--accent); border-color: var(--accent);">{{ t("settings-upload") }}</button>
-        </form>
-        {% if team_has_avatar %}
-        <form method="post" action="/dashboard/teams/{{ team_id }}/avatar/delete" style="margin: 0;">
-          <button type="submit" class="slot-btn" style="cursor: pointer; font-size: 0.85rem; color: var(--error-text);">{{ t("team-settings-remove") }}</button>
-        </form>
-        {% endif %}
-      </div>
-    </div>
-  </div>
 </div>
 
 <!-- Unified settings form -->
-<form method="POST" id="settings-form">
-  <!-- Profile section -->
-  <div class="card" style="margin-top: 1.25rem;">
-    <h2 style="font-size: 1rem; margin-bottom: 0.75rem;">{{ t("team-settings-profile") }}</h2>
+<form method="POST" id="settings-form" class="team-form">
+
+  <!-- Profile -->
+  <div class="card">
+    <h2>Profile</h2>
 
     <div class="form-group">
       <label for="name">{{ t("team-form-name") }}</label>
@@ -108,97 +403,111 @@
     </div>
 
     <div class="form-group">
-      <label for="slug">{{ t("team-form-slug") }} <span class="hint">{{ t("team-form-slug-hint") }}</span></label>
-      <input type="text" id="slug" name="slug" required value="{{ team_slug }}" placeholder="engineering" pattern="[a-z0-9\-]+" title="{{ t('team-form-slug-pattern-title') }}">
-      <span class="hint" style="font-size: 0.8rem; color: var(--text-muted); display: block; margin-top: 0.25rem;">Used in the team URL: /team/{{ team_slug }}</span>
+      <label for="slug">Slug <span class="hint">— URL-friendly identifier</span></label>
+      <input type="text" id="slug" name="slug" required value="{{ team_slug }}" placeholder="engineering" pattern="[a-z0-9\-]+" title="Lowercase letters, numbers, and dashes only">
+      <span class="field-hint">Used in the team URL: <span class="mono">/team/{{ team_slug }}</span></span>
     </div>
 
     <div class="form-group">
-      <label for="description">{{ t("team-form-description") }}</label>
-      <div style="border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden;">
-        <div class="md-toolbar" data-target="description" style="display: flex; gap: 0.25rem; padding: 0.375rem 0.5rem; background: var(--surface-hover); border-bottom: 1px solid var(--border);">
-          <button type="button" data-action="bold" title="{{ t('editor-bold-short') }}" style="padding: 0.25rem 0.5rem; background: none; border: 1px solid transparent; border-radius: 3px; cursor: pointer; font-weight: 700; font-size: 0.85rem; color: var(--text); font-family: inherit; line-height: 1;">B</button>
-          <button type="button" data-action="italic" title="{{ t('editor-italic-short') }}" style="padding: 0.25rem 0.5rem; background: none; border: 1px solid transparent; border-radius: 3px; cursor: pointer; font-style: italic; font-size: 0.85rem; color: var(--text); font-family: inherit; line-height: 1;">I</button>
-          <button type="button" data-action="link" title="{{ t('editor-link-short') }}" style="padding: 0.25rem 0.5rem; background: none; border: 1px solid transparent; border-radius: 3px; cursor: pointer; font-size: 0.85rem; color: var(--text); font-family: inherit; line-height: 1;">&#128279;</button>
-          <div style="flex: 1;"></div>
-          <button type="button" class="md-preview-toggle" title="{{ t('editor-toggle-preview') }}" style="padding: 0.25rem 0.5rem; background: none; border: 1px solid transparent; border-radius: 3px; cursor: pointer; font-size: 0.75rem; color: var(--text-muted); font-family: inherit; line-height: 1;">{{ t("editor-preview") }}</button>
+      <label for="description">Description <span class="hint">— optional</span></label>
+      <div class="md-shell">
+        <div class="md-toolbar" data-target="description">
+          <button type="button" class="md-btn" data-action="bold" title="Bold" aria-label="Bold">
+            <svg class="ic" aria-hidden="true"><use href="#i-bold"/></svg>
+          </button>
+          <button type="button" class="md-btn" data-action="italic" title="Italic" aria-label="Italic">
+            <svg class="ic" aria-hidden="true"><use href="#i-italic"/></svg>
+          </button>
+          <button type="button" class="md-btn" data-action="link" title="Insert link" aria-label="Insert link">
+            <svg class="ic" aria-hidden="true"><use href="#i-link"/></svg>
+          </button>
+          <button type="button" class="md-btn md-preview-toggle" title="Toggle preview">Preview</button>
         </div>
-        <textarea id="description" name="description" rows="3" placeholder="{{ t('team-settings-description-placeholder') }}" style="border: none; border-radius: 0; width: 100%; resize: vertical; padding: 0.5rem 0.75rem; font-family: inherit; font-size: 0.9rem; background: var(--surface); color: var(--text); box-sizing: border-box;">{{ team_description }}</textarea>
-        <div id="description-preview" style="display: none; padding: 0.5rem 0.75rem; min-height: 4rem; font-size: 0.9rem; color: var(--text); background: var(--surface);"></div>
+        <textarea id="description" name="description" rows="3" placeholder="Tell people about this team…">{{ team_description }}</textarea>
+        <div id="description-preview" class="md-preview" style="display: none;"></div>
       </div>
-      <span class="hint" style="font-size: 0.8rem; color: var(--text-muted); display: block; margin-top: 0.25rem;">{{ t("team-settings-description-help") }}</span>
+      <span class="field-hint">Shown on the team's public booking page. Supports **bold**, *italic*, and [links](url).</span>
     </div>
 
-    <fieldset style="border: none; padding: 0; margin: 0;">
-      <legend style="font-weight: 500; font-size: 0.9rem; margin-bottom: 0.375rem;">{{ t("team-form-visibility") }}</legend>
-      <div style="display: flex; gap: 1rem;">
-        <label style="display: inline-flex; align-items: center; gap: 0.375rem; padding: 0.5rem 0.75rem; border: 1px solid var(--border); border-radius: var(--radius); cursor: pointer; font-size: 0.9rem; transition: all 0.15s ease;">
-          <input type="radio" name="visibility" value="public" {% if visibility == "public" %}checked{% endif %} style="accent-color: var(--accent);">
-          {{ t("team-form-public") }}
+    <fieldset>
+      <legend>Visibility</legend>
+      <div class="radio-row">
+        <label class="radio-card">
+          <input type="radio" name="visibility" value="public" {% if visibility == "public" %}checked{% endif %}>
+          <svg class="ic" aria-hidden="true"><use href="#i-globe"/></svg> Public
         </label>
-        <label style="display: inline-flex; align-items: center; gap: 0.375rem; padding: 0.5rem 0.75rem; border: 1px solid var(--border); border-radius: var(--radius); cursor: pointer; font-size: 0.9rem; transition: all 0.15s ease;">
-          <input type="radio" name="visibility" value="private" {% if visibility == "private" %}checked{% endif %} style="accent-color: var(--accent);">
-          {{ t("team-form-private") }}
+        <label class="radio-card">
+          <input type="radio" name="visibility" value="private" {% if visibility == "private" %}checked{% endif %}>
+          <svg class="ic" aria-hidden="true"><use href="#i-lock"/></svg> Private
         </label>
       </div>
-      <span class="hint" style="font-size: 0.8rem; color: var(--text-muted); display: block; margin-top: 0.25rem;">{{ t("team-settings-visibility-help") }}</span>
+      <span class="field-hint">Public teams are listed on the team profile page. Private teams need an invite link.</span>
     </fieldset>
   </div>
 
-  <!-- Members section -->
-  <div class="card" style="margin-top: 1.25rem;">
-    <h2 style="font-size: 1rem; margin-bottom: 0.75rem;">{{ t("team-form-members") }}</h2>
-    <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 1rem;">{{ t("team-settings-members-help") }}</p>
+  <!-- Members -->
+  <div class="card">
+    <h2>Members</h2>
+    <p class="section-desc">Who belongs to this team. Add people directly, or link an OIDC group to keep membership in sync.</p>
 
     <!-- Unified member + group list -->
-    <div id="members-list" style="margin-bottom: 1rem;">
+    <div id="members-list" class="member-list">
       {% for m in members %}
-      <div class="member-row" data-id="{{ m.id }}" data-type="user" style="display: flex; align-items: center; gap: 0.75rem; padding: 0.5rem 0; {% if not loop.last or linked_groups %}border-bottom: 1px solid var(--border);{% endif %}">
-        <div style="width: 32px; height: 32px; border-radius: 50%; background: var(--btn-primary-bg); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 0.7rem; flex-shrink: 0; overflow: hidden;">
+      <div class="member-row" data-id="{{ m.id }}" data-type="user">
+        <span class="avatar-circle avatar-md">
           {% if m.has_avatar %}
-            <img src="/avatar/{{ m.id }}" alt="" style="width: 100%; height: 100%; object-fit: cover;">
+            <img src="/avatar/{{ m.id }}" alt="">
           {% else %}
             {{ m.initials }}
           {% endif %}
-        </div>
-        <span style="font-size: 0.9rem; flex: 1;">{{ m.name }}</span>
-        {% if m.source == "group" %}<span class="badge badge-muted">OIDC</span>{% endif %}
-        <select class="role-select" data-user-id="{{ m.id }}" style="font-size: 0.8rem; padding: 0.25rem 0.5rem; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); color: var(--text); cursor: pointer; font-family: inherit;">
-          <option value="member" {% if m.role != "admin" %}selected{% endif %}>{{ t("team-settings-role-member") }}</option>
-          <option value="admin" {% if m.role == "admin" %}selected{% endif %}>{{ t("team-settings-role-admin") }}</option>
-        </select>
-        {% if m.source != "group" %}
-        <button type="button" class="slot-btn remove-member-btn" data-user-id="{{ m.id }}" style="font-size: 0.75rem; color: var(--error-text); cursor: pointer;">{{ t("team-settings-remove") }}</button>
-        {% endif %}
+        </span>
+        <span class="member-identity">
+          <span class="member-name">{{ m.name }}</span>
+          {% if m.source == "group" %}<span class="badge badge-muted">OIDC</span>{% endif %}
+        </span>
+        <span class="member-actions">
+          <select class="role-select" data-user-id="{{ m.id }}" aria-label="Role for {{ m.name }}">
+            <option value="member" {% if m.role != "admin" %}selected{% endif %}>Member</option>
+            <option value="admin" {% if m.role == "admin" %}selected{% endif %}>Admin</option>
+          </select>
+          {% if m.source != "group" %}
+          <button type="button" class="btn btn-danger btn-xs remove-member-btn" data-user-id="{{ m.id }}">Remove</button>
+          {% endif %}
+        </span>
       </div>
       {% endfor %}
       {% for g in linked_groups %}
-      <div class="member-row" data-id="{{ g.id }}" data-type="group" style="display: flex; align-items: center; gap: 0.75rem; padding: 0.5rem 0; {% if not loop.last %}border-bottom: 1px solid var(--border);{% endif %}">
-        <div style="width: 32px; height: 32px; border-radius: 50%; background: var(--surface-hover); color: var(--text-muted); display: flex; align-items: center; justify-content: center; font-size: 1rem; flex-shrink: 0;">&#8862;</div>
-        <span style="font-size: 0.9rem; flex: 1;">{{ g.name }}</span>
-        <!-- Stacked member avatars -->
-        <span style="display: inline-flex; align-items: center;">
+      <div class="member-row" data-id="{{ g.id }}" data-type="group">
+        <span class="avatar-circle avatar-md avatar-group">
+          <svg class="ic" aria-hidden="true"><use href="#i-users"/></svg>
+        </span>
+        <span class="member-identity">
+          <span class="member-name">{{ g.name }}</span>
+          <span class="badge badge-muted">OIDC group</span>
+        </span>
+        <span class="avatar-stack">
           {% for m in g.members %}
           {% if loop.index0 < 6 %}
-          <span title="{{ m.name }}" style="width: 22px; height: 22px; border-radius: 50%; background: var(--btn-primary-bg); color: #fff; display: inline-flex; align-items: center; justify-content: center; font-size: 0.55rem; font-weight: 600; flex-shrink: 0; overflow: hidden; border: 2px solid var(--surface);{% if loop.index0 > 0 %} margin-left: -8px;{% endif %}">
-            {% if m.has_avatar %}<img src="/avatar/{{ m.id }}" style="width:100%;height:100%;object-fit:cover;">{% else %}{{ m.initials }}{% endif %}
+          <span class="avatar-circle avatar-xs" title="{{ m.name }}">
+            {% if m.has_avatar %}<img src="/avatar/{{ m.id }}" alt="">{% else %}{{ m.initials }}{% endif %}
           </span>
           {% endif %}
           {% endfor %}
           {% if g.member_count > 6 %}
-          <span style="width: 22px; height: 22px; border-radius: 50%; background: var(--surface-hover); color: var(--text-muted); display: inline-flex; align-items: center; justify-content: center; font-size: 0.55rem; font-weight: 600; flex-shrink: 0; border: 2px solid var(--surface); margin-left: -8px;">+{{ g.member_count - 6 }}</span>
+          <span class="avatar-circle avatar-xs avatar-more">+{{ g.member_count - 6 }}</span>
           {% endif %}
         </span>
-        <span class="badge badge-muted">{{ t("team-settings-oidc-group") }}</span>
-        <button type="button" class="slot-btn remove-group-btn" data-group-id="{{ g.id }}" style="font-size: 0.75rem; color: var(--error-text); cursor: pointer;">{{ t("team-settings-remove") }}</button>
+        <span class="member-actions">
+          <button type="button" class="btn btn-danger btn-xs remove-group-btn" data-group-id="{{ g.id }}">Remove</button>
+        </span>
       </div>
       {% endfor %}
     </div>
 
     <!-- Unified search bar -->
-    <div style="position: relative;">
-      <input type="text" id="add-member-search" autocomplete="off" placeholder="{{ t('team-form-search-placeholder') }}" style="width: 100%; padding: 0.5rem 0.75rem; border: 1px solid var(--border); border-radius: var(--radius); font-size: 0.85rem; font-family: inherit; background: var(--surface); color: var(--text);">
-      <div id="add-member-results" style="display: none; position: absolute; top: 100%; left: 0; right: 0; background: var(--surface); border: 1px solid var(--border); border-top: none; border-radius: 0 0 var(--radius) var(--radius); max-height: 300px; overflow-y: auto; z-index: 10; box-shadow: var(--shadow);"></div>
+    <div class="combo">
+      <input type="text" id="add-member-search" autocomplete="off" placeholder="Search users or groups…">
+      <div id="add-member-results" class="combo-results"></div>
     </div>
 
     <!-- Hidden inputs for members + groups + admin roles -->
@@ -207,17 +516,19 @@
     <div id="admin-hidden-inputs"></div>
   </div>
 
-  <div style="margin-top: 1.25rem;">
-    <button type="submit" class="btn">{{ t("team-settings-save") }}</button>
+  <div class="btn-row">
+    <button type="submit" class="btn">Save changes</button>
   </div>
 </form>
 
 <!-- Danger zone -->
-<div class="card" style="margin-top: 2rem; border: 1px solid var(--error-text, #dc2626);">
-  <h2 style="font-size: 1rem; margin-bottom: 0.75rem; color: var(--error-text);">{{ t("team-settings-danger-zone") }}</h2>
-  <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 0.75rem;">{{ t("team-settings-danger-help") }}</p>
-  <button type="button" class="slot-btn" style="font-size: 0.85rem; color: var(--error-text); border-color: var(--error-text); cursor: pointer;" data-confirm="{{ t('team-settings-delete-confirm', name=team_name) }}" onclick="if(confirm(this.dataset.confirm)) this.nextElementSibling.submit();">{{ t("team-settings-delete") }}</button>
-  <form method="post" action="/dashboard/teams/{{ team_id }}/delete" style="display: none;"></form>
+<div class="card card-danger">
+  <h2><svg class="ic" aria-hidden="true"><use href="#i-alert"/></svg> Danger zone</h2>
+  <p>Permanently delete this team. Event types will be unlinked, not deleted. This cannot be undone.</p>
+  <button type="button" class="btn btn-danger" data-confirm="Delete team '{{ team_name }}'? This cannot be undone." onclick="if(confirm(this.dataset.confirm)) this.nextElementSibling.submit();">
+    <svg class="ic" aria-hidden="true"><use href="#i-trash"/></svg> Delete this team
+  </button>
+  <form method="post" action="/dashboard/teams/{{ team_id }}/delete" style="display: none"></form>
 </div>
 
 <script>
@@ -287,28 +598,40 @@ var MEMBER_COUNT_OTHER = {{ t('teams-member-count', count=2) | tojson }};
     adminHiddenEl.appendChild(ainp);
   }
 
+  function avatarEl(person, sizeClass) {
+    var av = document.createElement('span');
+    av.className = 'avatar-circle ' + sizeClass;
+    av.title = person.name;
+    if (person.hasAvatar) {
+      av.innerHTML = '<img src="/avatar/' + person.id + '" alt="">';
+    } else {
+      av.textContent = person.initials;
+    }
+    return av;
+  }
+
   function stackedAvatars(members, total) {
     var wrap = document.createElement('span');
-    wrap.style.cssText = 'display: inline-flex; align-items: center;';
-    var shown = members.slice(0, 6);
-    shown.forEach(function(m, i) {
-      var av = document.createElement('span');
-      av.title = m.name;
-      av.style.cssText = 'width: 22px; height: 22px; border-radius: 50%; background: var(--btn-primary-bg); color: #fff; display: inline-flex; align-items: center; justify-content: center; font-size: 0.55rem; font-weight: 600; flex-shrink: 0; overflow: hidden; border: 2px solid var(--surface);' + (i > 0 ? ' margin-left: -8px;' : '');
-      if (m.hasAvatar) {
-        av.innerHTML = '<img src="/avatar/' + m.id + '" style="width:100%;height:100%;object-fit:cover;">';
-      } else {
-        av.textContent = m.initials;
-      }
-      wrap.appendChild(av);
+    wrap.className = 'avatar-stack';
+    members.slice(0, 6).forEach(function(m) {
+      wrap.appendChild(avatarEl(m, 'avatar-xs'));
     });
     if (total > 6) {
       var more = document.createElement('span');
-      more.style.cssText = 'width: 22px; height: 22px; border-radius: 50%; background: var(--surface-hover); color: var(--text-muted); display: inline-flex; align-items: center; justify-content: center; font-size: 0.55rem; font-weight: 600; flex-shrink: 0; border: 2px solid var(--surface); margin-left: -8px;';
+      more.className = 'avatar-circle avatar-xs avatar-more';
       more.textContent = '+' + (total - 6);
       wrap.appendChild(more);
     }
     return wrap;
+  }
+
+  function removeButton(label, onClick) {
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn btn-danger btn-xs';
+    btn.textContent = label;
+    btn.onclick = onClick;
+    return btn;
   }
 
   function addMember(user) {
@@ -317,33 +640,28 @@ var MEMBER_COUNT_OTHER = {{ t('teams-member-count', count=2) | tojson }};
     row.className = 'member-row';
     row.dataset.id = user.id;
     row.dataset.type = 'user';
-    row.style.cssText = 'display: flex; align-items: center; gap: 0.75rem; padding: 0.5rem 0; border-top: 1px solid var(--border);';
-    var avatar = document.createElement('div');
-    avatar.style.cssText = 'width: 32px; height: 32px; border-radius: 50%; background: var(--btn-primary-bg); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 0.7rem; flex-shrink: 0; overflow: hidden;';
-    if (user.hasAvatar) {
-      avatar.innerHTML = '<img src="/avatar/' + user.id + '" style="width:100%;height:100%;object-fit:cover;">';
-    } else {
-      avatar.textContent = user.initials;
-    }
-    row.appendChild(avatar);
+    row.appendChild(avatarEl(user, 'avatar-md'));
+
+    var identity = document.createElement('span');
+    identity.className = 'member-identity';
     var name = document.createElement('span');
-    name.style.cssText = 'font-size: 0.9rem; flex: 1;';
+    name.className = 'member-name';
     name.textContent = user.name;
-    row.appendChild(name);
+    identity.appendChild(name);
+    row.appendChild(identity);
+
+    var actions = document.createElement('span');
+    actions.className = 'member-actions';
     var roleSelect = document.createElement('select');
     roleSelect.className = 'role-select';
     roleSelect.dataset.userId = user.id;
-    roleSelect.style.cssText = 'font-size: 0.8rem; padding: 0.25rem 0.5rem; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); color: var(--text); cursor: pointer; font-family: inherit;';
-    roleSelect.innerHTML = '<option value="member" selected>' + ROLE_MEMBER + '</option><option value="admin">' + ROLE_ADMIN + '</option>';
+    roleSelect.setAttribute('aria-label', 'Role for ' + user.name);
+    roleSelect.innerHTML = '<option value="member" selected>Member</option><option value="admin">Admin</option>';
     roleSelect.onchange = function() { setRole(user.id, this.value); };
-    row.appendChild(roleSelect);
-    var removeBtn = document.createElement('button');
-    removeBtn.type = 'button';
-    removeBtn.className = 'slot-btn';
-    removeBtn.style.cssText = 'font-size: 0.75rem; color: var(--error-text); cursor: pointer;';
-    removeBtn.textContent = {{ t('team-settings-remove') | tojson }};
-    removeBtn.onclick = function() { removeMember(user.id); };
-    row.appendChild(removeBtn);
+    actions.appendChild(roleSelect);
+    actions.appendChild(removeButton('Remove', function() { removeMember(user.id); }));
+    row.appendChild(actions);
+
     listEl.appendChild(row);
     syncHidden();
     searchEl.value = '';
@@ -373,29 +691,33 @@ var MEMBER_COUNT_OTHER = {{ t('teams-member-count', count=2) | tojson }};
     row.className = 'member-row';
     row.dataset.id = group.id;
     row.dataset.type = 'group';
-    row.style.cssText = 'display: flex; align-items: center; gap: 0.75rem; padding: 0.5rem 0; border-top: 1px solid var(--border);';
-    var icon = document.createElement('div');
-    icon.style.cssText = 'width: 32px; height: 32px; border-radius: 50%; background: var(--surface-hover); color: var(--text-muted); display: flex; align-items: center; justify-content: center; font-size: 1rem; flex-shrink: 0;';
-    icon.innerHTML = '&#8862;';
+
+    var icon = document.createElement('span');
+    icon.className = 'avatar-circle avatar-md avatar-group';
+    icon.innerHTML = '<svg class="ic" aria-hidden="true"><use href="#i-users"/></svg>';
     row.appendChild(icon);
+
+    var identity = document.createElement('span');
+    identity.className = 'member-identity';
     var name = document.createElement('span');
-    name.style.cssText = 'font-size: 0.9rem; flex: 1;';
+    name.className = 'member-name';
     name.textContent = group.name;
-    row.appendChild(name);
+    identity.appendChild(name);
+    var badge = document.createElement('span');
+    badge.className = 'badge badge-muted';
+    badge.textContent = 'OIDC group';
+    identity.appendChild(badge);
+    row.appendChild(identity);
+
     if (group.members && group.members.length > 0) {
       row.appendChild(stackedAvatars(group.members, group.count));
     }
-    var badge = document.createElement('span');
-    badge.className = 'badge badge-muted';
-    badge.textContent = {{ t('team-settings-oidc-group') | tojson }};
-    row.appendChild(badge);
-    var removeBtn = document.createElement('button');
-    removeBtn.type = 'button';
-    removeBtn.className = 'slot-btn';
-    removeBtn.style.cssText = 'font-size: 0.75rem; color: var(--error-text); cursor: pointer;';
-    removeBtn.textContent = {{ t('team-settings-remove') | tojson }};
-    removeBtn.onclick = function() { removeGroup(group.id); };
-    row.appendChild(removeBtn);
+
+    var actions = document.createElement('span');
+    actions.className = 'member-actions';
+    actions.appendChild(removeButton('Remove', function() { removeGroup(group.id); }));
+    row.appendChild(actions);
+
     listEl.appendChild(row);
     syncHidden();
     searchEl.value = '';
@@ -448,32 +770,23 @@ var MEMBER_COUNT_OTHER = {{ t('teams-member-count', count=2) | tojson }};
 
     if (userMatches.length > 0) {
       var header = document.createElement('div');
-      header.textContent = {{ t('team-form-search-users') | tojson }};
-      header.style.cssText = 'padding: 0.5rem 0.75rem 0.25rem; font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted);';
+      header.className = 'combo-label';
+      header.textContent = 'Users';
       resultsEl.appendChild(header);
       userMatches.forEach(function(u) {
         var row = document.createElement('div');
-        row.style.cssText = 'display: flex; align-items: center; gap: 0.75rem; padding: 0.5rem 0.75rem; cursor: pointer; transition: background 0.1s;';
-        row.onmouseenter = function() { this.style.background = 'var(--surface-hover)'; };
-        row.onmouseleave = function() { this.style.background = 'none'; };
+        row.className = 'combo-row';
         row.onclick = function() { addMember(u); };
-        var avatar = document.createElement('div');
-        avatar.style.cssText = 'width: 28px; height: 28px; border-radius: 50%; background: var(--btn-primary-bg); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 0.65rem; font-weight: 600; flex-shrink: 0; overflow: hidden;';
-        if (u.hasAvatar) {
-          avatar.innerHTML = '<img src="/avatar/' + u.id + '" style="width:100%;height:100%;object-fit:cover;">';
-        } else {
-          avatar.textContent = u.initials;
-        }
-        row.appendChild(avatar);
+        row.appendChild(avatarEl(u, 'avatar-sm'));
         var info = document.createElement('div');
-        var nameEl = document.createElement('strong');
-        nameEl.style.fontSize = '0.85rem';
+        info.className = 'combo-info';
+        var nameEl = document.createElement('div');
+        nameEl.className = 'combo-name';
         nameEl.textContent = u.name;
-        var emailEl = document.createElement('span');
-        emailEl.style.cssText = 'color:var(--text-muted);font-size:0.8rem;';
+        var emailEl = document.createElement('div');
+        emailEl.className = 'combo-meta';
         emailEl.textContent = u.email;
         info.appendChild(nameEl);
-        info.appendChild(document.createTextNode(' '));
         info.appendChild(emailEl);
         row.appendChild(info);
         resultsEl.appendChild(row);
@@ -483,35 +796,36 @@ var MEMBER_COUNT_OTHER = {{ t('teams-member-count', count=2) | tojson }};
     if (groupMatches.length > 0) {
       if (userMatches.length > 0) {
         var sep = document.createElement('div');
-        sep.style.cssText = 'border-top: 1px solid var(--border); margin: 0.25rem 0;';
+        sep.className = 'combo-sep';
         resultsEl.appendChild(sep);
       }
       var header = document.createElement('div');
-      header.textContent = {{ t('team-form-search-groups') | tojson }};
-      header.style.cssText = 'padding: 0.5rem 0.75rem 0.25rem; font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted);';
+      header.className = 'combo-label';
+      header.textContent = 'OIDC groups';
       resultsEl.appendChild(header);
       groupMatches.forEach(function(g) {
         var row = document.createElement('div');
-        row.style.cssText = 'display: flex; align-items: center; gap: 0.75rem; padding: 0.5rem 0.75rem; cursor: pointer; transition: background 0.1s;';
-        row.onmouseenter = function() { this.style.background = 'var(--surface-hover)'; };
-        row.onmouseleave = function() { this.style.background = 'none'; };
+        row.className = 'combo-row';
         row.onclick = function() { addGroup(g); };
+        var icon = document.createElement('span');
+        icon.className = 'avatar-circle avatar-sm avatar-group';
+        icon.innerHTML = '<svg class="ic" aria-hidden="true"><use href="#i-users"/></svg>';
+        row.appendChild(icon);
         var info = document.createElement('div');
-        info.style.cssText = 'display: flex; align-items: center; gap: 0.5rem; flex: 1;';
-        var gNameEl = document.createElement('strong');
-        gNameEl.style.fontSize = '0.85rem';
+        info.className = 'combo-info';
+        var gNameEl = document.createElement('div');
+        gNameEl.className = 'combo-name';
         gNameEl.textContent = g.name;
         info.appendChild(gNameEl);
+        row.appendChild(info);
         if (g.members && g.members.length > 0) {
-          info.appendChild(stackedAvatars(g.members, g.count));
+          row.appendChild(stackedAvatars(g.members, g.count));
         } else {
           var countEl = document.createElement('span');
-          countEl.style.cssText = 'color:var(--text-muted);font-size:0.8rem;';
-          var memberForm = g.count === 1 ? MEMBER_COUNT_ONE : MEMBER_COUNT_OTHER;
-          countEl.textContent = ' (' + memberForm.replace(/\d+/, g.count) + ')';
-          info.appendChild(countEl);
+          countEl.className = 'combo-meta';
+          countEl.textContent = g.count + ' member' + (g.count !== 1 ? 's' : '');
+          row.appendChild(countEl);
         }
-        row.appendChild(info);
         resultsEl.appendChild(row);
       });
     }

@@ -1511,11 +1511,7 @@ pub async fn create_router(pool: SqlitePool, data_dir: PathBuf, secret_key: [u8;
         .route("/apple-touch-icon.png", get(serve_apple_touch_icon))
         .route("/site.webmanifest", get(serve_site_webmanifest))
         .route("/embed.js", get(serve_embed_js))
-        .route("/fonts/inter-latin.woff2", get(serve_font_inter_latin))
-        .route(
-            "/fonts/inter-latin-ext.woff2",
-            get(serve_font_inter_latin_ext),
-        )
+        .route("/fonts/{name}", get(serve_font))
         .route(
             "/static/intl-tel-input/{file}",
             get(serve_intl_tel_input_asset),
@@ -8241,9 +8237,9 @@ async fn org_accent_hex(pool: &SqlitePool) -> String {
         Some((ref theme, ref custom)) if theme == "custom" => custom
             .clone()
             .filter(|s| !s.is_empty())
-            .unwrap_or_else(|| "#2563eb".to_string()),
+            .unwrap_or_else(|| CASCADE_ACCENT.to_string()),
         Some((ref theme, _)) => preset_accent(theme).to_string(),
-        None => "#2563eb".to_string(),
+        None => CASCADE_ACCENT.to_string(),
     }
 }
 
@@ -14045,9 +14041,54 @@ fn common_timezones_with(guest_tz: &str) -> Vec<(String, String)> {
     result
 }
 
+/// The Cascade light palette, as the custom-theme editor's five inputs see it.
+/// These are the same values `base.html` defines, so an installation that has
+/// never touched the theme editor prefills to the design system rather than to
+/// upstream's blue. `custom_theme_css` recognises this exact combination and
+/// emits nothing, deferring to those defaults.
+const CASCADE_ACCENT: &str = "#1A3A4A";
+const CASCADE_ACCENT_HOVER: &str = "#2A5A6A";
+const CASCADE_BG: &str = "#F5F3F0";
+const CASCADE_SURFACE: &str = "#FFFFFF";
+const CASCADE_TEXT: &str = "#22201D";
+
+/// Tokens that the Cascade default hand-picks in `base.html` but a preset
+/// cannot: a preset supplies roughly a dozen colours, and the rest of the
+/// system (heading colour, the coral accent role, sunken surfaces, status
+/// backgrounds) is defined on top of them. Without this, selecting Dracula
+/// would leave headings rendering in Deep Ocean on a near-black card, and
+/// every focus ring and eyebrow would still be Cascade coral.
+///
+/// The derivations use `color-mix` so they follow whatever the preset set,
+/// and they are appended *after* the preset block so they win on order.
+/// Amber has no source to derive from, so it is stated per scheme.
+const PRESET_DERIVED: &str = concat!(
+    " :root,html.dark{--heading:var(--text);",
+    "--bg-warm:color-mix(in srgb,var(--bg) 55%,var(--surface));",
+    "--surface-sunken:color-mix(in srgb,var(--bg) 94%,var(--text));",
+    "--border-strong:color-mix(in srgb,var(--border) 55%,var(--text));",
+    "--ocean:var(--accent);--ocean-mid:var(--accent-hover);",
+    "--ocean-light:var(--accent-subtle);",
+    "--ocean-deep:color-mix(in srgb,var(--accent) 72%,#000);",
+    "--coral:var(--accent);--coral-hover:var(--accent-hover);",
+    "--coral-deep:var(--accent-hover);--coral-text:var(--accent);",
+    "--coral-soft:var(--accent-subtle);--coral-line:var(--accent-border);",
+    "--bloom:transparent;--focus-ring:var(--accent);--btn-primary-fg:#fff;",
+    "--success-bg:color-mix(in srgb,var(--success) 13%,var(--surface));",
+    "--success-border:color-mix(in srgb,var(--success) 34%,var(--surface));",
+    "--error-border:color-mix(in srgb,var(--error-text) 34%,var(--surface));",
+    "--info:var(--accent);--info-bg:var(--accent-subtle);--info-border:var(--accent-border);",
+    "--shadow-primary:0 8px 20px color-mix(in srgb,var(--accent) 28%,transparent)}",
+    " :root{--warning:#7A5C18;--warning-bg:#FBF3DF;--warning-border:#E7D6A6}",
+    " html.dark{--warning:#E7B65F;--warning-bg:rgba(245,158,11,0.13);--warning-border:rgba(245,158,11,0.28)}"
+);
+
 /// Returns CSS that overrides all theme variables for the given preset theme.
-fn preset_theme_css(theme: &str) -> &'static str {
-    match theme {
+///
+/// The Cascade palette is not a preset: it is the built-in default in
+/// `base.html`, so `"default"` emits nothing.
+fn preset_theme_css(theme: &str) -> String {
+    let base: &str = match theme {
         "nord" => concat!(
             ":root{--bg:#eceff4;--surface:#fff;--surface-hover:#e5e9f0;--text:#2e3440;--text-secondary:#4c566a;--text-muted:#7b88a1;",
             "--border:#d8dee9;--border-hover:#b3bdd1;--accent:#5e81ac;--accent-hover:#4c6f97;--accent-subtle:#e8eef5;",
@@ -14096,9 +14137,10 @@ fn preset_theme_css(theme: &str) -> &'static str {
             "--border:#32335a;--border-hover:#4a4b6e;--accent:#e0424c;--accent-hover:#ef7f18;--accent-subtle:rgba(190,22,33,0.12);",
             "--accent-border:rgba(190,22,33,0.3);--accent-muted:#8a1018;--success:#2ca878;--error-bg:rgba(190,22,33,0.12);--error-text:#e0424c}"
         ),
-        // "default" (blue) — no overrides needed, base.html defines it
-        _ => "",
-    }
+        // "default" — Cascade, defined in base.html, no overrides needed.
+        _ => return String::new(),
+    };
+    format!("{base}{PRESET_DERIVED}")
 }
 
 /// Light-mode accent hex for a preset theme, mirroring the `--accent` values in
@@ -14112,8 +14154,8 @@ fn preset_accent(theme: &str) -> &'static str {
         "solarized" => "#268bd2",
         "tokyo-night" => "#7a5af5",
         "vates" => "#be1621",
-        // "default" (blue) and anything unknown
-        _ => "#2563eb",
+        // "default" (Cascade Deep Ocean) and anything unknown
+        _ => "#1A3A4A",
     }
 }
 
@@ -14212,9 +14254,12 @@ fn custom_theme_css(
     let (accent, accent_hover) = (accent.trim(), accent_hover.trim());
     let (bg, surface, text) = (bg.trim(), surface.trim(), text.trim());
 
-    // Cascade's design system defines paired light and dark palettes rather
-    // than deriving one from the other. Preserve those exact semantic colors
-    // when the installation's configured light palette identifies Cascade.
+    // Cascade's design system is the built-in default: base.html already
+    // defines the full paired light and dark palettes, plus the coral accent,
+    // heading and surface tokens that no derived palette can reconstruct from
+    // five inputs. When the configured light palette identifies Cascade, emit
+    // nothing and let those defaults stand — duplicating them here is how the
+    // two copies drift apart.
     let cascade_palette = [
         (accent, "#1A3A4A"),
         (accent_hover, "#2A5A6A"),
@@ -14225,23 +14270,7 @@ fn custom_theme_css(
     .iter()
     .all(|(actual, expected)| actual.eq_ignore_ascii_case(expected));
     if cascade_palette {
-        return concat!(
-            ":root{--bg:#F5F3F0;--surface:#FFFFFF;--surface-hover:#FAFAF9;",
-            "--text:#22201D;--text-secondary:#6A6866;--text-muted:#706E6C;",
-            "--border:#E8E6E3;--border-hover:#D5D3D0;",
-            "--accent:#1A3A4A;--accent-hover:#2A5A6A;--accent-subtle:#E8F0F3;",
-            "--btn-primary-bg:#1A3A4A;--btn-primary-bg-hover:#2A5A6A;",
-            "--accent-border:rgba(42,90,106,0.3);--accent-muted:rgba(26,58,74,0.5);",
-            "--success:#2D6A4F;--error-bg:#FDECEA;--error-text:#C0392B}",
-            " html.dark{--bg:#161B22;--surface:#1C2330;--surface-hover:#232A38;",
-            "--text:#E2DFD8;--text-secondary:#9B9890;--text-muted:#8E8A82;",
-            "--border:rgba(255,255,255,0.08);--border-hover:rgba(255,255,255,0.12);",
-            "--accent:#4296AE;--accent-hover:#4AA3BD;--accent-subtle:rgba(66,150,174,0.12);",
-            "--btn-primary-bg:#2E6577;--btn-primary-bg-hover:#38758A;",
-            "--accent-border:rgba(66,150,174,0.3);--accent-muted:rgba(66,150,174,0.5);",
-            "--success:#4ADE80;--error-bg:rgba(248,113,113,0.1);--error-text:#F87171}"
-        )
-        .to_string();
+        return String::new();
     }
 
     // Parse accent for subtle/border/muted derivations
@@ -14304,14 +14333,14 @@ async fn build_theme_css(pool: &SqlitePool) -> String {
             .unwrap_or(None);
     match row {
         Some((ref theme, ref ca, ref cah, ref cb, ref cs, ref ct)) if theme == "custom" => {
-            let accent = ca.as_deref().unwrap_or("#2563eb");
-            let accent_hover = cah.as_deref().unwrap_or("#1d4ed8");
-            let bg = cb.as_deref().unwrap_or("#f4f4f5");
-            let surface = cs.as_deref().unwrap_or("#ffffff");
-            let text = ct.as_deref().unwrap_or("#18181b");
+            let accent = ca.as_deref().unwrap_or(CASCADE_ACCENT);
+            let accent_hover = cah.as_deref().unwrap_or(CASCADE_ACCENT_HOVER);
+            let bg = cb.as_deref().unwrap_or(CASCADE_BG);
+            let surface = cs.as_deref().unwrap_or(CASCADE_SURFACE);
+            let text = ct.as_deref().unwrap_or(CASCADE_TEXT);
             custom_theme_css(accent, accent_hover, bg, surface, text)
         }
-        Some((ref theme, ..)) => preset_theme_css(theme).to_string(),
+        Some((ref theme, ..)) => preset_theme_css(theme),
         None => String::new(),
     }
 }
@@ -14335,18 +14364,18 @@ async fn get_custom_colors(pool: &SqlitePool) -> (String, String, String, String
             .unwrap_or(None);
     match row {
         Some((a, ah, bg, s, t)) => (
-            a.unwrap_or_else(|| "#2563eb".to_string()),
-            ah.unwrap_or_else(|| "#1d4ed8".to_string()),
-            bg.unwrap_or_else(|| "#f4f4f5".to_string()),
-            s.unwrap_or_else(|| "#ffffff".to_string()),
-            t.unwrap_or_else(|| "#18181b".to_string()),
+            a.unwrap_or_else(|| CASCADE_ACCENT.to_string()),
+            ah.unwrap_or_else(|| CASCADE_ACCENT_HOVER.to_string()),
+            bg.unwrap_or_else(|| CASCADE_BG.to_string()),
+            s.unwrap_or_else(|| CASCADE_SURFACE.to_string()),
+            t.unwrap_or_else(|| CASCADE_TEXT.to_string()),
         ),
         None => (
-            "#2563eb".to_string(),
-            "#1d4ed8".to_string(),
-            "#f4f4f5".to_string(),
-            "#ffffff".to_string(),
-            "#18181b".to_string(),
+            CASCADE_ACCENT.to_string(),
+            CASCADE_ACCENT_HOVER.to_string(),
+            CASCADE_BG.to_string(),
+            CASCADE_SURFACE.to_string(),
+            CASCADE_TEXT.to_string(),
         ),
     }
 }
@@ -17152,11 +17181,14 @@ async fn admin_update_accent(
         .unwrap_or_else(|| "default".to_string());
 
     if theme == "custom" {
-        let accent = form.custom_accent.as_deref().unwrap_or("#2563eb");
-        let accent_hover = form.custom_accent_hover.as_deref().unwrap_or("#1d4ed8");
-        let bg = form.custom_bg.as_deref().unwrap_or("#f4f4f5");
-        let surface = form.custom_surface.as_deref().unwrap_or("#ffffff");
-        let text = form.custom_text.as_deref().unwrap_or("#18181b");
+        let accent = form.custom_accent.as_deref().unwrap_or(CASCADE_ACCENT);
+        let accent_hover = form
+            .custom_accent_hover
+            .as_deref()
+            .unwrap_or(CASCADE_ACCENT_HOVER);
+        let bg = form.custom_bg.as_deref().unwrap_or(CASCADE_BG);
+        let surface = form.custom_surface.as_deref().unwrap_or(CASCADE_SURFACE);
+        let text = form.custom_text.as_deref().unwrap_or(CASCADE_TEXT);
 
         let _ = sqlx::query(
             "UPDATE auth_config SET theme = 'custom', custom_accent = ?, custom_accent_hover = ?, custom_bg = ?, custom_surface = ?, custom_text = ?, updated_at = datetime('now') WHERE id = 'singleton'",
@@ -18618,26 +18650,33 @@ async fn serve_embed_js() -> impl IntoResponse {
         .into_response()
 }
 
-async fn serve_font_inter_latin() -> impl IntoResponse {
-    static FONT: &[u8] = include_bytes!("../../assets/inter-latin.woff2");
-    axum::response::Response::builder()
-        .status(200)
-        .header("Content-Type", "font/woff2")
-        .header("Cache-Control", "public, max-age=31536000, immutable")
-        .body(axum::body::Body::from(FONT))
-        .unwrap_or_else(|_| axum::response::Response::new(axum::body::Body::empty()))
-        .into_response()
-}
-
-async fn serve_font_inter_latin_ext() -> impl IntoResponse {
-    static FONT: &[u8] = include_bytes!("../../assets/inter-latin-ext.woff2");
-    axum::response::Response::builder()
-        .status(200)
-        .header("Content-Type", "font/woff2")
-        .header("Cache-Control", "public, max-age=31536000, immutable")
-        .body(axum::body::Body::from(FONT))
-        .unwrap_or_else(|_| axum::response::Response::new(axum::body::Body::empty()))
-        .into_response()
+/// Serves the Cascade brand webfaces: Bricolage Grotesque (display), Plus
+/// Jakarta Sans (body) and DM Mono (labels). They are bundled into the binary
+/// rather than pulled from a font CDN so the strict `default-src 'self'` CSP
+/// needs no `font-src` exception and the booking path keeps no third-party
+/// dependency.
+async fn serve_font(Path(name): Path<String>) -> impl IntoResponse {
+    let bytes: Option<&'static [u8]> = match name.as_str() {
+        "bricolage-latin.woff2" => Some(include_bytes!("../../assets/bricolage-latin.woff2")),
+        "bricolage-latin-ext.woff2" => {
+            Some(include_bytes!("../../assets/bricolage-latin-ext.woff2"))
+        }
+        "jakarta-latin.woff2" => Some(include_bytes!("../../assets/jakarta-latin.woff2")),
+        "jakarta-latin-ext.woff2" => Some(include_bytes!("../../assets/jakarta-latin-ext.woff2")),
+        "dmmono-400-latin.woff2" => Some(include_bytes!("../../assets/dmmono-400-latin.woff2")),
+        "dmmono-400-latin-ext.woff2" => {
+            Some(include_bytes!("../../assets/dmmono-400-latin-ext.woff2"))
+        }
+        "dmmono-500-latin.woff2" => Some(include_bytes!("../../assets/dmmono-500-latin.woff2")),
+        "dmmono-500-latin-ext.woff2" => {
+            Some(include_bytes!("../../assets/dmmono-500-latin-ext.woff2"))
+        }
+        _ => None,
+    };
+    match bytes {
+        Some(bytes) => embedded_asset_response(bytes, "font/woff2"),
+        None => (axum::http::StatusCode::NOT_FOUND, "Not found").into_response(),
+    }
 }
 
 /// Vendored intl-tel-input bundle, baked into the binary and served
@@ -26745,18 +26784,17 @@ mod tests {
     }
 
     #[test]
-    fn custom_theme_uses_cascade_design_system_palettes() {
+    fn cascade_custom_palette_defers_to_the_built_in_design_system() {
+        // Cascade is the built-in default in base.html, including the coral
+        // accent and heading tokens a five-input custom theme cannot express.
+        // Selecting it as a "custom" theme must therefore emit no overrides at
+        // all rather than a second, drifting copy of the palette.
         let css = custom_theme_css("#1A3A4A", "#2A5A6A", "#F5F3F0", "#FFFFFF", "#22201D");
-        let (light, dark) = theme_blocks(&css);
-        assert_eq!(css_var(&light, "--accent"), "#1A3A4A");
-        assert_eq!(css_var(&light, "--surface"), "#FFFFFF");
-        assert_eq!(css_var(&light, "--text"), "#22201D");
-        assert_eq!(css_var(&dark, "--bg"), "#161B22");
-        assert_eq!(css_var(&dark, "--surface"), "#1C2330");
-        assert_eq!(css_var(&dark, "--accent"), "#4296AE");
-        assert_eq!(css_var(&dark, "--btn-primary-bg"), "#2E6577");
-        assert_eq!(css_var(&dark, "--btn-primary-bg-hover"), "#38758A");
-        assert_eq!(css_var(&dark, "--text"), "#E2DFD8");
+        assert_eq!(css, "");
+
+        // A neighbouring palette is still derived normally.
+        let other = custom_theme_css("#1A3A4B", "#2A5A6A", "#F5F3F0", "#FFFFFF", "#22201D");
+        assert!(other.contains("--accent:#1A3A4B"));
     }
 
     #[test]
@@ -26803,9 +26841,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn build_theme_css_derives_dark_when_custom_colors_are_unset() {
-        // theme='custom' with the columns still NULL falls back to the default
-        // light palette, which must also produce a usable dark block.
+    async fn build_theme_css_is_empty_when_custom_colors_are_unset() {
+        // theme='custom' with the columns still NULL falls back to the Cascade
+        // palette, which base.html already defines in full (including the
+        // coral, heading and surface tokens five inputs cannot reconstruct).
+        // Emitting nothing is the contract: one definition, no drift.
         let pool = setup_test_db().await;
         sqlx::query("UPDATE auth_config SET theme = 'custom' WHERE id = 'singleton'")
             .execute(&pool)
@@ -26814,12 +26854,10 @@ mod tests {
 
         let css = build_theme_css(&pool).await;
         assert!(
-            !css.is_empty(),
-            "unset custom colors must not blank the theme"
+            css.is_empty(),
+            "the Cascade palette is the built-in default and must not be \
+             re-emitted as an override: {css}"
         );
-        let (_, dark) = theme_blocks(&css);
-        let (_, _, dark_bg_l) = hex_to_hsl(&css_var(&dark, "--bg")).expect("derived hex");
-        assert!(dark_bg_l < 0.3, "{}", dark);
     }
 
     #[test]
@@ -28988,7 +29026,7 @@ mod tests {
             .unwrap();
         assert_eq!(response.status(), 200);
         let body = body_string(response).await;
-        assert!(body.contains("supports personal event types only"));
+        assert!(body.contains("personal event types only"));
         assert!(!body.contains("No event types found"));
     }
 
@@ -33645,10 +33683,10 @@ mod tests {
             })
             .expect("renders");
 
-        // The Remove button is the one containing "Remove" text AND the
-        // error-text style. It's distinguishable from "Test" by the
-        // var(--error-text) inline style.
-        let onclick = extract_onclick_for_button(&rendered, "var(--error-text)")
+        // The Remove button is the destructive one: it is the only button on
+        // the page carrying `.btn-danger`, which distinguishes it from "Test",
+        // "Sync" and the rest of the row actions.
+        let onclick = extract_onclick_for_button(&rendered, r#"class="btn btn-sm btn-danger""#)
             .expect("remove button onclick present");
         assert_eq!(
             onclick,
@@ -33691,7 +33729,7 @@ mod tests {
             })
             .expect("renders");
 
-        let onclick = extract_onclick_for_button(&rendered, "border-color: var(--error-text)")
+        let onclick = extract_onclick_for_button(&rendered, r#"class="btn btn-danger""#)
             .expect("delete team button onclick present");
         assert_eq!(
             onclick, "if(confirm(this.dataset.confirm)) this.nextElementSibling.submit();",

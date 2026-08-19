@@ -64,20 +64,20 @@
     if (modal) return modal;
     var overlay = document.createElement('div');
     overlay.style.cssText =
-      'position:fixed;inset:0;z-index:2147483647;background:rgba(0,0,0,0.55);' +
+      'position:fixed;inset:0;z-index:2147483647;background:rgba(15,26,32,0.55);' +
       'display:none;align-items:center;justify-content:center;padding:1rem;';
     var box = document.createElement('div');
     box.style.cssText =
-      'background:#fff;border-radius:12px;width:min(960px,100%);height:min(90vh,720px);' +
+      'background:#FFFFFF;border-radius:14px;width:min(960px,100%);height:min(90vh,720px);' +
       'overflow:hidden;position:relative;display:flex;flex-direction:column;' +
-      'box-shadow:0 20px 60px rgba(0,0,0,0.4);';
+      'box-shadow:0 24px 64px rgba(15,26,32,0.42);';
     var close = document.createElement('button');
     close.type = 'button';
     close.setAttribute('aria-label', 'Close');
     close.innerHTML = '&times;';
     close.style.cssText =
       'position:absolute;top:0.5rem;right:0.5rem;width:34px;height:34px;border-radius:50%;' +
-      'border:0;background:rgba(0,0,0,0.06);color:#000;font-size:22px;line-height:1;' +
+      'border:0;background:rgba(34,32,29,0.06);color:#22201D;font-size:22px;line-height:1;' +
       'cursor:pointer;z-index:2;';
     close.addEventListener('click', closeModal);
     var iframe = document.createElement('iframe');
@@ -148,7 +148,8 @@
       var btn = document.createElement('button');
       btn.type = 'button';
       var pos = opts.buttonPosition || 'bottom-right';
-      var bg = opts.buttonColor || '#2563eb';
+      // Cascade Deep Ocean. Host pages can override via buttonColor.
+      var bg = opts.buttonColor || '#1A3A4A';
       var fg = opts.textColor || '#ffffff';
       var positions = {
         'bottom-right': 'bottom:1rem;right:1rem;',
@@ -161,7 +162,7 @@
         'z-index:2147483646;padding:0.75rem 1.25rem;border:0;border-radius:999px;' +
         'font-family:inherit;font-size:0.95rem;font-weight:600;cursor:pointer;' +
         'display:inline-flex;align-items:center;gap:0.5rem;' +
-        'box-shadow:0 4px 14px rgba(0,0,0,0.15);' +
+        'box-shadow:0 8px 24px rgba(26,58,74,0.25);' +
         'background:' + bg + ';color:' + fg + ';';
       if (opts.showIcon !== false) btn.appendChild(calendarIcon());
       var label = document.createElement('span');

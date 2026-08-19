@@ -2,57 +2,176 @@
 
 {% block title %}{% if pending %}{{ t("confirmed-page-title-pending") }}{% else %}{{ t("confirmed-page-title-booked") }}{% endif %}{% endblock %}
 
+{% block head %}
+{% include "_booking_action_head.html" %}
+<style>
+  /* The confirmation is the last thing a guest sees, so it is one composed
+     card rather than a stack of boxes: the state mark, the sentence, the
+     when — then the particulars, quietly, underneath. */
+  /* Same measure as the booking form the guest just left, so the flow lands
+     on one column rather than jumping width; and settled vertically on a
+     tall window, because there is nothing below it to scroll to. */
+  {% if not embed %}
+  .container { max-width: 560px; }
+  @media (min-height: 760px) {
+    .container { margin-block: auto; }
+  }
+  {% endif %}
+
+  .conf-card { padding: 2.25rem 2rem 2rem; }
+  .conf-card h1 { font-size: 1.75rem; }
+  .conf-card .subtitle { margin-bottom: 0; }
+  .conf-card .check {
+    position: relative;
+    width: 3.25rem;
+    height: 3.25rem;
+    margin-bottom: 1.25rem;
+  }
+  .conf-card .check .ic { width: 1.625rem; height: 1.625rem; }
+  /* One ring, once — the whole animation budget for this page. */
+  .conf-card .check::after {
+    content: '';
+    position: absolute;
+    inset: -5px;
+    border-radius: 50%;
+    border: 1px solid currentColor;
+    opacity: 0;
+    animation: confRing 1.2s var(--ease) 0.2s forwards;
+  }
+  @keyframes confRing {
+    0% { transform: scale(0.72); opacity: 0.5; }
+    100% { transform: scale(1.28); opacity: 0; }
+  }
+
+  /* The when, carried forward from the slot the guest picked on the booking
+     form — same coral band, so the choice visibly lands. */
+  .conf-when {
+    margin-top: 1.75rem;
+    padding: 1.25rem 1.25rem 1.3125rem;
+    border-radius: var(--radius-md);
+    background: var(--coral-soft);
+    border: 1px solid var(--coral-line);
+    text-align: center;
+  }
+  .conf-when-date {
+    font-family: var(--font-display);
+    font-size: 1.1875rem;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    line-height: 1.25;
+    color: var(--heading);
+    text-wrap: balance;
+  }
+  .conf-when-time {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4375rem;
+    margin-top: 0.5rem;
+    font-family: var(--font-mono);
+    font-size: 0.9375rem;
+    font-weight: 500;
+    color: var(--coral-text);
+    font-variant-numeric: tabular-nums;
+  }
+  /* Pending is not a confirmation — the band takes the warning key instead. */
+  .conf-when-pending { background: var(--warning-bg); border-color: var(--warning-border); }
+  .conf-when-pending .conf-when-time { color: var(--warning); }
+
+  .conf-facts { margin-top: 1rem; text-align: left; }
+
+  .conf-fine {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    margin: 0.625rem 0 0;
+    font-size: 0.8125rem;
+    line-height: 1.5;
+    color: var(--text-muted);
+    text-align: left;
+  }
+  .conf-fine .ic { margin-top: 0.15em; }
+
+  .conf-again { text-align: center; margin-top: 0.25rem; }
+
+  /* Labels the eye does not need (the date reads as a date) but a screen
+     reader still does. */
+  .conf-vh {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  @media (max-width: 640px) {
+    .conf-card { padding: 1.5rem 1.25rem 1.375rem; }
+    .conf-card h1 { font-size: 1.4375rem; }
+    .conf-when { margin-top: 1.375rem; padding: 1rem; }
+    .conf-when-date { font-size: 1.0625rem; }
+  }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="logo">{% if company_link %}<a href="{{ company_link }}" target="_blank" rel="noopener noreferrer">{% endif %}<img src="/logo" alt="" onerror="this.closest('.logo').style.display='none'">{% if company_link %}</a>{% endif %}</div>
 
-<div class="card" style="text-align: center;">
-  {% if rescheduled is defined and rescheduled and pending %}
-    <div class="check" style="background: #d97706;">&#128260;</div>
-    <h1>{{ t("confirmed-heading-reschedule-requested") }}</h1>
-    <p class="subtitle">{{ t("confirmed-subtitle-reschedule-requested", host=host_name, email=guest_email) }}</p>
-  {% elif rescheduled is defined and rescheduled %}
-    <div class="check">&#128260;</div>
-    <h1>{{ t("confirmed-heading-rescheduled") }}</h1>
-    <p class="subtitle">{{ t("confirmed-subtitle-rescheduled", email=guest_email) }}</p>
-  {% elif pending %}
-    <div class="check" style="background: #d97706;">&#8987;</div>
-    <h1>{{ t("confirmed-heading-pending") }}</h1>
-    <p class="subtitle">{{ t("confirmed-subtitle-pending", host=host_name, email=guest_email) }}</p>
-  {% else %}
-    <div class="check">&#10003;</div>
-    <h1>{{ t("confirmed-heading-booked") }}</h1>
-    <p class="subtitle">{{ t("confirmed-subtitle-booked", email=guest_email) }}</p>
+<div class="card conf-card">
+  <div class="action-head">
+    {% if rescheduled is defined and rescheduled and pending %}
+      <div class="check check-warn"><svg class="ic" aria-hidden="true"><use href="#i-rotate"/></svg></div>
+      <h1>{{ t("confirmed-heading-reschedule-requested") }}</h1>
+      <p class="subtitle">{{ t("confirmed-subtitle-reschedule-requested", host=host_name, email=guest_email) }}</p>
+    {% elif rescheduled is defined and rescheduled %}
+      <div class="check"><svg class="ic" aria-hidden="true"><use href="#i-rotate"/></svg></div>
+      <h1>{{ t("confirmed-heading-rescheduled") }}</h1>
+      <p class="subtitle">{{ t("confirmed-subtitle-rescheduled", email=guest_email) }}</p>
+    {% elif pending %}
+      <div class="check check-warn"><svg class="ic" aria-hidden="true"><use href="#i-hourglass"/></svg></div>
+      <h1>{{ t("confirmed-heading-pending") }}</h1>
+      <p class="subtitle">{{ t("confirmed-subtitle-pending", host=host_name, email=guest_email) }}</p>
+    {% else %}
+      <div class="check"><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg></div>
+      <h1>{{ t("confirmed-heading-booked") }}</h1>
+      <p class="subtitle">{{ t("confirmed-subtitle-booked", email=guest_email) }}</p>
+    {% endif %}
+  </div>
+
+  <div class="conf-when{% if pending %} conf-when-pending{% endif %}">
+    <div class="conf-when-date"><span class="conf-vh">{{ t("confirmed-detail-date") }} </span>{{ date_label }}</div>
+    <div class="conf-when-time">
+      <svg class="ic ic-sm" aria-hidden="true"><use href="#i-clock"/></svg>
+      <span><span class="conf-vh">{{ t("confirmed-detail-time") }} </span>{{ time_start | time12h }} – {{ time_end | time12h }}</span>
+    </div>
+  </div>
+
+  <div class="card-sunken action-facts conf-facts">
+    <div class="detail"><strong>{{ t("confirmed-detail-event") }}</strong> {{ event_title }}</div>
+    <div class="detail"><strong>{{ t("confirmed-detail-with") }}</strong> {{ host_name }}</div>
+    {% if location_value and not pending %}
+      <div class="detail"><strong>{{ t("confirmed-detail-location") }}</strong> {% if location_type == "link" or location_type == "jitsi_auto" or location_type == "webhook_auto" %}<a href="{{ location_value }}" target="_blank">{{ location_value }}</a>{% else %}{{ location_value }}{% endif %}</div>
+    {% endif %}
+    {% if notes %}
+      <div class="detail"><strong>{{ t("confirmed-detail-notes") }}</strong> {{ notes }}</div>
+    {% endif %}
+    {% if additional_attendees is defined and additional_attendees %}
+      <div class="detail"><strong>{{ t("confirmed-detail-additional-guests") }}</strong> {{ additional_attendees | join(", ") }}</div>
+    {% endif %}
+  </div>
+
+  {% if cancel_notice_min is defined and cancel_notice_min and cancel_notice_min > 0 %}
+    <p class="conf-fine"><svg class="ic ic-sm" aria-hidden="true"><use href="#i-info"/></svg><span>{{ t("confirmed-cancel-notice-info", minutes=cancel_notice_min) }}</span></p>
+  {% endif %}
+  {% if reschedule_notice_min is defined and reschedule_notice_min and reschedule_notice_min > 0 %}
+    <p class="conf-fine"><svg class="ic ic-sm" aria-hidden="true"><use href="#i-info"/></svg><span>{{ t("confirmed-reschedule-notice-info", minutes=reschedule_notice_min) }}</span></p>
   {% endif %}
 </div>
 
-<div class="card">
-  <div class="detail"><strong>{{ t("confirmed-detail-event") }}</strong> {{ event_title }}</div>
-  <div class="detail"><strong>{{ t("confirmed-detail-date") }}</strong> {{ date_label }}</div>
-  <div class="detail"><strong>{{ t("confirmed-detail-time") }}</strong> {{ time_start | time12h }} – {{ time_end | time12h }}</div>
-  <div class="detail"><strong>{{ t("confirmed-detail-with") }}</strong> {{ host_name }}</div>
-  {% if location_value and not pending %}
-    <div class="detail"><strong>{{ t("confirmed-detail-location") }}</strong> {% if location_type == "link" or location_type == "jitsi_auto" or location_type == "webhook_auto" %}<a href="{{ location_value }}" target="_blank" style="color: var(--accent); text-decoration: none;">{{ location_value }}</a>{% else %}{{ location_value }}{% endif %}</div>
-  {% endif %}
-  {% if notes %}
-    <div class="detail"><strong>{{ t("confirmed-detail-notes") }}</strong> {{ notes }}</div>
-  {% endif %}
-  {% if additional_attendees is defined and additional_attendees %}
-    <div class="detail"><strong>{{ t("confirmed-detail-additional-guests") }}</strong> {{ additional_attendees | join(", ") }}</div>
-  {% endif %}
-  {% if cancel_notice_min is defined and cancel_notice_min and cancel_notice_min > 0 %}
-    <p class="muted" style="font-size: 0.875rem; color: var(--text-muted); margin-top: 0.75rem;">{{ t("confirmed-cancel-notice-info", minutes=cancel_notice_min) }}</p>
-  {% endif %}
-  {% if reschedule_notice_min is defined and reschedule_notice_min and reschedule_notice_min > 0 %}
-    <p class="muted" style="font-size: 0.875rem; color: var(--text-muted); margin-top: 0.25rem;">{{ t("confirmed-reschedule-notice-info", minutes=reschedule_notice_min) }}</p>
-  {% endif %}
-</div>
-{% if ics_url is defined and ics_url and not pending %}
-<div style="text-align: center; margin-top: 1.25rem;">
-  <a href="{{ ics_url }}" download style="display: inline-block; padding: 0.625rem 1.125rem; border: 1px solid var(--border); border-radius: var(--radius); color: var(--text); text-decoration: none; font-size: 0.9rem; background: var(--surface);">{{ t("confirmed-add-to-calendar") }}</a>
-</div>
-{% endif %}
-<div style="text-align: center; margin-top: 1.5rem;">
-  {% if team_slug %}<a href="/team/{{ team_slug }}/{{ event_type.slug }}{{ embed_qs_q | default('') }}" style="color: var(--accent); font-size: 0.9rem;">&larr; {{ t("confirmed-book-another") }}</a>
-  {% elif username %}<a href="/u/{{ username }}/{{ event_type.slug }}{{ embed_qs_q | default('') }}" style="color: var(--accent); font-size: 0.9rem;">&larr; {{ t("confirmed-book-another") }}</a>{% endif %}
+<div class="conf-again">
+  {% if team_slug %}<a href="/team/{{ team_slug }}/{{ event_type.slug }}{{ embed_qs_q | default('') }}" class="btn btn-secondary btn-sm"><svg class="ic" aria-hidden="true"><use href="#i-arrow-left"/></svg> {{ t("confirmed-book-another") }}</a>
+  {% elif username %}<a href="/u/{{ username }}/{{ event_type.slug }}{{ embed_qs_q | default('') }}" class="btn btn-secondary btn-sm"><svg class="ic" aria-hidden="true"><use href="#i-arrow-left"/></svg> {{ t("confirmed-book-another") }}</a>{% endif %}
 </div>
 {% endblock %}

@@ -3,32 +3,75 @@
 {% block dashboard_content %}
 <style>
 .action-menu { position: relative; }
-.action-menu-dropdown { display: none; position: absolute; right: 0; top: 100%; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); z-index: 20; min-width: 160px; padding: 0.25rem 0; }
+.action-menu-dropdown {
+  display: none;
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  z-index: 20;
+  min-width: 170px;
+  padding: 0.25rem;
+}
 .action-menu-dropdown.open { display: block; }
-.action-menu-dropdown a, .action-menu-dropdown button { display: block; width: 100%; text-align: left; padding: 0.5rem 0.75rem; font-size: 0.85rem; color: var(--text); background: none; border: none; cursor: pointer; text-decoration: none; font-family: inherit; }
+.action-menu-dropdown a, .action-menu-dropdown button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 0.4375rem 0.5625rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.8125rem;
+  color: var(--text);
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-decoration: none;
+  font-family: inherit;
+}
 .action-menu-dropdown a:hover, .action-menu-dropdown button:hover { background: var(--surface-hover); }
 .action-menu-dropdown .danger { color: var(--error-text); }
-.et-meta { font-size: 0.8rem; color: var(--text-muted); margin-top: 0.15rem; }
-.copy-link-btn.copied { color: var(--success) !important; border-color: var(--success) !important; }
+.action-menu-dropdown .danger:hover { background: var(--error-bg); }
+.et-title { display: flex; align-items: center; flex-wrap: wrap; gap: 0.375rem; }
+.et-meta {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-top: 0.25rem;
+  overflow-wrap: anywhere;
+}
 </style>
-<div class="card">
-  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-    <h1 style="margin-bottom: 0;">{{ t("event-types-heading") }}</h1>
-    <a href="/dashboard/event-types/new" class="slot-btn" style="text-decoration: none; font-size: 0.85rem; font-weight: 600; color: var(--accent); border-color: var(--accent);">+ {{ t("event-types-new") }}</a>
+
+<div class="page-head">
+  <div class="page-head-text">
+    <h1>Event types</h1>
+    <p>The meetings people can book with you, and the links that expose them.</p>
   </div>
+  <div class="page-head-actions">
+    <a href="/dashboard/event-types/new" class="btn">
+      <svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg> New event type
+    </a>
+  </div>
+</div>
+
+<div class="card">
   {% if has_any %}
     {% for et in all_event_types %}
-    <div class="et-row" {% if not loop.last %}style="border-bottom: 1px solid var(--border);"{% endif %}>
+    <div class="et-row">
       <div class="et-info">
-        <div>
+        <div class="et-title">
           <strong>{{ et.title }}</strong>
-          {% if et.is_team %}<span class="badge badge-info" style="margin-left: 0.25rem;">{{ et.team_name }}</span>{% endif %}
-          {% if not et.enabled %}<span class="badge badge-disabled">{{ t("event-types-badge-disabled") }}</span>{% endif %}
-          {% if et.visibility == "internal" %}<span class="badge badge-info">{{ t("event-types-badge-internal") }}</span>{% endif %}
-          {% if et.visibility == "private" %}<span class="badge badge-muted">{{ t("event-types-badge-private") }}</span>{% endif %}
-          {% if et.resource_names %}<span class="badge badge-muted" title="{{ et.resource_names }}">{{ t("event-types-badge-resources") }}</span>{% endif %}
+          {% if et.is_team %}<span class="badge badge-info">{{ et.team_name }}</span>{% endif %}
+          {% if not et.enabled %}<span class="badge badge-disabled">disabled</span>{% endif %}
+          {% if et.visibility == "internal" %}<span class="badge badge-info">internal</span>{% endif %}
+          {% if et.visibility == "private" %}<span class="badge badge-muted">private</span>{% endif %}
+          {% if et.resource_names %}<span class="badge badge-muted" title="{{ et.resource_names }}">resources</span>{% endif %}
           {% if et.visibility == "private" or et.visibility == "internal" %}
-            <a href="/dashboard/invites/{{ et.id }}" style="font-size: 0.75rem; color: var(--accent); text-decoration: none; margin-left: 0.25rem;">{{ t("event-types-send-invites") }} &rarr;</a>
+            <a href="/dashboard/invites/{{ et.id }}" class="btn btn-xs btn-link">
+              Send invites <svg class="ic ic-sm" aria-hidden="true"><use href="#i-arrow-right"/></svg>
+            </a>
           {% endif %}
         </div>
         <div class="et-meta">
@@ -45,14 +88,16 @@
         <button type="button" class="slot-btn copy-link-btn" style="font-size: 0.8rem; cursor: pointer;" title="{{ t('dashboard-event-types-copy-title') }}" data-copy-label="{{ t('dashboard-event-types-copy') }}" data-copied-label="{{ t('dashboard-event-types-copied') }}" data-copy-failed-label="{{ t('dashboard-event-types-copy-failed') }}" data-path="{{ et.view_url }}">{{ t('dashboard-event-types-copy') }}</button>
         {% endif %}
         {% if et.can_manage %}
-        <a href="{{ et.edit_url }}" class="slot-btn" style="text-decoration: none; font-size: 0.8rem;">{{ t("event-types-edit") }}</a>
+        <a href="{{ et.edit_url }}" class="btn btn-sm btn-ghost">Edit</a>
         <form method="post" action="{{ et.toggle_url }}" style="margin: 0;">
-          <button type="submit" class="slot-btn" style="font-size: 0.8rem; cursor: pointer;">{% if et.enabled %}{{ t("event-types-disable") }}{% else %}{{ t("event-types-enable") }}{% endif %}</button>
+          <button type="submit" class="btn btn-sm btn-ghost">{% if et.enabled %}Disable{% else %}Enable{% endif %}</button>
         </form>
-        <a href="{{ et.embed_url }}" class="slot-btn" style="text-decoration: none; font-size: 0.8rem;">{{ t("event-types-embed") }}</a>
+        <a href="{{ et.embed_url }}" class="btn btn-sm btn-ghost">Embed</a>
         {% endif %}
         <div class="action-menu">
-          <button type="button" class="slot-btn action-menu-toggle" style="font-size: 0.8rem; cursor: pointer; padding: 0.375rem 0.5rem;">&ctdot;</button>
+          <button type="button" class="btn btn-sm btn-ghost action-menu-toggle" aria-label="More actions" aria-haspopup="true">
+            <svg class="ic" aria-hidden="true"><use href="#i-chevron-down"/></svg>
+          </button>
           <div class="action-menu-dropdown">
             {% if et.can_manage %}
             <a href="{{ et.overrides_url }}">{{ t("event-types-overrides") }}</a>
@@ -76,9 +121,14 @@
     </div>
     {% endfor %}
   {% else %}
-    <div class="empty" style="padding: 2rem 1rem;">
-      <div class="empty-icon">&#128197;</div>
-      <div class="empty-text">{{ t("event-types-empty", link='<a href="/dashboard/event-types/new" style="color: var(--accent); text-decoration: none;">' ~ (t("event-types-empty-link-label") | escape) ~ '</a>') | safe }}</div>
+    <div class="empty">
+      <div class="empty-icon"><svg class="ic" aria-hidden="true"><use href="#i-calendar-days"/></svg></div>
+      <div class="empty-text">No event types yet. Create one to start accepting bookings.</div>
+      <div class="btn-row" style="justify-content: center; margin-top: 1rem;">
+        <a href="/dashboard/event-types/new" class="btn btn-sm">
+          <svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg> New event type
+        </a>
+      </div>
     </div>
   {% endif %}
 </div>

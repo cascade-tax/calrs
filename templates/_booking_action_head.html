@@ -1,0 +1,45 @@
+{# Shared presentation for the token-based booking action pages — approve,
+   decline, cancel, claim, reschedule and their result and failure screens. A
+   guest or host may see several of these in a row, so they are deliberately
+   one family: a mark, a Bricolage headline, one plain line, the booking facts
+   in a sunken block. Included from each page's {% block head %}. #}
+<style>
+  .action-head { text-align: center; }
+  .action-head h1 { margin-bottom: 0.375rem; }
+  .action-head .subtitle {
+    margin: 0 auto;
+    max-width: 34rem;
+    font-size: 0.9375rem;
+  }
+
+  .action-lead h1 { margin-bottom: 0.375rem; }
+  .action-lead .subtitle { margin-bottom: 0; }
+
+  /* Booking facts. `.detail` rows keep the guest flow's existing label/value
+     rhythm; the sunken block sets them apart from the surrounding copy. */
+  .action-facts { margin-top: 1.5rem; }
+  .action-facts .detail { margin-bottom: 0.4375rem; overflow-wrap: anywhere; }
+  .action-facts .detail:last-child { margin-bottom: 0; }
+
+  .action-form { margin-top: 1.5rem; }
+
+  .action-note {
+    text-align: center;
+    font-size: 0.8125rem;
+    color: var(--text-muted);
+    margin-top: 1.25rem;
+  }
+
+  /* Reschedule: the old time struck through, the new one carried in success. */
+  .action-was { color: var(--text-muted); }
+  .action-was s { text-decoration-thickness: 1px; }
+  .action-new { color: var(--success); font-weight: 600; }
+
+  /* These pages are a single card with nothing below them: hold the same
+     measure as the booking form the guest came from, and settle them on the
+     centre of a tall window instead of pinning them to the top edge. */
+  .container { max-width: 560px; }
+  @media (min-height: 760px) {
+    .container { margin-block: auto; }
+  }
+</style>

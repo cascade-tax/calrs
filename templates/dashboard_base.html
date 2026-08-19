@@ -2,11 +2,20 @@
 
 {% block content %}
 <style>
-  /* Override base body for dashboard layout */
+  /* ══════════════════════════════════════════════════════════════════
+     Dashboard shell
+     The product surface reads denser than the guest pages: 13–14px rows,
+     mono section labels, ocean-tinted active states. Same tokens, tighter
+     rhythm — the same relationship the Cascade site's product mock has to
+     the marketing page around it.
+     ══════════════════════════════════════════════════════════════════ */
   body {
     padding: 0;
     justify-content: flex-start;
   }
+  /* The guest-page coral bloom is atmosphere for a landing surface. The
+     dashboard is a working surface; it stays flat. */
+  body::before { display: none; }
   .container { max-width: none; }
 
   .dashboard-layout {
@@ -14,10 +23,10 @@
     min-height: 100vh;
   }
 
-  /* Sidebar */
+  /* ── Sidebar ─────────────────────────────────────────────────────── */
   .sidebar {
-    width: 260px;
-    min-width: 260px;
+    width: 244px;
+    min-width: 244px;
     background: var(--surface);
     border-right: 1px solid var(--border);
     display: flex;
@@ -26,328 +35,409 @@
     position: sticky;
     top: 0;
     overflow-y: auto;
+    overscroll-behavior: contain;
     z-index: 100;
   }
 
   .sidebar-brand {
-    padding: 1.25rem 1.25rem 1rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5625rem;
+    height: 60px;
+    flex: none;
+    padding: 0 1rem;
     border-bottom: 1px solid var(--border);
-    display: flex;
-    align-items: center;
-    gap: 0.625rem;
+    text-decoration: none;
+    color: inherit;
   }
-  .sidebar-brand img {
-    width: 36px;
-    height: 36px;
-    object-fit: contain;
-  }
+  .sidebar-brand .brand-mark { width: 24px; height: 24px; }
   .sidebar-brand-name {
+    font-family: var(--font-display);
     font-weight: 700;
-    font-size: 1.6rem;
-    letter-spacing: -0.03em;
+    font-size: 1.1875rem;
+    letter-spacing: -0.02em;
     line-height: 1;
-    color: var(--text);
+    color: var(--heading);
   }
 
-  .sidebar-user {
-    padding: 0.75rem 1rem;
-    display: flex;
-    align-items: center;
-    gap: 0.625rem;
-  }
-
-  .avatar-circle {
-    width: 32px;
-    height: 32px;
-    border-radius: 50%;
-    background: var(--btn-primary-bg);
-    color: #fff;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-weight: 600;
-    font-size: 0.75rem;
-    flex-shrink: 0;
-    overflow: hidden;
-  }
-  .avatar-circle img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-  }
-
-  .sidebar-user-info {
-    min-width: 0;
-  }
-  .sidebar-user-name {
-    font-weight: 600;
-    font-size: 0.825rem;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  .sidebar-user-title {
-    font-size: 0.75rem;
-    color: var(--text-muted);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
+  /* ── Nav ─────────────────────────────────────────────────────────── */
   .sidebar-nav {
     flex: 1;
-    padding: 0.75rem 0;
+    padding: 0.625rem 0.5rem 1rem;
   }
-
-  .sidebar-section {
-    padding: 0 0.75rem;
-    margin-bottom: 0.5rem;
-  }
+  .sidebar-section + .sidebar-section { margin-top: 0.5rem; }
   .sidebar-section-label {
-    font-size: 0.7rem;
-    font-weight: 600;
+    font-family: var(--font-mono);
+    font-size: 0.625rem;
+    font-weight: 500;
     text-transform: uppercase;
-    letter-spacing: 0.05em;
+    letter-spacing: 0.07em;
     color: var(--text-muted);
-    padding: 0.5rem 0.5rem 0.25rem;
+    padding: 0 0.625rem;
+    margin: 0.875rem 0 0.25rem;
   }
+  .sidebar-section:first-child .sidebar-section-label { margin-top: 0.25rem; }
 
   .sidebar-link {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
-    padding: 0.5rem 0.75rem;
-    border-radius: 8px;
+    gap: 0.5625rem;
+    height: 34px;
+    padding: 0 0.625rem;
+    border-radius: 7px;
     color: var(--text-secondary);
     text-decoration: none;
-    font-size: 0.875rem;
+    font-size: 0.84375rem;
     font-weight: 500;
-    transition: all 0.15s ease;
+    transition: background 0.15s var(--ease), color 0.15s var(--ease);
+  }
+  .sidebar-link .ic {
+    width: 16px;
+    height: 16px;
+    color: var(--text-muted);
+    transition: color 0.15s var(--ease);
   }
   .sidebar-link:hover {
     background: var(--surface-hover);
     color: var(--text);
   }
+  .sidebar-link:hover .ic { color: var(--text-secondary); }
   .sidebar-link.active {
     background: var(--accent-subtle);
     color: var(--accent);
     font-weight: 600;
   }
-  .sidebar-link .icon {
-    font-size: 1rem;
-    width: 1.25rem;
-    text-align: center;
-    flex-shrink: 0;
-  }
+  .sidebar-link.active .ic { color: var(--accent); }
+  html:not(.dark) .sidebar-link.active { color: var(--ocean); }
+  html:not(.dark) .sidebar-link.active .ic { color: var(--ocean); }
 
+  /* ── Sidebar footer ──────────────────────────────────────────────── */
   .sidebar-bottom {
-    padding: 0.75rem 1rem;
+    flex: none;
+    padding: 0.5rem 0.625rem 0.75rem;
     border-top: 1px solid var(--border);
   }
   .sidebar-bottom form { margin: 0; }
   .sidebar-bottom-row {
     display: flex;
     align-items: center;
-    gap: 0.625rem;
-    padding: 0.375rem 0;
+    gap: 0.25rem;
   }
-  .sidebar-bottom-row a {
+  .sidebar-bottom-row > a {
     display: flex;
     align-items: center;
-    gap: 0.625rem;
+    gap: 0.5625rem;
     text-decoration: none;
     color: inherit;
     min-width: 0;
     flex: 1;
-    border-radius: 8px;
-    padding: 0.375rem 0.5rem;
-    transition: background 0.15s ease;
+    border-radius: 7px;
+    padding: 0.375rem 0.4375rem;
+    transition: background 0.15s var(--ease);
   }
-  .sidebar-bottom-row a:hover {
-    background: var(--surface-hover);
+  .sidebar-bottom-row > a:hover { background: var(--surface-hover); }
+
+  .avatar-circle {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    background: var(--accent-subtle);
+    color: var(--accent);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--font-mono);
+    font-weight: 500;
+    font-size: 0.6875rem;
+    letter-spacing: 0.02em;
+    flex-shrink: 0;
+    overflow: hidden;
+  }
+  html:not(.dark) .avatar-circle { background: var(--ocean-light); color: var(--ocean); }
+  .avatar-circle img { width: 100%; height: 100%; object-fit: cover; }
+
+  .sidebar-user-info { min-width: 0; }
+  .sidebar-user-name {
+    font-weight: 600;
+    font-size: 0.8125rem;
+    line-height: 1.3;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .sidebar-user-title {
+    font-size: 0.71875rem;
+    line-height: 1.3;
+    color: var(--text-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   .sidebar-signout {
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 32px;
-    height: 32px;
-    border-radius: 8px;
+    width: 30px;
+    height: 30px;
+    border-radius: 7px;
     color: var(--text-muted);
     background: none;
     border: none;
-    font-size: 1rem;
     cursor: pointer;
     flex-shrink: 0;
-    transition: all 0.15s ease;
+    transition: background 0.15s var(--ease), color 0.15s var(--ease);
   }
-  .sidebar-signout:hover {
-    background: var(--surface-hover);
-    color: var(--error-text);
-  }
+  .sidebar-signout .ic { width: 15px; height: 15px; }
+  .sidebar-signout:hover { background: var(--error-bg); color: var(--error-text); }
 
-  /* Main content */
+  /* ── Main column ─────────────────────────────────────────────────── */
   .dashboard-main {
     flex: 1;
     min-width: 0;
-    padding: 2rem 2rem 2.5rem;
-    overflow-y: auto;
+    padding: 2.25rem 2rem 3.5rem;
   }
   .dashboard-main .container {
-    max-width: 900px;
+    max-width: 940px;
     width: 100%;
   }
+  .dashboard-main .card { padding: 1.5rem; }
 
-  /* Mobile hamburger */
-  .hamburger {
-    display: none;
-    position: fixed;
-    top: 0.75rem;
-    left: 0.75rem;
-    z-index: 200;
+  /* ── Page header ─────────────────────────────────────────────────── */
+  .page-head {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 0.875rem;
+    margin-bottom: 1.5rem;
+  }
+  .page-head-text { min-width: 0; }
+  .page-head h1 { margin-bottom: 0.1875rem; }
+  .page-head p {
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+    line-height: 1.5;
+    margin: 0;
+  }
+  .page-head-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+
+  .section-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+  }
+  .section-head h2 { margin-bottom: 0; }
+
+  /* ── Stat tiles ──────────────────────────────────────────────────── */
+  .stat-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 0.75rem;
+    margin-bottom: 1.25rem;
+  }
+  .stat {
     background: var(--surface);
     border: 1px solid var(--border);
-    border-radius: 8px;
-    width: 2.5rem;
-    height: 2.5rem;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    font-size: 1.25rem;
-    color: var(--text);
+    border-radius: var(--radius-md);
+    padding: 1rem 1.125rem;
     box-shadow: var(--shadow);
   }
-
-  .sidebar-overlay {
-    display: none;
-    position: fixed;
-    inset: 0;
-    background: rgba(0,0,0,0.4);
-    z-index: 99;
+  .stat-value {
+    font-family: var(--font-display);
+    font-size: 1.75rem;
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    line-height: 1.1;
+    color: var(--heading);
+    font-variant-numeric: tabular-nums;
+  }
+  .stat-label {
+    font-family: var(--font-mono);
+    font-size: 0.625rem;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    color: var(--text-muted);
+    margin-top: 0.3125rem;
   }
 
-  @media (max-width: 768px) {
-    .hamburger { display: flex; }
-    .sidebar {
-      position: fixed;
-      left: -280px;
-      top: 0;
-      height: 100vh;
-      transition: left 0.25s ease;
-      box-shadow: var(--shadow-lg);
-    }
-    .sidebar.open { left: 0; }
-    .sidebar-overlay.open { display: block; }
-    .dashboard-main { padding: 3.5rem 1rem 2rem; }
-    .dashboard-main .card { padding: 1.25rem; }
-  }
-
-  /* Responsive helpers used by dashboard pages */
-  .booking-row {
+  /* ── Row lists ───────────────────────────────────────────────────── */
+  .booking-row, .et-row {
     display: flex;
     justify-content: space-between;
-    align-items: flex-start;
-    padding: 0.75rem 0;
-    gap: 0.75rem;
+    align-items: center;
+    gap: 0.875rem;
+    padding: 0.8125rem 0;
   }
-  .booking-row .booking-info { flex: 1; min-width: 0; }
-  .booking-row .booking-actions {
+  .booking-row { align-items: flex-start; }
+  .booking-row + .booking-row,
+  .et-row + .et-row { border-top: 1px solid var(--border); }
+  .booking-row .booking-info, .et-row .et-info { flex: 1; min-width: 0; }
+  .booking-row .booking-actions, .et-row .et-actions {
     display: flex;
     gap: 0.375rem;
     flex-shrink: 0;
     flex-wrap: wrap;
     align-items: center;
-  }
-  .et-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 0.75rem 0;
-    gap: 0.75rem;
-  }
-  .et-row .et-info { flex: 1; min-width: 0; }
-  .et-row .et-actions {
-    display: flex;
-    gap: 0.375rem;
-    align-items: center;
-    flex-wrap: wrap;
     justify-content: flex-end;
   }
 
-  /* Two-column form grids that stack on mobile */
+  /* ── Forms ───────────────────────────────────────────────────────── */
   .form-grid-2 {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 1rem;
   }
 
-  @media (max-width: 480px) {
-    .booking-row { flex-direction: column; gap: 0.5rem; }
-    .booking-row .booking-actions { width: 100%; }
-    .et-row { flex-direction: column; align-items: flex-start; gap: 0.5rem; }
-    .et-row .et-actions { width: 100%; }
-    .dashboard-main { padding: 3.25rem 0.75rem 1.5rem; }
-    .dashboard-main .card { padding: 1rem; }
+  /* ── Mobile top bar ──────────────────────────────────────────────── */
+  .mobile-bar {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 120;
+    height: 52px;
+    align-items: center;
+    gap: 0.625rem;
+    padding: 0 0.75rem;
+    background: color-mix(in srgb, var(--surface) 86%, transparent);
+    -webkit-backdrop-filter: blur(16px);
+    backdrop-filter: blur(16px);
+    border-bottom: 1px solid var(--border);
+  }
+  .hamburger {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    flex: none;
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    cursor: pointer;
+    color: var(--text);
+  }
+  .hamburger .ic { width: 17px; height: 17px; }
+  .mobile-bar .sidebar-brand {
+    height: auto;
+    border: none;
+    padding: 0;
+  }
+  .mobile-bar .sidebar-brand-name { font-size: 1.0625rem; }
+
+  .sidebar-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 26, 32, 0.45);
+    -webkit-backdrop-filter: blur(2px);
+    backdrop-filter: blur(2px);
+    z-index: 110;
+  }
+
+  @media (max-width: 860px) {
+    .mobile-bar { display: flex; }
+    .sidebar {
+      position: fixed;
+      left: -260px;
+      top: 0;
+      height: 100dvh;
+      transition: left 0.25s var(--ease);
+      box-shadow: var(--shadow-lg);
+      z-index: 130;
+    }
+    .sidebar.open { left: 0; }
+    .sidebar-overlay.open { display: block; }
+    .dashboard-main { padding: calc(52px + 1.25rem) 1rem 2.5rem; }
+    .dashboard-main .card { padding: 1.25rem; }
+    /* The floating theme toggle would sit on top of the mobile bar. */
+    .theme-pill { top: auto; bottom: 1rem; right: 1rem; }
+  }
+
+  @media (max-width: 560px) {
+    .booking-row, .et-row { flex-direction: column; align-items: stretch; gap: 0.625rem; }
+    .booking-row .booking-actions, .et-row .et-actions { justify-content: flex-start; }
+    .dashboard-main { padding: calc(52px + 0.875rem) 0.75rem 2rem; }
+    .dashboard-main .card { padding: 1.0625rem; }
     .form-grid-2 { grid-template-columns: 1fr; }
+    .page-head { align-items: flex-start; }
+    .page-head-actions { width: 100%; }
+    .page-head-actions .btn { flex: 1 1 auto; }
+    .stat-grid { grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 0.5rem; }
+    .stat { padding: 0.8125rem 0.875rem; }
+    .stat-value { font-size: 1.5rem; }
   }
 </style>
 
 <div class="dashboard-layout">
-  <button class="hamburger" onclick="document.querySelector('.sidebar').classList.toggle('open'); document.querySelector('.sidebar-overlay').classList.toggle('open');">&#9776;</button>
-  <div class="sidebar-overlay" onclick="document.querySelector('.sidebar').classList.remove('open'); this.classList.remove('open');"></div>
+  <div class="mobile-bar">
+    <button class="hamburger" type="button" aria-label="Open navigation" aria-controls="dashboard-sidebar" aria-expanded="false" onclick="calrsToggleSidebar(this)">
+      <svg class="ic" aria-hidden="true"><use href="#i-menu"/></svg>
+    </button>
+    <a href="/dashboard" class="sidebar-brand">
+      <svg class="brand-mark" aria-hidden="true"><use href="#i-mark"/></svg>
+      <span class="sidebar-brand-name">Cascade</span>
+    </a>
+  </div>
+  <div class="sidebar-overlay" onclick="calrsToggleSidebar()"></div>
 
-  <nav class="sidebar">
-    <a href="/dashboard" class="sidebar-brand" style="text-decoration: none; color: inherit;">
-      <img src="/brand-logo" alt="calrs">
-      <span class="sidebar-brand-name"><span style="color: var(--accent);">cal</span><span style="color: #e45724;">rs</span></span>
+  <nav class="sidebar" id="dashboard-sidebar">
+    <a href="/dashboard" class="sidebar-brand">
+      <svg class="brand-mark" aria-hidden="true"><use href="#i-mark"/></svg>
+      <span class="sidebar-brand-name">Cascade</span>
     </a>
 
     <div class="sidebar-nav">
       <div class="sidebar-section">
-        <div class="sidebar-section-label">{{ t("nav-section-scheduling") }}</div>
-        <a href="/dashboard" class="sidebar-link {% if sidebar.active == 'overview' %}active{% endif %}">
-          <span class="icon">&#9632;</span> {{ t("nav-overview") }}
+        <div class="sidebar-section-label">Scheduling</div>
+        <a href="/dashboard" class="sidebar-link {% if sidebar.active == 'overview' %}active{% endif %}"{% if sidebar.active == 'overview' %} aria-current="page"{% endif %}>
+          <svg class="ic" aria-hidden="true"><use href="#i-grid"/></svg> Overview
         </a>
-        <a href="/dashboard/event-types" class="sidebar-link {% if sidebar.active == 'event-types' %}active{% endif %}">
-          <span class="icon">&#128197;</span> {{ t("nav-event-types") }}
+        <a href="/dashboard/event-types" class="sidebar-link {% if sidebar.active == 'event-types' %}active{% endif %}"{% if sidebar.active == 'event-types' %} aria-current="page"{% endif %}>
+          <svg class="ic" aria-hidden="true"><use href="#i-calendar-days"/></svg> Event Types
         </a>
-        <a href="/dashboard/bookings" class="sidebar-link {% if sidebar.active == 'bookings' %}active{% endif %}">
-          <span class="icon">&#128203;</span> {{ t("nav-bookings") }}
+        <a href="/dashboard/bookings" class="sidebar-link {% if sidebar.active == 'bookings' %}active{% endif %}"{% if sidebar.active == 'bookings' %} aria-current="page"{% endif %}>
+          <svg class="ic" aria-hidden="true"><use href="#i-clipboard-list"/></svg> Bookings
         </a>
-        <a href="/dashboard/teams" class="sidebar-link {% if sidebar.active == 'teams' %}active{% endif %}">
-          <span class="icon">&#128101;</span> {{ t("nav-teams") }}
-        </a>
-      </div>
-
-      <div class="sidebar-section">
-        <div class="sidebar-section-label">{{ t("nav-section-shared-links") }}</div>
-        <a href="/dashboard/invite-links" class="sidebar-link {% if sidebar.active == 'organization' %}active{% endif %}">
-          <span class="icon">&#127970;</span> {{ t("nav-invite-links") }}
+        <a href="/dashboard/teams" class="sidebar-link {% if sidebar.active == 'teams' %}active{% endif %}"{% if sidebar.active == 'teams' %} aria-current="page"{% endif %}>
+          <svg class="ic" aria-hidden="true"><use href="#i-users"/></svg> Teams
         </a>
       </div>
 
       <div class="sidebar-section">
-        <div class="sidebar-section-label">{{ t("nav-section-calendars") }}</div>
-        <a href="/dashboard/sources" class="sidebar-link {% if sidebar.active == 'sources' %}active{% endif %}">
-          <span class="icon">&#128197;</span> {{ t("nav-sources") }}
+        <div class="sidebar-section-label">Shared Links</div>
+        <a href="/dashboard/invite-links" class="sidebar-link {% if sidebar.active == 'organization' %}active{% endif %}"{% if sidebar.active == 'organization' %} aria-current="page"{% endif %}>
+          <svg class="ic" aria-hidden="true"><use href="#i-link"/></svg> Invite Links
         </a>
       </div>
 
       <div class="sidebar-section">
-        <div class="sidebar-section-label">{{ t("nav-section-personal") }}</div>
-        <a href="/dashboard/settings" class="sidebar-link {% if sidebar.active == 'settings' %}active{% endif %}">
-          <span class="icon">&#9881;</span> {{ t("nav-settings") }}
+        <div class="sidebar-section-label">Calendars</div>
+        <a href="/dashboard/sources" class="sidebar-link {% if sidebar.active == 'sources' %}active{% endif %}"{% if sidebar.active == 'sources' %} aria-current="page"{% endif %}>
+          <svg class="ic" aria-hidden="true"><use href="#i-server"/></svg> Sources
         </a>
-        <a href="/dashboard/troubleshoot" data-calrs-sync class="sidebar-link {% if sidebar.active == 'troubleshoot' %}active{% endif %}">
-          <span class="icon">&#128269;</span> {{ t("nav-troubleshoot") }}
+      </div>
+
+      <div class="sidebar-section">
+        <div class="sidebar-section-label">Personal</div>
+        <a href="/dashboard/settings" class="sidebar-link {% if sidebar.active == 'settings' %}active{% endif %}"{% if sidebar.active == 'settings' %} aria-current="page"{% endif %}>
+          <svg class="ic" aria-hidden="true"><use href="#i-settings"/></svg> Profile &amp; Settings
+        </a>
+        <a href="/dashboard/troubleshoot" data-calrs-sync class="sidebar-link {% if sidebar.active == 'troubleshoot' %}active{% endif %}"{% if sidebar.active == 'troubleshoot' %} aria-current="page"{% endif %}>
+          <svg class="ic" aria-hidden="true"><use href="#i-search"/></svg> Troubleshoot
         </a>
       </div>
 
       {% if sidebar.user_role == "admin" %}
       <div class="sidebar-section">
-        <div class="sidebar-section-label">{{ t("nav-section-admin") }}</div>
-        <a href="/dashboard/admin" class="sidebar-link {% if sidebar.active == 'admin' %}active{% endif %}">
-          <span class="icon">&#128272;</span> {{ t("nav-admin-panel") }}
+        <div class="sidebar-section-label">Admin</div>
+        <a href="/dashboard/admin" class="sidebar-link {% if sidebar.active == 'admin' %}active{% endif %}"{% if sidebar.active == 'admin' %} aria-current="page"{% endif %}>
+          <svg class="ic" aria-hidden="true"><use href="#i-shield"/></svg> Admin Panel
         </a>
       </div>
       {% endif %}
@@ -368,8 +458,10 @@
             {% if sidebar.user_title %}<div class="sidebar-user-title">{{ sidebar.user_title }}</div>{% endif %}
           </div>
         </a>
-        <form method="post" action="/auth/logout" style="flex-shrink: 0;">
-          <button type="submit" class="sidebar-signout" title="{{ t('nav-sign-out') }}" aria-label="{{ t('nav-sign-out') }}">&#8592;</button>
+        <form method="post" action="/auth/logout">
+          <button type="submit" class="sidebar-signout" title="Sign out" aria-label="Sign out">
+            <svg class="ic" aria-hidden="true"><use href="#i-log-out"/></svg>
+          </button>
         </form>
       </div>
       {% if sidebar.version %}<div style="font-size: 0.7rem; color: var(--text-muted); padding: 0.25rem 0.75rem 0; opacity: 0.6;"><a href="https://github.com/olivierlambert/calrs/releases/tag/v{{ sidebar.version }}" target="_blank" rel="noopener" style="color: inherit; text-decoration: none;" title="{{ t('nav-release-notes') }}">v{{ sidebar.version }}</a></div>{% endif %}
@@ -378,14 +470,15 @@
 
   <main class="dashboard-main">
     <div class="container">
-      <div id="tz-banner" style="display:none; margin-bottom: 1rem; padding: 0.75rem 1rem; border-radius: var(--radius); background: var(--accent-subtle); border: 1px solid var(--accent-border); font-size: 0.875rem;">
-        <div style="display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; flex-wrap: wrap;">
-          <span>{{ t("tz-banner-text", detected='<strong id="tz-detected"></strong>', current='<strong id="tz-current"></strong>') | safe }}</span>
-          <span style="display: flex; gap: 0.5rem; flex-shrink: 0;">
-            <button id="tz-update" class="slot-btn" style="cursor: pointer; font-weight: 600; color: var(--accent); border-color: var(--accent); font-size: 0.8rem; padding: 0.375rem 0.75rem;">{{ t('tz-banner-update') }}</button>
-            <button id="tz-dismiss" class="slot-btn" style="cursor: pointer; font-size: 0.8rem; padding: 0.375rem 0.75rem;">{{ t('tz-banner-dismiss') }}</button>
-          </span>
-        </div>
+      <div id="tz-banner" class="notice notice-info" style="display:none; justify-content: space-between; align-items: center; flex-wrap: wrap;">
+        <span style="display:flex; gap:0.5rem; align-items:flex-start;">
+          <svg class="ic" aria-hidden="true"><use href="#i-globe"/></svg>
+          <span>Your browser timezone is <strong id="tz-detected"></strong> but your booking timezone is set to <strong id="tz-current"></strong>.</span>
+        </span>
+        <span class="btn-row" style="flex-shrink: 0;">
+          <button id="tz-update" type="button" class="btn btn-sm">Update</button>
+          <button id="tz-dismiss" type="button" class="btn btn-sm btn-ghost">Dismiss</button>
+        </span>
       </div>
       <script>
       (function() {
@@ -428,6 +521,33 @@
     </div>
   </main>
 </div>
+<script>
+// Mobile sidebar drawer. Kept here rather than inline on the elements so the
+// overlay, the button's aria-expanded state and the Escape key stay in sync.
+function calrsToggleSidebar(btn) {
+  var sidebar = document.getElementById('dashboard-sidebar');
+  var overlay = document.querySelector('.sidebar-overlay');
+  if (!sidebar || !overlay) return;
+  var open = !sidebar.classList.contains('open');
+  sidebar.classList.toggle('open', open);
+  overlay.classList.toggle('open', open);
+  document.body.style.overflow = open ? 'hidden' : '';
+  var toggle = document.querySelector('.hamburger');
+  if (toggle) toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+  if (open) {
+    var first = sidebar.querySelector('.sidebar-link');
+    if (first) first.focus({ preventScroll: true });
+  } else if (btn && btn.focus) {
+    btn.focus({ preventScroll: true });
+  }
+}
+document.addEventListener('keydown', function(e) {
+  if (e.key !== 'Escape') return;
+  var sidebar = document.getElementById('dashboard-sidebar');
+  if (sidebar && sidebar.classList.contains('open')) calrsToggleSidebar(document.querySelector('.hamburger'));
+});
+</script>
+
 <script>
 // Shared markdown preview renderer
 function renderMdPreview(md) {

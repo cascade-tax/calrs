@@ -1,29 +1,49 @@
 {% extends "dashboard_base.html" %}
 {% block title %}{{ t("bookings-page-title") }} — Cascade{% endblock %}
 {% block dashboard_content %}
+<style>
+  .bk-meta {
+    color: var(--text-muted);
+    font-size: 0.8125rem;
+    overflow-wrap: anywhere;
+  }
+  .bk-sub { color: var(--text-muted); font-size: 0.75rem; }
+  .bk-title { display: flex; align-items: center; flex-wrap: wrap; gap: 0.375rem; }
+  .cancel-form input[name="reason"] { font-size: 0.8125rem; width: 100%; max-width: 220px; margin-bottom: 0.375rem; }
+</style>
+
+<div class="page-head">
+  <div class="page-head-text">
+    <h1>Bookings</h1>
+    <p>Everything on your calendar that came through Cascade.</p>
+  </div>
+</div>
+
 {% if error_message %}
-<div class="card" style="border-color: var(--error-text); margin-bottom: 1rem;">
-  <p style="color: var(--error-text); font-size: 0.875rem; margin: 0;">{{ error_message }}</p>
+<div class="notice notice-error">
+  <svg class="ic" aria-hidden="true"><use href="#i-alert"/></svg>
+  <span>{{ error_message }}</span>
 </div>
 {% endif %}
+
 {% if pending_bookings %}
 <div class="card">
   <h2>{{ t("bookings-pending-approval") }}</h2>
   {% for b in pending_bookings %}
-  <div class="booking-row" {% if not loop.last %}style="border-bottom: 1px solid var(--border);"{% endif %}>
+  <div class="booking-row">
     <div class="booking-info">
-      <div>{{ t("bookings-with", title='<strong>' ~ (b.event_title | escape) ~ '</strong>', guest=b.guest_name | escape) | safe }}</div>
-      <div style="color: var(--text-muted); font-size: 0.85rem;">{{ b.start_at }} &middot; {{ b.guest_email }}</div>
-      {% if b.start_at_guest %}<div style="color: var(--text-muted); font-size: 0.75rem;">{{ t("bookings-guest-booked") }} {{ b.start_at_guest }}</div>{% endif %}
-      {% if b.resource_name %}<div style="color: var(--text-muted); font-size: 0.75rem;">{{ t("bookings-resource") }} {{ b.resource_name }}</div>{% endif %}
+      <div class="bk-title"><span><strong>{{ b.event_title }}</strong> with {{ b.guest_name }}</span> <span class="badge badge-pending">pending</span></div>
+      <div class="bk-meta">{{ b.start_at }} &middot; {{ b.guest_email }}</div>
+      {% if b.start_at_guest %}<div class="bk-sub">Guest booked: {{ b.start_at_guest }}</div>{% endif %}
+      {% if b.resource_name %}<div class="bk-sub">Resource: {{ b.resource_name }}</div>{% endif %}
     </div>
     <div class="booking-actions">
       <form method="post" action="/dashboard/bookings/{{ b.id }}/confirm" style="margin: 0;">
-        <button type="submit" class="slot-btn" style="font-size: 0.8rem; cursor: pointer; color: var(--success); border-color: var(--success);">{{ t("bookings-confirm") }}</button>
+        <button type="submit" class="btn btn-sm btn-success">Confirm</button>
       </form>
-      <a href="/dashboard/bookings/{{ b.id }}/reschedule" data-calrs-sync class="slot-btn" style="font-size: 0.8rem; text-decoration: none; color: var(--accent); cursor: pointer;">{{ t("bookings-reschedule") }}</a>
+      <a href="/dashboard/bookings/{{ b.id }}/reschedule" data-calrs-sync class="btn btn-sm btn-ghost">Reschedule</a>
       <form method="post" action="/dashboard/bookings/{{ b.id }}/cancel" style="margin: 0;">
-        <button type="submit" class="slot-btn" style="font-size: 0.8rem; cursor: pointer; color: var(--error-text);">{{ t("bookings-decline") }}</button>
+        <button type="submit" class="btn btn-sm btn-danger">Decline</button>
       </form>
     </div>
   </div>
@@ -35,17 +55,17 @@
 <div class="card">
   <h2>{{ t("bookings-available-to-claim") }}</h2>
   {% for b in claimable_bookings %}
-  <div class="booking-row" {% if not loop.last %}style="border-bottom: 1px solid var(--border);"{% endif %}>
+  <div class="booking-row">
     <div class="booking-info">
-      <div>
-        {{ t("bookings-with", title='<strong>' ~ (b.event_title | escape) ~ '</strong>', guest=b.guest_name | escape) | safe }}
-        <span class="badge" style="margin-left: 0.25rem; background: #3b82f6; color: #fff;">{{ b.team_name }}</span>
+      <div class="bk-title">
+        <span><strong>{{ b.event_title }}</strong> with {{ b.guest_name }}</span>
+        <span class="badge badge-info">{{ b.team_name }}</span>
       </div>
-      <div style="color: var(--text-muted); font-size: 0.85rem;">{{ b.start_at }} &middot; {{ b.guest_email }}</div>
-      {% if b.start_at_guest %}<div style="color: var(--text-muted); font-size: 0.75rem;">{{ t("bookings-guest-booked") }} {{ b.start_at_guest }}</div>{% endif %}
+      <div class="bk-meta">{{ b.start_at }} &middot; {{ b.guest_email }}</div>
+      {% if b.start_at_guest %}<div class="bk-sub">Guest booked: {{ b.start_at_guest }}</div>{% endif %}
     </div>
     <div class="booking-actions">
-      <a href="/booking/claim/{{ b.id }}?token={{ b.claim_token }}" class="slot-btn" style="font-size: 0.8rem; text-decoration: none; color: #3b82f6; border-color: #3b82f6; font-weight: 600; cursor: pointer;">{{ t("bookings-claim") }}</a>
+      <a href="/booking/claim/{{ b.id }}?token={{ b.claim_token }}" class="btn btn-sm">Claim</a>
     </div>
   </div>
   {% endfor %}
@@ -53,42 +73,45 @@
 {% endif %}
 
 <div class="card">
-  <h1 style="margin-bottom: 1rem;">{{ t("bookings-upcoming") }}</h1>
+  <h2>Upcoming bookings</h2>
   {% if bookings %}
     {% for b in bookings %}
-    <div class="booking-row" {% if not loop.last %}style="border-bottom: 1px solid var(--border);"{% endif %}>
+    <div class="booking-row">
       <div class="booking-info">
-        <div>
-          {{ t("bookings-with", title='<strong>' ~ (b.event_title | escape) ~ '</strong>', guest=b.guest_name | escape) | safe }}
+        <div class="bk-title">
+          <span><strong>{{ b.event_title }}</strong> with {{ b.guest_name }}</span>
           {% if b.awaiting_reschedule is defined and b.awaiting_reschedule %}
-            <span class="badge badge-warning" style="margin-left: 0.25rem;">{{ t("bookings-badge-awaiting-reschedule") }}</span>
+            <span class="badge badge-warning">awaiting reschedule</span>
           {% endif %}
         </div>
-        <div style="color: var(--text-muted); font-size: 0.85rem;">
-          {{ b.start_at }} &middot; {{ b.guest_email }}{% if b.guest_phone %} &middot; {{ b.guest_phone }}{% endif %}
-        </div>
-        {% if b.start_at_guest %}<div style="color: var(--text-muted); font-size: 0.75rem;">{{ t("bookings-guest-booked") }} {{ b.start_at_guest }}</div>{% endif %}
-        {% if b.resource_name %}<div style="color: var(--text-muted); font-size: 0.75rem;">{{ t("bookings-resource") }} {{ b.resource_name }}</div>{% endif %}
+        <div class="bk-meta">{{ b.start_at }} &middot; {{ b.guest_email }}</div>
+        {% if b.start_at_guest %}<div class="bk-sub">Guest booked: {{ b.start_at_guest }}</div>{% endif %}
+        {% if b.resource_name %}<div class="bk-sub">Resource: {{ b.resource_name }}</div>{% endif %}
       </div>
       <div class="booking-actions">
         {% if not (b.awaiting_reschedule is defined and b.awaiting_reschedule) %}
-        <a href="/dashboard/bookings/{{ b.id }}/reschedule" class="slot-btn booking-action-btn" style="font-size: 0.8rem; text-decoration: none; color: var(--accent); cursor: pointer;">{{ t("bookings-reschedule") }}</a>
+        <a href="/dashboard/bookings/{{ b.id }}/reschedule" class="btn btn-sm btn-ghost booking-action-btn">Reschedule</a>
         {% endif %}
-        <button type="button" class="slot-btn booking-action-btn" style="font-size: 0.8rem; color: var(--error-text); cursor: pointer;" onclick="var p=this.parentElement; p.querySelectorAll('.booking-action-btn').forEach(function(b){b.style.display='none'}); p.querySelector('.cancel-form').style.display='block';">{{ t("bookings-cancel") }}</button>
+        <button type="button" class="btn btn-sm btn-danger booking-action-btn" onclick="var p=this.parentElement; p.querySelectorAll('.booking-action-btn').forEach(function(b){b.style.display='none'}); p.querySelector('.cancel-form').style.display='block';">Cancel</button>
         <form method="post" action="/dashboard/bookings/{{ b.id }}/cancel" class="cancel-form" style="display: none; width: 100%;">
-          <input type="text" name="reason" placeholder="{{ t('bookings-reason-placeholder') }}" style="padding: 0.375rem 0.625rem; border: 1px solid var(--border); border-radius: var(--radius); font-size: 0.8rem; font-family: inherit; background: var(--surface); color: var(--text); width: 100%; max-width: 200px; margin-bottom: 0.375rem;">
+          <input type="text" name="reason" placeholder="Reason (optional)">
           <div style="display: flex; gap: 0.375rem;">
-            <button type="submit" class="slot-btn" style="font-size: 0.8rem; color: var(--error-text); cursor: pointer; flex: 1;">{{ t("bookings-confirm-cancel") }}</button>
-            <button type="button" class="slot-btn" style="font-size: 0.8rem; cursor: pointer; flex: 1;" onclick="var p=this.closest('.booking-actions'); p.querySelector('.cancel-form').style.display='none'; p.querySelectorAll('.booking-action-btn').forEach(function(b){b.style.display=''});">{{ t("bookings-back") }}</button>
+            <button type="submit" class="btn btn-sm btn-danger" style="flex: 1;">Confirm cancel</button>
+            <button type="button" class="btn btn-sm btn-ghost" style="flex: 1;" onclick="var p=this.closest('.booking-actions'); p.querySelector('.cancel-form').style.display='none'; p.querySelectorAll('.booking-action-btn').forEach(function(b){b.style.display=''});">Back</button>
           </div>
         </form>
       </div>
     </div>
     {% endfor %}
   {% else %}
-    <div class="empty" style="padding: 2rem 1rem;">
-      <div class="empty-icon">&#128203;</div>
-      <div class="empty-text">{{ t("bookings-empty", link='<a href="/dashboard/event-types" style="color: var(--accent); text-decoration: none;">' ~ (t("bookings-empty-link-label") | escape) ~ '</a>') | safe }}</div>
+    <div class="empty">
+      <div class="empty-icon"><svg class="ic" aria-hidden="true"><use href="#i-clipboard-list"/></svg></div>
+      <div class="empty-text">No upcoming bookings. Share an event type link so people can book time with you.</div>
+      <div class="btn-row" style="justify-content: center; margin-top: 1rem;">
+        <a href="/dashboard/event-types" class="btn btn-sm btn-ghost">
+          <svg class="ic" aria-hidden="true"><use href="#i-calendar-days"/></svg> Event types
+        </a>
+      </div>
     </div>
   {% endif %}
 </div>
