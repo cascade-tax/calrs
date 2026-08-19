@@ -16103,6 +16103,19 @@ fn tr1(lang: &str, key: &str, arg: &str, value: &str) -> String {
     crate::i18n::translate(lang, key, Some(&args))
 }
 
+#[derive(sqlx::FromRow)]
+struct TroubleshootEventType {
+    id: String,
+    slug: String,
+    title: String,
+    duration_min: i32,
+    buffer_before: i32,
+    buffer_after: i32,
+    min_notice_min: i32,
+    team_id: Option<String>,
+    team_name: Option<String>,
+}
+
 async fn troubleshoot(
     State(state): State<Arc<AppState>>,
     auth_user: crate::auth::AuthUser,
@@ -16110,45 +16123,78 @@ async fn troubleshoot(
 ) -> impl IntoResponse {
     let user = &auth_user.user;
 
-    // Always sync before troubleshooting to ensure fresh data
-    crate::commands::sync::sync_if_stale(&state.pool, &state.secret_key, &user.id).await;
-
-    let host_tz = get_user_tz(&state.pool, &user.id).await;
-    let now_host = Utc::now().with_timezone(&host_tz).naive_local();
-
-    let target_date = params
-        .date
-        .as_deref()
-        .and_then(|d| NaiveDate::parse_from_str(d, "%Y-%m-%d").ok())
-        .unwrap_or(now_host.date());
-
-    // Fetch user's event types for the selector
-    let event_types: Vec<(String, String, i32, i32, i32, i32)> = sqlx::query_as(
-        "SELECT et.slug, et.title, et.duration_min, et.buffer_before, et.buffer_after, et.min_notice_min
-         FROM event_types et
-         JOIN accounts a ON a.id = et.account_id
-         WHERE a.user_id = ? AND et.team_id IS NULL AND et.enabled = 1
-         ORDER BY et.created_at",
-    )
-    .bind(&user.id)
-    .fetch_all(&state.pool)
-    .await
-    .unwrap_or_default();
-
-    if event_types.is_empty() {
-        let has_team_event_types: bool = sqlx::query_scalar::<_, i64>(
-            "SELECT EXISTS(
-                SELECT 1
-                FROM event_types et
-                JOIN team_members tm ON tm.team_id = et.team_id
-                WHERE tm.user_id = ? AND et.enabled = 1
-            )",
+    // Personal event types are always available. Collective team event types
+    // use the same all-members-must-be-free rule as the public booking page.
+    // Round-robin needs a member-by-member "who is still free?" view and stays
+    // out of this selector until that diagnostic is implemented.
+    let event_types: Vec<TroubleshootEventType> = if user.role == "admin" {
+        sqlx::query_as(
+            "SELECT et.id, et.slug, et.title, et.duration_min, et.buffer_before,
+                    et.buffer_after, et.min_notice_min, et.team_id, t.name AS team_name
+             FROM event_types et
+             JOIN accounts a ON a.id = et.account_id
+             LEFT JOIN teams t ON t.id = et.team_id
+             WHERE et.enabled = 1
+               AND ((et.team_id IS NULL AND a.user_id = ?)
+                    OR (et.team_id IS NOT NULL AND et.scheduling_mode = 'collective'))
+             ORDER BY et.team_id IS NOT NULL, COALESCE(t.name, ''), et.created_at",
         )
         .bind(&user.id)
-        .fetch_one(&state.pool)
+        .fetch_all(&state.pool)
         .await
-        .unwrap_or(0)
-            != 0;
+        .unwrap_or_default()
+    } else {
+        sqlx::query_as(
+            "SELECT et.id, et.slug, et.title, et.duration_min, et.buffer_before,
+                    et.buffer_after, et.min_notice_min, et.team_id, t.name AS team_name
+             FROM event_types et
+             JOIN accounts a ON a.id = et.account_id
+             LEFT JOIN teams t ON t.id = et.team_id
+             WHERE et.enabled = 1
+               AND ((et.team_id IS NULL AND a.user_id = ?)
+                    OR (et.team_id IS NOT NULL AND et.scheduling_mode = 'collective'
+                        AND EXISTS (
+                            SELECT 1 FROM team_members tm
+                            WHERE tm.team_id = et.team_id AND tm.user_id = ?
+                        )))
+             ORDER BY et.team_id IS NOT NULL, COALESCE(t.name, ''), et.created_at",
+        )
+        .bind(&user.id)
+        .bind(&user.id)
+        .fetch_all(&state.pool)
+        .await
+        .unwrap_or_default()
+    };
+
+    if event_types.is_empty() {
+        let has_round_robin_event_types: bool = if user.role == "admin" {
+            sqlx::query_scalar::<_, i64>(
+                "SELECT EXISTS(
+                    SELECT 1 FROM event_types
+                    WHERE team_id IS NOT NULL AND enabled = 1
+                      AND scheduling_mode = 'round_robin'
+                )",
+            )
+            .fetch_one(&state.pool)
+            .await
+            .unwrap_or(0)
+                != 0
+        } else {
+            sqlx::query_scalar::<_, i64>(
+                "SELECT EXISTS(
+                    SELECT 1
+                    FROM event_types et
+                    JOIN team_members tm ON tm.team_id = et.team_id
+                    WHERE tm.user_id = ? AND et.enabled = 1
+                      AND et.scheduling_mode = 'round_robin'
+                )",
+            )
+            .bind(&user.id)
+            .fetch_one(&state.pool)
+            .await
+            .unwrap_or(0)
+                != 0
+        };
         let tmpl = match state.templates.get_template("troubleshoot.html") {
             Ok(t) => t,
             Err(e) => return internal_error_response("template render", &e),
@@ -16158,7 +16204,7 @@ async fn troubleshoot(
             tmpl.render(context! {
                 user_name => &user.name,
                 no_event_types => true,
-                has_team_event_types => has_team_event_types,
+                has_round_robin_event_types => has_round_robin_event_types,
                 sidebar => sidebar_context(&auth_user, "troubleshoot"),
                 lang => auth_user.lang,
                 impersonating => impersonating,
@@ -16169,43 +16215,77 @@ async fn troubleshoot(
         .into_response();
     }
 
-    let selected_slug = params.event_type.as_deref().unwrap_or(&event_types[0].0);
+    // IDs make team/personal slug collisions unambiguous. Keep accepting a
+    // slug in old bookmarked URLs, preferring a personal event on collision.
+    let selected_key = params.event_type.as_deref().unwrap_or(&event_types[0].id);
     let selected_et = event_types
         .iter()
-        .find(|et| et.0 == selected_slug)
+        .find(|et| et.id == selected_key)
+        .or_else(|| {
+            event_types
+                .iter()
+                .find(|et| et.team_id.is_none() && et.slug == selected_key)
+        })
+        .or_else(|| event_types.iter().find(|et| et.slug == selected_key))
         .unwrap_or(&event_types[0]);
-    let (ref et_slug, ref et_title, duration, buf_before, buf_after, min_notice) = *selected_et;
+    let et_id = &selected_et.id;
+    let et_title = &selected_et.title;
+    let duration = selected_et.duration_min;
+    let buf_before = selected_et.buffer_before;
+    let buf_after = selected_et.buffer_after;
+    let min_notice = selected_et.min_notice_min;
+    let is_collective = selected_et.team_id.is_some();
 
-    // Get event type ID
-    let et_id: Option<(String,)> = sqlx::query_as(
-        "SELECT et.id FROM event_types et JOIN accounts a ON a.id = et.account_id WHERE a.user_id = ? AND et.slug = ?",
-    )
-    .bind(&user.id)
-    .bind(et_slug)
-    .fetch_optional(&state.pool)
-    .await
-    .unwrap_or(None);
+    let host_tz = get_host_tz(&state.pool, et_id).await;
+    let now_host = Utc::now().with_timezone(&host_tz).naive_local();
+    let target_date = params
+        .date
+        .as_deref()
+        .and_then(|d| NaiveDate::parse_from_str(d, "%Y-%m-%d").ok())
+        .unwrap_or(now_host.date());
 
-    let et_id = match et_id {
-        Some((id,)) => id,
-        None => {
-            return render_error_page_no_headers(
-                &state,
-                axum::http::StatusCode::NOT_FOUND,
-                "Event type not found",
-                "Event type not found",
-            )
-        }
+    // Match the public collective path exactly: disabled members and members
+    // with an event-type weight of zero do not participate.
+    let availability_users: Vec<(String, String)> = if let Some(team_id) = &selected_et.team_id {
+        sqlx::query_as(
+            "SELECT u.id, u.name FROM users u
+             JOIN team_members tm ON tm.user_id = u.id
+             LEFT JOIN event_type_member_weights etw
+               ON etw.user_id = u.id AND etw.event_type_id = ?
+             WHERE tm.team_id = ? AND u.enabled = 1
+               AND COALESCE(etw.weight, 1) > 0
+             ORDER BY u.name",
+        )
+        .bind(et_id)
+        .bind(team_id)
+        .fetch_all(&state.pool)
+        .await
+        .unwrap_or_default()
+    } else {
+        vec![(user.id.clone(), user.name.clone())]
     };
 
     let booking_horizon = get_booking_horizon(&state.pool, &et_id).await;
+
+    // Always sync every calendar that participates in the result before
+    // troubleshooting, just as the public collective slot page does.
+    let mut sync_tasks = tokio::task::JoinSet::new();
+    for (member_id, _) in &availability_users {
+        let pool = state.pool.clone();
+        let key = state.secret_key;
+        let member_id = member_id.clone();
+        sync_tasks.spawn(async move {
+            crate::commands::sync::sync_if_stale(&pool, &key, &member_id).await;
+        });
+    }
+    while sync_tasks.join_next().await.is_some() {}
 
     // Check availability overrides for this date
     let target_date_str = target_date.format("%Y-%m-%d").to_string();
     let day_overrides: Vec<(Option<String>, Option<String>, i32)> = sqlx::query_as(
         "SELECT start_time, end_time, is_blocked FROM availability_overrides WHERE event_type_id = ? AND date = ? ORDER BY start_time",
     )
-    .bind(&et_id)
+    .bind(et_id)
     .bind(&target_date_str)
     .fetch_all(&state.pool)
     .await
@@ -16230,7 +16310,7 @@ async fn troubleshoot(
         sqlx::query_as(
             "SELECT start_time, end_time FROM availability_rules WHERE event_type_id = ? AND day_of_week = ? ORDER BY start_time",
         )
-        .bind(&et_id)
+        .bind(et_id)
         .bind(weekday)
         .fetch_all(&state.pool)
         .await
@@ -16246,133 +16326,221 @@ async fn troubleshoot(
     let day_end_iso = target_date.format("%Y-%m-%dT23:59:59").to_string();
 
     // Non-recurring busy events for this date
-    let raw_busy_events: Vec<(
-        String,
-        String,
-        Option<String>,
-        Option<String>,
-        Option<String>,
-    )> = sqlx::query_as(
-        "SELECT e.start_at, e.end_at, e.summary, c.display_name, e.timezone
-         FROM events e
-         JOIN calendars c ON c.id = e.calendar_id
-         JOIN caldav_sources cs ON cs.id = c.source_id
-         JOIN accounts a ON a.id = cs.account_id
-         WHERE a.user_id = ? AND c.is_busy = 1
-           AND (NOT EXISTS (SELECT 1 FROM event_type_calendars WHERE event_type_id = ?)
-                OR c.id IN (SELECT calendar_id FROM event_type_calendars WHERE event_type_id = ?))
-           AND (e.rrule IS NULL OR e.rrule = '')
-           AND (e.status IS NULL OR e.status != 'CANCELLED')
-           AND (e.transp IS NULL OR e.transp != 'TRANSPARENT')
-           AND ((e.start_at < ? AND e.end_at > ?) OR (e.start_at < ? AND e.end_at > ?))
-         ORDER BY e.start_at",
-    )
-    .bind(&user.id)
-    .bind(&et_id)
-    .bind(&et_id)
-    .bind(&day_end_compact)
-    .bind(&day_start_compact)
-    .bind(&day_end_iso)
-    .bind(&day_start_iso)
-    .fetch_all(&state.pool)
-    .await
-    .unwrap_or_default();
+    let mut busy_events: Vec<(String, String, Option<String>, Option<String>)> = Vec::new();
+    for (member_id, member_name) in &availability_users {
+        let raw_busy_events: Vec<(
+            String,
+            String,
+            Option<String>,
+            Option<String>,
+            Option<String>,
+        )> = sqlx::query_as(
+            "SELECT e.start_at, e.end_at, e.summary, c.display_name, e.timezone
+             FROM events e
+             JOIN calendars c ON c.id = e.calendar_id
+             JOIN caldav_sources cs ON cs.id = c.source_id
+             JOIN accounts a ON a.id = cs.account_id
+             WHERE a.user_id = ? AND c.is_busy = 1
+               AND (NOT EXISTS (SELECT 1 FROM event_type_calendars WHERE event_type_id = ?)
+                    OR c.id IN (SELECT calendar_id FROM event_type_calendars WHERE event_type_id = ?))
+               AND (e.rrule IS NULL OR e.rrule = '')
+               AND (e.status IS NULL OR e.status != 'CANCELLED')
+               AND (e.transp IS NULL OR e.transp != 'TRANSPARENT')
+               AND ((e.start_at < ? AND e.end_at > ?) OR (e.start_at < ? AND e.end_at > ?))
+             ORDER BY e.start_at",
+        )
+        .bind(member_id)
+        .bind(et_id)
+        .bind(et_id)
+        .bind(&day_end_compact)
+        .bind(&day_start_compact)
+        .bind(&day_end_iso)
+        .bind(&day_start_iso)
+        .fetch_all(&state.pool)
+        .await
+        .unwrap_or_default();
 
-    let mut busy_events: Vec<(String, String, Option<String>, Option<String>)> = raw_busy_events
-        .iter()
-        .filter_map(|(s, e, summary, cal_name, event_tz)| {
-            let start = convert_event_to_tz(parse_ical_datetime(s)?, event_tz.as_deref(), host_tz);
-            let end = convert_event_to_tz(parse_ical_datetime(e)?, event_tz.as_deref(), host_tz);
-            Some((
-                start.format("%Y-%m-%dT%H:%M:%S").to_string(),
-                end.format("%Y-%m-%dT%H:%M:%S").to_string(),
-                summary.clone(),
-                cal_name.clone(),
-            ))
-        })
-        .collect();
+        busy_events.extend(raw_busy_events.iter().filter_map(
+            |(s, e, summary, cal_name, event_tz)| {
+                let start =
+                    convert_event_to_tz(parse_ical_datetime(s)?, event_tz.as_deref(), host_tz);
+                let end =
+                    convert_event_to_tz(parse_ical_datetime(e)?, event_tz.as_deref(), host_tz);
+                Some((
+                    start.format("%Y-%m-%dT%H:%M:%S").to_string(),
+                    end.format("%Y-%m-%dT%H:%M:%S").to_string(),
+                    if is_collective {
+                        Some(format!("{} unavailable", member_name))
+                    } else {
+                        summary.clone()
+                    },
+                    if is_collective {
+                        Some("Calendar conflict".to_string())
+                    } else {
+                        cal_name.clone()
+                    },
+                ))
+            },
+        ));
+    }
 
     // Recurring busy events — expand into this date
-    let recurring_events: Vec<(
-        String,
-        String,
-        String,
-        Option<String>,
-        Option<String>,
-        Option<String>,
-        Option<String>,
-    )> = sqlx::query_as(
-        "SELECT e.start_at, e.end_at, e.rrule, e.raw_ical, e.summary, c.display_name, e.timezone
-         FROM events e
-         JOIN calendars c ON c.id = e.calendar_id
-         JOIN caldav_sources cs ON cs.id = c.source_id
-         JOIN accounts a ON a.id = cs.account_id
-         WHERE a.user_id = ? AND c.is_busy = 1
-           AND (NOT EXISTS (SELECT 1 FROM event_type_calendars WHERE event_type_id = ?)
-                OR c.id IN (SELECT calendar_id FROM event_type_calendars WHERE event_type_id = ?))
-           AND (e.status IS NULL OR e.status != 'CANCELLED')
-           AND (e.transp IS NULL OR e.transp != 'TRANSPARENT')
-           AND e.rrule IS NOT NULL AND e.rrule != ''
-           AND (e.start_at <= ? OR e.start_at <= ?)",
-    )
-    .bind(&user.id)
-    .bind(&et_id)
-    .bind(&et_id)
-    .bind(&day_end_iso)
-    .bind(&day_end_compact)
-    .fetch_all(&state.pool)
-    .await
-    .unwrap_or_default();
-
     let ts_window_start = target_date
         .and_hms_opt(0, 0, 0)
         .unwrap_or(target_date.and_time(NaiveTime::MIN));
     let ts_window_end = target_date
         .and_hms_opt(23, 59, 59)
         .unwrap_or(target_date.and_time(NaiveTime::MIN));
-    for (s, e, rrule_str, raw_ical, summary, cal_name, event_tz) in &recurring_events {
-        if let (Some(ev_start), Some(ev_end)) = (parse_ical_datetime(s), parse_ical_datetime(e)) {
-            let exdates = raw_ical
-                .as_deref()
-                .map(crate::rrule::extract_exdates)
-                .unwrap_or_default();
-            let occurrences = crate::rrule::expand_rrule(
-                ev_start,
-                ev_end,
-                rrule_str,
-                &exdates,
-                ts_window_start,
-                ts_window_end,
-            );
-            for (os, oe) in occurrences {
-                let cs = convert_event_to_tz(os, event_tz.as_deref(), host_tz);
-                let ce = convert_event_to_tz(oe, event_tz.as_deref(), host_tz);
-                busy_events.push((
-                    cs.format("%Y-%m-%dT%H:%M:%S").to_string(),
-                    ce.format("%Y-%m-%dT%H:%M:%S").to_string(),
-                    summary.clone(),
-                    cal_name.clone(),
-                ));
+    for (member_id, member_name) in &availability_users {
+        let recurring_events: Vec<(
+            String,
+            String,
+            String,
+            Option<String>,
+            Option<String>,
+            Option<String>,
+            Option<String>,
+        )> = sqlx::query_as(
+            "SELECT e.start_at, e.end_at, e.rrule, e.raw_ical, e.summary, c.display_name, e.timezone
+             FROM events e
+             JOIN calendars c ON c.id = e.calendar_id
+             JOIN caldav_sources cs ON cs.id = c.source_id
+             JOIN accounts a ON a.id = cs.account_id
+             WHERE a.user_id = ? AND c.is_busy = 1
+               AND (NOT EXISTS (SELECT 1 FROM event_type_calendars WHERE event_type_id = ?)
+                    OR c.id IN (SELECT calendar_id FROM event_type_calendars WHERE event_type_id = ?))
+               AND (e.status IS NULL OR e.status != 'CANCELLED')
+               AND (e.transp IS NULL OR e.transp != 'TRANSPARENT')
+               AND e.rrule IS NOT NULL AND e.rrule != ''
+               AND (e.start_at <= ? OR e.start_at <= ?)",
+        )
+        .bind(member_id)
+        .bind(et_id)
+        .bind(et_id)
+        .bind(&day_end_iso)
+        .bind(&day_end_compact)
+        .fetch_all(&state.pool)
+        .await
+        .unwrap_or_default();
+
+        for (s, e, rrule_str, raw_ical, summary, cal_name, event_tz) in &recurring_events {
+            if let (Some(ev_start), Some(ev_end)) = (parse_ical_datetime(s), parse_ical_datetime(e))
+            {
+                let exdates = raw_ical
+                    .as_deref()
+                    .map(crate::rrule::extract_exdates)
+                    .unwrap_or_default();
+                let occurrences = crate::rrule::expand_rrule(
+                    ev_start,
+                    ev_end,
+                    rrule_str,
+                    &exdates,
+                    ts_window_start,
+                    ts_window_end,
+                );
+                for (os, oe) in occurrences {
+                    let cs = convert_event_to_tz(os, event_tz.as_deref(), host_tz);
+                    let ce = convert_event_to_tz(oe, event_tz.as_deref(), host_tz);
+                    busy_events.push((
+                        cs.format("%Y-%m-%dT%H:%M:%S").to_string(),
+                        ce.format("%Y-%m-%dT%H:%M:%S").to_string(),
+                        if is_collective {
+                            Some(format!("{} unavailable", member_name))
+                        } else {
+                            summary.clone()
+                        },
+                        if is_collective {
+                            Some("Recurring calendar conflict".to_string())
+                        } else {
+                            cal_name.clone()
+                        },
+                    ));
+                }
             }
         }
     }
 
     // Bookings for this date
-    let bookings: Vec<(String, String, String, String)> = sqlx::query_as(
-        "SELECT b.start_at, b.end_at, b.guest_name, et2.title
-         FROM bookings b
-         JOIN event_types et2 ON et2.id = b.event_type_id
-         JOIN accounts a ON a.id = et2.account_id
-         WHERE a.user_id = ? AND b.status IN ('confirmed', 'pending')
-           AND b.start_at < ? AND b.end_at > ?
-         ORDER BY b.start_at",
-    )
-    .bind(&user.id)
-    .bind(&day_end_iso)
-    .bind(&day_start_iso)
-    .fetch_all(&state.pool)
-    .await
-    .unwrap_or_default();
+    let mut bookings: Vec<(String, String, String, String)> = Vec::new();
+    if is_collective {
+        for (member_id, member_name) in &availability_users {
+            let member_bookings: Vec<(String, String, String, String)> = sqlx::query_as(
+                "SELECT b.start_at, b.end_at, b.guest_name, et2.title
+                 FROM bookings b
+                 JOIN event_types et2 ON et2.id = b.event_type_id
+                 JOIN accounts a ON a.id = et2.account_id
+                 WHERE (b.assigned_user_id = ?
+                        OR (b.assigned_user_id IS NULL AND a.user_id = ?)
+                        OR (b.assigned_user_id IS NULL AND et2.team_id IS NOT NULL
+                            AND EXISTS (
+                                SELECT 1 FROM team_members tm
+                                WHERE tm.team_id = et2.team_id AND tm.user_id = ?
+                            )))
+                   AND b.status = 'confirmed'
+                   AND b.start_at < ? AND b.end_at > ?
+                 ORDER BY b.start_at",
+            )
+            .bind(member_id)
+            .bind(member_id)
+            .bind(member_id)
+            .bind(&day_end_iso)
+            .bind(&day_start_iso)
+            .fetch_all(&state.pool)
+            .await
+            .unwrap_or_default();
+            bookings.extend(member_bookings.into_iter().map(|(start, end, _, _)| {
+                (
+                    start,
+                    end,
+                    format!("{} unavailable", member_name),
+                    "Booking conflict".to_string(),
+                )
+            }));
+        }
+    } else {
+        bookings = sqlx::query_as(
+            "SELECT b.start_at, b.end_at, b.guest_name, et2.title
+             FROM bookings b
+             JOIN event_types et2 ON et2.id = b.event_type_id
+             JOIN accounts a ON a.id = et2.account_id
+             WHERE a.user_id = ? AND b.status IN ('confirmed', 'pending')
+               AND b.start_at < ? AND b.end_at > ?
+             ORDER BY b.start_at",
+        )
+        .bind(&user.id)
+        .bind(&day_end_iso)
+        .bind(&day_start_iso)
+        .fetch_all(&state.pool)
+        .await
+        .unwrap_or_default();
+    }
+
+    // Per-user working hours participate in collective availability. A member
+    // with no saved rules remains unconstrained, matching the public slot page.
+    let mut working_hours_busy: Vec<(NaiveDateTime, NaiveDateTime, String)> = Vec::new();
+    if is_collective {
+        for (member_id, member_name) in &availability_users {
+            working_hours_busy.extend(
+                user_avail_as_busy(
+                    &state.pool,
+                    member_id,
+                    ts_window_start,
+                    ts_window_end,
+                    host_tz,
+                )
+                .await
+                .into_iter()
+                .map(|(start, end)| (start, end, format!("{} outside working hours", member_name))),
+            );
+        }
+        if availability_users.is_empty() {
+            working_hours_busy.push((
+                ts_window_start,
+                ts_window_end,
+                "No active team members".to_string(),
+            ));
+        }
+    }
 
     // Build timeline: scan 15-min ticks from display_start to display_end
     let display_start_hour: u32 = rules
@@ -16444,7 +16612,7 @@ async fn troubleshoot(
     // Intervals where required shared resources block this event type
     // (mode-aware: union in 'all', intersection in 'round_robin').
     let resource_names: Vec<String> =
-        crate::resources::resources_for_event_type(&state.pool, &et_id)
+        crate::resources::resources_for_event_type(&state.pool, et_id)
             .await
             .into_iter()
             .map(|r| r.name)
@@ -16452,7 +16620,7 @@ async fn troubleshoot(
     let resource_blocked: Vec<(NaiveDateTime, NaiveDateTime)> =
         crate::resources::blocking_intervals_for_event_type(
             &state.pool,
-            &et_id,
+            et_id,
             ts_window_start,
             ts_window_end,
             host_tz,
@@ -16615,7 +16783,43 @@ async fn troubleshoot(
             continue;
         }
 
-        // 5. Check shared resources (no buffers: a resource needs none)
+        // 5. Check collective members' personal working hours. Buffers must
+        // also fit inside those hours, matching compute_slots_from_rules().
+        let working_hours_conflict = working_hours_busy.iter().find(|(s, e, _)| {
+            let buf_s = *s - Duration::minutes(buf_before as i64);
+            let buf_e = *e + Duration::minutes(buf_after as i64);
+            tick_dt < buf_e && tick_end > buf_s
+        });
+
+        if let Some((hours_s, hours_e, member_label)) = working_hours_conflict {
+            let outside_hours = tick_dt < *hours_e && tick_end > *hours_s;
+            if outside_hours {
+                ticks.push(Tick {
+                    time: cursor,
+                    status: "working_hours".to_string(),
+                    label: member_label.clone(),
+                    detail: String::new(),
+                });
+            } else {
+                ticks.push(Tick {
+                    time: cursor,
+                    status: "buffer".to_string(),
+                    label: format!(
+                        "Buffer ({}min)",
+                        if tick_dt < *hours_s {
+                            buf_before
+                        } else {
+                            buf_after
+                        }
+                    ),
+                    detail: format!("Around: {}", member_label),
+                });
+            }
+            cursor = (tick_dt + tick_size).time();
+            continue;
+        }
+
+        // 6. Check shared resources (no buffers: a resource needs none)
         if resource_blocked
             .iter()
             .any(|(s, e)| tick_dt < *e && tick_end > *s)
@@ -16630,7 +16834,7 @@ async fn troubleshoot(
             continue;
         }
 
-        // 6. Available!
+        // 7. Available!
         ticks.push(Tick {
             time: cursor,
             status: "available".to_string(),
@@ -16724,6 +16928,7 @@ async fn troubleshoot(
                 "buffer" => b.label.clone(),
                 "min_notice" => b.label.clone(),
                 "beyond_horizon" => b.label.clone(),
+                "working_hours" => b.label.clone(),
                 "resource_busy" => b.label.clone(),
                 _ => b.status.clone(),
             };
@@ -16741,9 +16946,11 @@ async fn troubleshoot(
         .iter()
         .map(|et| {
             context! {
-                slug => &et.0,
-                title => &et.1,
-                selected => et.0 == *et_slug,
+                id => &et.id,
+                title => et.team_name.as_ref()
+                    .map(|team_name| format!("{} — {}", et.title, team_name))
+                    .unwrap_or_else(|| et.title.clone()),
+                selected => et.id == selected_et.id,
             }
         })
         .collect();
@@ -16768,7 +16975,7 @@ async fn troubleshoot(
             user_name => &user.name,
             no_event_types => false,
             event_types => et_options,
-            selected_slug => et_slug,
+            selected_event_type => et_id,
             selected_date => target_date.format("%Y-%m-%d").to_string(),
             date_label => date_label,
             prev_date => prev_date,
@@ -16784,6 +16991,9 @@ async fn troubleshoot(
             buf_before => buf_before,
             buf_after => buf_after,
             min_notice => min_notice,
+            is_collective => is_collective,
+            team_name => selected_et.team_name,
+            active_member_count => availability_users.len(),
             sidebar => sidebar_context(&auth_user, "troubleshoot"),
             lang => auth_user.lang,
             impersonating => impersonating,
@@ -30149,13 +30359,41 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn troubleshoot_explains_team_only_event_types() {
-        let (app, pool, session, _) = setup_test_app().await;
+    async fn troubleshoot_includes_collective_team_event_types() {
+        let (app, pool, session, et_id) = setup_test_app().await;
         let user_id: String =
             sqlx::query_scalar("SELECT id FROM users WHERE username = 'testuser'")
                 .fetch_one(&pool)
                 .await
                 .unwrap();
+        let member_id = uuid::Uuid::new_v4().to_string();
+        let member_account_id = uuid::Uuid::new_v4().to_string();
+        sqlx::query(
+            "INSERT INTO users (id, email, name, role, auth_provider, username, enabled, timezone)
+             VALUES (?, 'member@example.com', 'Other Member', 'user', 'local', 'other-member', 1, 'UTC')",
+        )
+        .bind(&member_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO accounts (id, name, email, timezone, user_id)
+             VALUES (?, 'Other Member', 'member@example.com', 'UTC', ?)",
+        )
+        .bind(&member_account_id)
+        .bind(&member_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO user_availability_rules (id, user_id, day_of_week, start_time, end_time)
+             VALUES (?, ?, 1, '09:00', '12:00')",
+        )
+        .bind(uuid::Uuid::new_v4().to_string())
+        .bind(&member_id)
+        .execute(&pool)
+        .await
+        .unwrap();
         sqlx::query(
             "INSERT INTO teams (id, name, slug, visibility, created_by) VALUES ('team-only', 'Team Only', 'team-only', 'public', ?)",
         )
@@ -30170,7 +30408,84 @@ mod tests {
         .execute(&pool)
         .await
         .unwrap();
-        sqlx::query("UPDATE event_types SET team_id = 'team-only'")
+        sqlx::query(
+            "INSERT INTO team_members (team_id, user_id, role, source) VALUES ('team-only', ?, 'member', 'direct')",
+        )
+        .bind(&member_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query("UPDATE event_types SET team_id = 'team-only', scheduling_mode = 'collective'")
+            .execute(&pool)
+            .await
+            .unwrap();
+        seed_synced_event(
+            &pool,
+            &member_account_id,
+            "20300107T100000",
+            "20300107T110000",
+            "UTC",
+            "OPAQUE",
+        )
+        .await;
+        sqlx::query("UPDATE caldav_sources SET last_synced = datetime('now')")
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        let response = app
+            .oneshot(get_authed(
+                &format!(
+                    "/dashboard/troubleshoot?event_type={}&date=2030-01-07",
+                    et_id
+                ),
+                &session,
+            ))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), 200);
+        let body = body_string(response).await;
+        assert!(
+            body.contains("Test Meeting — Team Only"),
+            "collective team event type should appear in Troubleshoot"
+        );
+        assert!(
+            body.contains("Other Member unavailable"),
+            "a collective member's busy calendar should block the team timeline"
+        );
+        assert!(body.contains("Calendar conflict"));
+        assert!(
+            body.contains("Other Member outside working hours"),
+            "a collective member's working hours should block the team timeline"
+        );
+        assert!(!body.contains("personal event types only"));
+    }
+
+    #[tokio::test]
+    async fn troubleshoot_explains_round_robin_only_event_types() {
+        let (app, pool, session, _) = setup_test_app().await;
+        let user_id: String =
+            sqlx::query_scalar("SELECT id FROM users WHERE username = 'testuser'")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        sqlx::query(
+            "INSERT INTO teams (id, name, slug, visibility, created_by)
+             VALUES ('round-robin-only', 'Round Robin Only', 'round-robin-only', 'public', ?)",
+        )
+        .bind(&user_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO team_members (team_id, user_id, role, source)
+             VALUES ('round-robin-only', ?, 'admin', 'direct')",
+        )
+        .bind(&user_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query("UPDATE event_types SET team_id = 'round-robin-only'")
             .execute(&pool)
             .await
             .unwrap();
@@ -30181,8 +30496,8 @@ mod tests {
             .unwrap();
         assert_eq!(response.status(), 200);
         let body = body_string(response).await;
-        assert!(body.contains("personal event types only"));
-        assert!(!body.contains("No event types found"));
+        assert!(body.contains("Round-robin event types are not listed yet"));
+        assert!(!body.contains("Test Meeting — Round Robin Only"));
     }
 
     #[tokio::test]

@@ -13,8 +13,8 @@
 <div class="card">
   <div class="empty">
     <div class="empty-icon"><svg class="ic" aria-hidden="true"><use href="#i-search"/></svg></div>
-    {% if has_team_event_types %}
-    <p class="empty-text">Troubleshooting covers personal event types only. Team event types are not listed here.</p>
+    {% if has_round_robin_event_types %}
+    <p class="empty-text">Troubleshooting currently supports personal and collective team event types. Round-robin event types are not listed yet.</p>
     {% else %}
     <p class="empty-text">No event types yet. <a href="/dashboard/event-types/new">Create one</a> to start troubleshooting availability.</p>
     {% endif %}
@@ -117,6 +117,10 @@
     background-color: var(--tl-outside);
     background-image: repeating-linear-gradient(45deg, var(--tl-hatch) 0 2px, transparent 2px 5px);
   }
+  .tl-working_hours {
+    background-color: var(--tl-outside);
+    background-image: repeating-linear-gradient(135deg, var(--tl-hatch) 0 2px, transparent 2px 5px);
+  }
 
   /* ── Timeline ────────────────────────────────────────────────────── */
   .tl-track {
@@ -190,7 +194,7 @@
 <div class="page-head">
   <div class="page-head-text">
     <h1>Troubleshoot availability</h1>
-    <p class="subtitle">See why time slots are available or blocked for <strong>{{ et_title }}</strong> ({{ duration }}min{% if buf_before %}, {{ buf_before }}min buffer before{% endif %}{% if buf_after %}, {{ buf_after }}min buffer after{% endif %}{% if min_notice %}, {{ min_notice }}min notice{% endif %}).</p>
+    <p class="subtitle">See why time slots are available or blocked for <strong>{{ et_title }}</strong>{% if is_collective %} on {{ team_name }} (collective, {{ active_member_count }} active member{% if active_member_count != 1 %}s{% endif %}){% endif %} ({{ duration }}min{% if buf_before %}, {{ buf_before }}min buffer before{% endif %}{% if buf_after %}, {{ buf_after }}min buffer after{% endif %}{% if min_notice %}, {{ min_notice }}min notice{% endif %}).</p>
   </div>
 </div>
 
@@ -198,13 +202,13 @@
   <form id="troubleshoot-form" method="get" action="/dashboard/troubleshoot" class="tl-controls">
     <select name="event_type" aria-label="Event type">
       {% for et in event_types %}
-        <option value="{{ et.slug }}" {% if et.selected %}selected{% endif %}>{{ et.title }}</option>
+        <option value="{{ et.id }}" {% if et.selected %}selected{% endif %}>{{ et.title }}</option>
       {% endfor %}
     </select>
     <div class="tl-date">
-      <a href="/dashboard/troubleshoot?date={{ prev_date }}&event_type={{ selected_slug }}" class="btn btn-secondary btn-sm tl-step" aria-label="Previous day"><svg class="ic" aria-hidden="true"><use href="#i-arrow-left"/></svg></a>
+      <a href="/dashboard/troubleshoot?date={{ prev_date }}&event_type={{ selected_event_type }}" class="btn btn-secondary btn-sm tl-step" aria-label="Previous day"><svg class="ic" aria-hidden="true"><use href="#i-arrow-left"/></svg></a>
       <input type="date" name="date" value="{{ selected_date }}" aria-label="Date">
-      <a href="/dashboard/troubleshoot?date={{ next_date }}&event_type={{ selected_slug }}" class="btn btn-secondary btn-sm tl-step" aria-label="Next day"><svg class="ic" aria-hidden="true"><use href="#i-arrow-right"/></svg></a>
+      <a href="/dashboard/troubleshoot?date={{ next_date }}&event_type={{ selected_event_type }}" class="btn btn-secondary btn-sm tl-step" aria-label="Next day"><svg class="ic" aria-hidden="true"><use href="#i-arrow-right"/></svg></a>
     </div>
   </form>
 
@@ -228,6 +232,7 @@
     <span><i class="tl-swatch tl-available"></i> Available</span>
     <span><i class="tl-swatch tl-busy_event"></i> Calendar event</span>
     <span><i class="tl-swatch tl-booking"></i> Booking</span>
+    {% if is_collective %}<span><i class="tl-swatch tl-working_hours"></i> Member working hours</span>{% endif %}
     <span><i class="tl-swatch tl-resource_busy"></i> Resource busy</span>
     <span><i class="tl-swatch tl-buffer"></i> Buffer / min. notice</span>
     <span><i class="tl-swatch tl-outside"></i> Outside hours</span>
@@ -236,7 +241,7 @@
   {# Timeline #}
   <div class="tl-track">
     {% for block in blocks %}
-    <div class="tl-block {% if block.status == 'available' %}tl-available{% elif block.status == 'busy_event' %}tl-busy_event{% elif block.status == 'booking' %}tl-booking{% elif block.status == 'resource_busy' %}tl-resource_busy{% elif block.status == 'buffer' or block.status == 'min_notice' %}tl-buffer{% else %}tl-outside{% endif %}"
+    <div class="tl-block {% if block.status == 'available' %}tl-available{% elif block.status == 'busy_event' %}tl-busy_event{% elif block.status == 'booking' %}tl-booking{% elif block.status == 'working_hours' %}tl-working_hours{% elif block.status == 'resource_busy' %}tl-resource_busy{% elif block.status == 'buffer' or block.status == 'min_notice' %}tl-buffer{% else %}tl-outside{% endif %}"
          title="{{ block.start }} – {{ block.end }}: {{ block.label }}{% if block.detail %} ({{ block.detail }}){% endif %}"
          style="left: {{ block.left_pct }}%; width: {{ block.width_pct }}%;"></div>
     {% endfor %}
@@ -256,7 +261,7 @@
     {% for item in breakdown %}
     <div class="tl-row">
       <time>{{ item.start }} – {{ item.end }}</time>
-      <i class="tl-dot {% if item.status == 'busy_event' %}tl-busy_event{% elif item.status == 'booking' %}tl-booking{% elif item.status == 'resource_busy' %}tl-resource_busy{% elif item.status == 'buffer' or item.status == 'min_notice' %}tl-buffer{% else %}tl-outside{% endif %}"></i>
+      <i class="tl-dot {% if item.status == 'busy_event' %}tl-busy_event{% elif item.status == 'booking' %}tl-booking{% elif item.status == 'working_hours' %}tl-working_hours{% elif item.status == 'resource_busy' %}tl-resource_busy{% elif item.status == 'buffer' or item.status == 'min_notice' %}tl-buffer{% else %}tl-outside{% endif %}"></i>
       <span class="tl-reason">{{ item.reason }}{% if item.detail %} <span class="tl-detail">({{ item.detail }})</span>{% endif %}</span>
     </div>
     {% endfor %}
