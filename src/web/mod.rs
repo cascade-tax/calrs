@@ -6496,10 +6496,11 @@ async fn create_source(
     };
 
     // Validate URL against SSRF (HTTPS-only, no private targets).
-    if !is_published
-        && let Err(e) = crate::providers::factory::validate_url(&provider_type, &normalized_url)
-    {
-        return render_source_form_error(&state, &auth_user, &e.to_string(), &form).into_response();
+    if !is_published {
+        if let Err(e) = crate::providers::factory::validate_url(&provider_type, &normalized_url) {
+            return render_source_form_error(&state, &auth_user, &e.to_string(), &form)
+                .into_response();
+        }
     }
 
     // A published URL is itself the bearer credential. Encrypt it in the
