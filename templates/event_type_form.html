@@ -765,7 +765,7 @@
     {% if calendars is defined and calendars %}
     <div class="subsection">
       <div class="field-label">Conflict calendars</div>
-      <span class="field-hint" style="margin: 0 0 0.75rem;">Select which calendars to check for conflicts. If none selected, all calendars are used.</span>
+      <span id="conflict-calendars-hint" class="field-hint" style="margin: 0 0 0.75rem;">Select which calendars to check for conflicts. If none selected, all calendars are used.</span>
       <div class="check-list">
         {% set selected_padded = "," ~ selected_calendar_ids ~ "," %}
         {% for cal in calendars %}
@@ -1220,6 +1220,12 @@ function sub(tpl, a, b) {
     function toggleMode() {
       var isTeam = teamSel ? !!teamSel.value : {{ is_group is defined and is_group and "true" or "false" }};
       if (modeGroup) modeGroup.style.display = isTeam ? '' : 'none';
+      var calendarHint = document.getElementById('conflict-calendars-hint');
+      if (calendarHint) {
+        calendarHint.textContent = isTeam
+          ? 'These choices apply only to your availability. Every team member manages their own conflict calendars.'
+          : 'Select which calendars to check for conflicts. If none selected, all calendars are used.';
+      }
       togglePriority();
     }
 

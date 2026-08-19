@@ -1573,6 +1573,10 @@ pub async fn create_router(pool: SqlitePool, data_dir: PathBuf, secret_key: [u8;
             get(edit_group_event_type_form).post(update_group_event_type),
         )
         .route(
+            "/dashboard/group-event-types/{team_id}/{slug}/calendars",
+            get(team_event_type_calendars).post(update_team_event_type_calendars),
+        )
+        .route(
             "/dashboard/group-event-types/{team_id}/{slug}/priority/{user_id}",
             post(update_group_event_type_member_priority),
         )
@@ -1962,16 +1966,19 @@ async fn dashboard_event_types(
         String,
         String,
         String,
+        i64,
     )> = if is_admin {
         sqlx::query_as(
             "SELECT et.id, et.slug, et.title, et.duration_min, et.enabled, t.name, t.slug,
                     (SELECT COUNT(*) FROM bookings b WHERE b.event_type_id = et.id AND b.status IN ('confirmed', 'pending')) as active_bookings,
-                    et.visibility, t.id, et.scheduling_mode
+                    et.visibility, t.id, et.scheduling_mode,
+                    EXISTS(SELECT 1 FROM team_members own_tm WHERE own_tm.team_id = t.id AND own_tm.user_id = ?)
              FROM event_types et
              JOIN teams t ON t.id = et.team_id
              WHERE et.team_id IS NOT NULL
              ORDER BY t.name, et.created_at",
         )
+        .bind(&user.id)
         .fetch_all(&state.pool)
         .await
         .unwrap_or_default()
@@ -1979,7 +1986,7 @@ async fn dashboard_event_types(
         sqlx::query_as(
             "SELECT et.id, et.slug, et.title, et.duration_min, et.enabled, t.name, t.slug,
                     (SELECT COUNT(*) FROM bookings b WHERE b.event_type_id = et.id AND b.status IN ('confirmed', 'pending')) as active_bookings,
-                    et.visibility, t.id, et.scheduling_mode
+                    et.visibility, t.id, et.scheduling_mode, 1
              FROM event_types et
              JOIN teams t ON t.id = et.team_id
              JOIN team_members tm ON tm.team_id = t.id
@@ -2051,6 +2058,7 @@ async fn dashboard_event_types(
         vis,
         team_id,
         scheduling_mode,
+        current_user_is_member,
     ) in &team_event_types
     {
         let can_manage = is_admin || admin_team_ids.contains(team_id);
@@ -2059,6 +2067,8 @@ async fn dashboard_event_types(
             enabled => enabled, active_bookings => active_bookings, visibility => vis,
             is_team => true, team_name => team_name, team_slug => team_slug,
             team_id => team_id, scheduling_mode => scheduling_mode, can_manage => can_manage,
+            can_set_calendars => *current_user_is_member != 0,
+            calendar_settings_url => format!("/dashboard/group-event-types/{}/{}/calendars", team_id, slug),
             edit_url => format!("/dashboard/group-event-types/{}/{}/edit", team_id, slug),
             toggle_url => format!("/dashboard/group-event-types/{}/{}/toggle", team_id, slug),
             delete_url => format!("/dashboard/group-event-types/{}/{}/delete", team_id, slug),
@@ -5393,16 +5403,22 @@ async fn create_event_type(
         }
     }
 
-    // Save calendar selections
+    // Save only the creator's own busy calendars. For team event types these
+    // rows are the creator's member-specific conflict-calendar selection.
     if let Some(ref cal_ids_str) = form.calendar_ids {
         for cal_id in cal_ids_str.split(',') {
             let cal_id = cal_id.trim();
             if !cal_id.is_empty() {
                 let _ = sqlx::query(
-                    "INSERT INTO event_type_calendars (event_type_id, calendar_id) VALUES (?, ?)",
+                    "INSERT INTO event_type_calendars (event_type_id, calendar_id)
+                     SELECT ?, c.id FROM calendars c
+                     JOIN caldav_sources cs ON cs.id = c.source_id
+                     JOIN accounts a ON a.id = cs.account_id
+                     WHERE c.id = ? AND a.user_id = ? AND c.is_busy = 1",
                 )
                 .bind(&et_id)
                 .bind(cal_id)
+                .bind(&user.id)
                 .execute(&state.pool)
                 .await;
             }
@@ -8955,6 +8971,198 @@ async fn create_group_event_type(
     .await;
 
     Redirect::to("/dashboard/event-types").into_response()
+}
+
+async fn team_event_type_for_member(
+    pool: &SqlitePool,
+    user_id: &str,
+    team_id: &str,
+    slug: &str,
+) -> Option<(String, String, String)> {
+    sqlx::query_as(
+        "SELECT et.id, et.title, t.name
+         FROM event_types et
+         JOIN teams t ON t.id = et.team_id
+         JOIN team_members tm ON tm.team_id = t.id
+         WHERE tm.user_id = ? AND et.team_id = ? AND et.slug = ?",
+    )
+    .bind(user_id)
+    .bind(team_id)
+    .bind(slug)
+    .fetch_optional(pool)
+    .await
+    .unwrap_or(None)
+}
+
+async fn team_event_type_calendars(
+    State(state): State<Arc<AppState>>,
+    auth_user: crate::auth::AuthUser,
+    Path((team_id, slug)): Path<(String, String)>,
+    Query(query): Query<std::collections::HashMap<String, String>>,
+) -> impl IntoResponse {
+    let user = &auth_user.user;
+    let (et_id, event_title, team_name) =
+        match team_event_type_for_member(&state.pool, &user.id, &team_id, &slug).await {
+            Some(event_type) => event_type,
+            None => {
+                return render_error_page_no_headers(
+                    &state,
+                    axum::http::StatusCode::NOT_FOUND,
+                    "Event type not found",
+                    "Event type not found.",
+                )
+            }
+        };
+
+    let calendars: Vec<(String, Option<String>, String)> = sqlx::query_as(
+        "SELECT c.id, c.display_name, cs.name FROM calendars c
+         JOIN caldav_sources cs ON cs.id = c.source_id
+         JOIN accounts a ON a.id = cs.account_id
+         WHERE a.user_id = ? AND c.is_busy = 1
+         ORDER BY cs.name, c.display_name",
+    )
+    .bind(&user.id)
+    .fetch_all(&state.pool)
+    .await
+    .unwrap_or_default();
+    let calendars_ctx: Vec<minijinja::Value> = calendars
+        .iter()
+        .map(|(id, display_name, source_name)| {
+            context! {
+                id => id,
+                name => format!("{} ({})", display_name.as_deref().unwrap_or("Unnamed"), source_name),
+            }
+        })
+        .collect();
+
+    let selected_calendar_ids: Vec<String> = sqlx::query_scalar(
+        "SELECT etc.calendar_id FROM event_type_calendars etc
+         JOIN calendars c ON c.id = etc.calendar_id
+         JOIN caldav_sources cs ON cs.id = c.source_id
+         JOIN accounts a ON a.id = cs.account_id
+         WHERE etc.event_type_id = ? AND a.user_id = ?",
+    )
+    .bind(&et_id)
+    .bind(&user.id)
+    .fetch_all(&state.pool)
+    .await
+    .unwrap_or_default();
+
+    let tmpl = match state.templates.get_template("team_conflict_calendars.html") {
+        Ok(tmpl) => tmpl,
+        Err(error) => return internal_error_response("template render", &error),
+    };
+    let (impersonating, impersonating_name, _) = impersonation_ctx(&auth_user);
+    Html(
+        tmpl.render(context! {
+            event_title => event_title,
+            team_name => team_name,
+            team_id => team_id,
+            event_slug => slug,
+            calendars => calendars_ctx,
+            selected_calendar_ids => selected_calendar_ids.join(","),
+            saved => query.get("saved").is_some_and(|value| value == "1"),
+            sidebar => sidebar_context(&auth_user, "event-types"),
+            impersonating => impersonating,
+            impersonating_name => impersonating_name,
+        })
+        .unwrap_or_else(|error| internal_error_body("template render", &error)),
+    )
+    .into_response()
+}
+
+#[derive(Deserialize)]
+struct TeamConflictCalendarsForm {
+    _csrf: Option<String>,
+    #[serde(default)]
+    calendar_ids: String,
+}
+
+async fn update_team_event_type_calendars(
+    State(state): State<Arc<AppState>>,
+    auth_user: crate::auth::AuthUser,
+    headers: HeaderMap,
+    Path((team_id, slug)): Path<(String, String)>,
+    Form(form): Form<TeamConflictCalendarsForm>,
+) -> impl IntoResponse {
+    if let Err(response) = verify_csrf_token(&headers, &form._csrf) {
+        return response;
+    }
+    let user = &auth_user.user;
+    let et_id = match team_event_type_for_member(&state.pool, &user.id, &team_id, &slug).await {
+        Some((et_id, _, _)) => et_id,
+        None => {
+            return render_error_page_no_headers(
+                &state,
+                axum::http::StatusCode::NOT_FOUND,
+                "Event type not found",
+                "Event type not found.",
+            )
+        }
+    };
+
+    let valid_calendar_ids: std::collections::HashSet<String> = sqlx::query_scalar::<_, String>(
+        "SELECT c.id FROM calendars c
+             JOIN caldav_sources cs ON cs.id = c.source_id
+             JOIN accounts a ON a.id = cs.account_id
+             WHERE a.user_id = ? AND c.is_busy = 1",
+    )
+    .bind(&user.id)
+    .fetch_all(&state.pool)
+    .await
+    .unwrap_or_default()
+    .into_iter()
+    .collect();
+    let selected: Vec<&str> = form
+        .calendar_ids
+        .split(',')
+        .map(str::trim)
+        .filter(|id| !id.is_empty() && valid_calendar_ids.contains(*id))
+        .collect();
+
+    let mut tx = match state.pool.begin().await {
+        Ok(tx) => tx,
+        Err(error) => return internal_error_response("database query", &error),
+    };
+    if let Err(error) = sqlx::query(
+        "DELETE FROM event_type_calendars
+         WHERE event_type_id = ? AND calendar_id IN (
+             SELECT c.id FROM calendars c
+             JOIN caldav_sources cs ON cs.id = c.source_id
+             JOIN accounts a ON a.id = cs.account_id
+             WHERE a.user_id = ?
+         )",
+    )
+    .bind(&et_id)
+    .bind(&user.id)
+    .execute(&mut *tx)
+    .await
+    {
+        let _ = tx.rollback().await;
+        return internal_error_response("database query", &error);
+    }
+    for calendar_id in selected {
+        if let Err(error) = sqlx::query(
+            "INSERT INTO event_type_calendars (event_type_id, calendar_id) VALUES (?, ?)",
+        )
+        .bind(&et_id)
+        .bind(calendar_id)
+        .execute(&mut *tx)
+        .await
+        {
+            let _ = tx.rollback().await;
+            return internal_error_response("database query", &error);
+        }
+    }
+    if let Err(error) = tx.commit().await {
+        return internal_error_response("database query", &error);
+    }
+
+    Redirect::to(&format!(
+        "/dashboard/group-event-types/{}/{}/calendars?saved=1",
+        team_id, slug
+    ))
+    .into_response()
 }
 
 async fn edit_group_event_type_form(
@@ -13589,7 +13797,13 @@ async fn fetch_busy_times_for_user_ex(
          JOIN caldav_sources cs ON cs.id = c.source_id
          JOIN accounts a ON a.id = cs.account_id
          WHERE a.user_id = ? AND c.is_busy = 1
-           AND (NOT EXISTS (SELECT 1 FROM event_type_calendars WHERE event_type_id = ?)
+           AND (NOT EXISTS (
+                    SELECT 1 FROM event_type_calendars etc
+                    JOIN calendars selected_c ON selected_c.id = etc.calendar_id
+                    JOIN caldav_sources selected_cs ON selected_cs.id = selected_c.source_id
+                    JOIN accounts selected_a ON selected_a.id = selected_cs.account_id
+                    WHERE etc.event_type_id = ? AND selected_a.user_id = ?
+                )
                 OR c.id IN (SELECT calendar_id FROM event_type_calendars WHERE event_type_id = ?))
            AND (e.rrule IS NULL OR e.rrule = '')
            AND (e.status IS NULL OR e.status != 'CANCELLED')
@@ -13599,6 +13813,7 @@ async fn fetch_busy_times_for_user_ex(
     )
     .bind(user_id)
     .bind(et_id_for_filter)
+    .bind(user_id)
     .bind(et_id_for_filter)
     .bind(exclude_uid)
     .bind(exclude_uid)
@@ -13624,7 +13839,13 @@ async fn fetch_busy_times_for_user_ex(
          JOIN caldav_sources cs ON cs.id = c.source_id
          JOIN accounts a ON a.id = cs.account_id
          WHERE a.user_id = ? AND c.is_busy = 1
-           AND (NOT EXISTS (SELECT 1 FROM event_type_calendars WHERE event_type_id = ?)
+           AND (NOT EXISTS (
+                    SELECT 1 FROM event_type_calendars etc
+                    JOIN calendars selected_c ON selected_c.id = etc.calendar_id
+                    JOIN caldav_sources selected_cs ON selected_cs.id = selected_c.source_id
+                    JOIN accounts selected_a ON selected_a.id = selected_cs.account_id
+                    WHERE etc.event_type_id = ? AND selected_a.user_id = ?
+                )
                 OR c.id IN (SELECT calendar_id FROM event_type_calendars WHERE event_type_id = ?))
            AND (e.status IS NULL OR e.status != 'CANCELLED')
            AND (e.transp IS NULL OR e.transp != 'TRANSPARENT')
@@ -13633,6 +13854,7 @@ async fn fetch_busy_times_for_user_ex(
     )
     .bind(user_id)
     .bind(et_id_for_filter)
+    .bind(user_id)
     .bind(et_id_for_filter)
     .bind(exclude_uid)
     .bind(exclude_uid)
@@ -16341,7 +16563,13 @@ async fn troubleshoot(
              JOIN caldav_sources cs ON cs.id = c.source_id
              JOIN accounts a ON a.id = cs.account_id
              WHERE a.user_id = ? AND c.is_busy = 1
-               AND (NOT EXISTS (SELECT 1 FROM event_type_calendars WHERE event_type_id = ?)
+               AND (NOT EXISTS (
+                        SELECT 1 FROM event_type_calendars etc
+                        JOIN calendars selected_c ON selected_c.id = etc.calendar_id
+                        JOIN caldav_sources selected_cs ON selected_cs.id = selected_c.source_id
+                        JOIN accounts selected_a ON selected_a.id = selected_cs.account_id
+                        WHERE etc.event_type_id = ? AND selected_a.user_id = ?
+                    )
                     OR c.id IN (SELECT calendar_id FROM event_type_calendars WHERE event_type_id = ?))
                AND (e.rrule IS NULL OR e.rrule = '')
                AND (e.status IS NULL OR e.status != 'CANCELLED')
@@ -16351,6 +16579,7 @@ async fn troubleshoot(
         )
         .bind(member_id)
         .bind(et_id)
+        .bind(member_id)
         .bind(et_id)
         .bind(&day_end_compact)
         .bind(&day_start_compact)
@@ -16407,7 +16636,13 @@ async fn troubleshoot(
              JOIN caldav_sources cs ON cs.id = c.source_id
              JOIN accounts a ON a.id = cs.account_id
              WHERE a.user_id = ? AND c.is_busy = 1
-               AND (NOT EXISTS (SELECT 1 FROM event_type_calendars WHERE event_type_id = ?)
+               AND (NOT EXISTS (
+                        SELECT 1 FROM event_type_calendars etc
+                        JOIN calendars selected_c ON selected_c.id = etc.calendar_id
+                        JOIN caldav_sources selected_cs ON selected_cs.id = selected_c.source_id
+                        JOIN accounts selected_a ON selected_a.id = selected_cs.account_id
+                        WHERE etc.event_type_id = ? AND selected_a.user_id = ?
+                    )
                     OR c.id IN (SELECT calendar_id FROM event_type_calendars WHERE event_type_id = ?))
                AND (e.status IS NULL OR e.status != 'CANCELLED')
                AND (e.transp IS NULL OR e.transp != 'TRANSPARENT')
@@ -16416,6 +16651,7 @@ async fn troubleshoot(
         )
         .bind(member_id)
         .bind(et_id)
+        .bind(member_id)
         .bind(et_id)
         .bind(&day_end_iso)
         .bind(&day_end_compact)
@@ -24611,7 +24847,7 @@ mod tests {
         end_at: &str,
         timezone: &str,
         transp: &str,
-    ) {
+    ) -> String {
         let source_id = uuid::Uuid::new_v4().to_string();
         let cal_id = uuid::Uuid::new_v4().to_string();
         let event_id = uuid::Uuid::new_v4().to_string();
@@ -24623,6 +24859,85 @@ mod tests {
         sqlx::query("INSERT INTO events (id, calendar_id, uid, summary, start_at, end_at, all_day, timezone, status, transp) VALUES (?, ?, ?, 'Busy', ?, ?, 0, ?, 'CONFIRMED', ?)")
             .bind(&event_id).bind(&cal_id).bind(&uid).bind(start_at).bind(end_at).bind(timezone).bind(transp)
             .execute(pool).await.unwrap();
+        cal_id
+    }
+
+    #[tokio::test]
+    async fn event_type_calendar_filter_is_scoped_to_calendar_owner() {
+        let pool = setup_test_db().await;
+        let (owner_id, owner_account_id, et_id) = seed_test_data(&pool).await;
+        let member_id = insert_role_user(&pool, "member@x", "user").await;
+        let _ = insert_personal_et(&pool, &member_id, "member-personal").await;
+        let member_account_id: String =
+            sqlx::query_scalar("SELECT id FROM accounts WHERE user_id = ?")
+                .bind(&member_id)
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+
+        let selected_owner_calendar = seed_synced_event(
+            &pool,
+            &owner_account_id,
+            "20300107T100000",
+            "20300107T110000",
+            "UTC",
+            "OPAQUE",
+        )
+        .await;
+        seed_synced_event(
+            &pool,
+            &owner_account_id,
+            "20300107T120000",
+            "20300107T130000",
+            "UTC",
+            "OPAQUE",
+        )
+        .await;
+        seed_synced_event(
+            &pool,
+            &member_account_id,
+            "20300107T140000",
+            "20300107T150000",
+            "UTC",
+            "OPAQUE",
+        )
+        .await;
+        sqlx::query("INSERT INTO event_type_calendars (event_type_id, calendar_id) VALUES (?, ?)")
+            .bind(&et_id)
+            .bind(&selected_owner_calendar)
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        let owner_busy = fetch_busy_times_for_user(
+            &pool,
+            &owner_id,
+            dt(2030, 1, 7, 0, 0),
+            dt(2030, 1, 7, 23, 59),
+            Tz::UTC,
+            Some(&et_id),
+        )
+        .await;
+        let member_busy = fetch_busy_times_for_user(
+            &pool,
+            &member_id,
+            dt(2030, 1, 7, 0, 0),
+            dt(2030, 1, 7, 23, 59),
+            Tz::UTC,
+            Some(&et_id),
+        )
+        .await;
+
+        assert_eq!(
+            owner_busy,
+            vec![(dt(2030, 1, 7, 10, 0), dt(2030, 1, 7, 11, 0))],
+            "the owner's allowlist should exclude their unselected calendar"
+        );
+        assert_eq!(
+            member_busy,
+            vec![(dt(2030, 1, 7, 14, 0), dt(2030, 1, 7, 15, 0))],
+            "one member's allowlist must not exclude another member's calendars"
+        );
     }
 
     #[tokio::test]
@@ -30366,6 +30681,12 @@ mod tests {
                 .fetch_one(&pool)
                 .await
                 .unwrap();
+        let owner_account_id: String =
+            sqlx::query_scalar("SELECT id FROM accounts WHERE user_id = ?")
+                .bind(&user_id)
+                .fetch_one(&pool)
+                .await
+                .unwrap();
         let member_id = uuid::Uuid::new_v4().to_string();
         let member_account_id = uuid::Uuid::new_v4().to_string();
         sqlx::query(
@@ -30416,6 +30737,21 @@ mod tests {
         .await
         .unwrap();
         sqlx::query("UPDATE event_types SET team_id = 'team-only', scheduling_mode = 'collective'")
+            .execute(&pool)
+            .await
+            .unwrap();
+        let owner_calendar_id = seed_synced_event(
+            &pool,
+            &owner_account_id,
+            "20300107T080000",
+            "20300107T083000",
+            "UTC",
+            "OPAQUE",
+        )
+        .await;
+        sqlx::query("INSERT INTO event_type_calendars (event_type_id, calendar_id) VALUES (?, ?)")
+            .bind(&et_id)
+            .bind(&owner_calendar_id)
             .execute(&pool)
             .await
             .unwrap();
@@ -30583,6 +30919,180 @@ mod tests {
             .header("content-type", "application/x-www-form-urlencoded")
             .body(Body::from(body.to_string()))
             .unwrap()
+    }
+
+    #[tokio::test]
+    async fn team_member_updates_only_their_conflict_calendars() {
+        let (app, pool, _owner_session, et_id) = setup_test_app().await;
+        let owner_id: String =
+            sqlx::query_scalar("SELECT id FROM users WHERE username = 'testuser'")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        let owner_account_id: String =
+            sqlx::query_scalar("SELECT id FROM accounts WHERE user_id = ?")
+                .bind(&owner_id)
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        let member_id = uuid::Uuid::new_v4().to_string();
+        let member_account_id = uuid::Uuid::new_v4().to_string();
+        sqlx::query(
+            "INSERT INTO users (id, email, name, role, auth_provider, username, enabled, timezone)
+             VALUES (?, 'member@example.com', 'Team Member', 'user', 'local', 'team-member', 1, 'UTC')",
+        )
+        .bind(&member_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO accounts (id, name, email, timezone, user_id)
+             VALUES (?, 'Team Member', 'member@example.com', 'UTC', ?)",
+        )
+        .bind(&member_account_id)
+        .bind(&member_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+        let member_session = uuid::Uuid::new_v4().to_string();
+        let expires_at = (Utc::now() + Duration::days(30))
+            .format("%Y-%m-%d %H:%M:%S")
+            .to_string();
+        sqlx::query("INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)")
+            .bind(&member_session)
+            .bind(&member_id)
+            .bind(&expires_at)
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        sqlx::query(
+            "INSERT INTO teams (id, name, slug, visibility, created_by)
+             VALUES ('calendar-team', 'Calendar Team', 'calendar-team', 'public', ?)",
+        )
+        .bind(&owner_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO team_members (team_id, user_id, role, source)
+             VALUES ('calendar-team', ?, 'admin', 'direct')",
+        )
+        .bind(&owner_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO team_members (team_id, user_id, role, source)
+             VALUES ('calendar-team', ?, 'member', 'direct')",
+        )
+        .bind(&member_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            "UPDATE event_types SET team_id = 'calendar-team', scheduling_mode = 'collective'
+             WHERE id = ?",
+        )
+        .bind(&et_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        let owner_calendar = seed_synced_event(
+            &pool,
+            &owner_account_id,
+            "20300107T080000",
+            "20300107T083000",
+            "UTC",
+            "OPAQUE",
+        )
+        .await;
+        let member_calendar_one = seed_synced_event(
+            &pool,
+            &member_account_id,
+            "20300107T090000",
+            "20300107T093000",
+            "UTC",
+            "OPAQUE",
+        )
+        .await;
+        let member_calendar_two = seed_synced_event(
+            &pool,
+            &member_account_id,
+            "20300107T100000",
+            "20300107T103000",
+            "UTC",
+            "OPAQUE",
+        )
+        .await;
+        sqlx::query("UPDATE calendars SET display_name = 'Owner Private' WHERE id = ?")
+            .bind(&owner_calendar)
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query("UPDATE calendars SET display_name = 'Member Work' WHERE id = ?")
+            .bind(&member_calendar_one)
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query("UPDATE calendars SET display_name = 'Member Personal' WHERE id = ?")
+            .bind(&member_calendar_two)
+            .execute(&pool)
+            .await
+            .unwrap();
+        for calendar_id in [&owner_calendar, &member_calendar_one] {
+            sqlx::query(
+                "INSERT INTO event_type_calendars (event_type_id, calendar_id) VALUES (?, ?)",
+            )
+            .bind(&et_id)
+            .bind(calendar_id)
+            .execute(&pool)
+            .await
+            .unwrap();
+        }
+
+        let response = app
+            .clone()
+            .oneshot(get_authed(
+                "/dashboard/group-event-types/calendar-team/test-meeting/calendars",
+                &member_session,
+            ))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), 200);
+        let body = body_string(response).await;
+        assert!(body.contains("Member Work"));
+        assert!(body.contains("Member Personal"));
+        assert!(
+            !body.contains("Owner Private"),
+            "members must not see a teammate's calendar names"
+        );
+
+        let csrf = "team-calendar-csrf";
+        let body = format!("_csrf={csrf}&calendar_ids={member_calendar_two}");
+        let response = app
+            .oneshot(post_form(
+                "/dashboard/group-event-types/calendar-team/test-meeting/calendars",
+                &member_session,
+                csrf,
+                &body,
+            ))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), 303);
+
+        let selected: Vec<String> = sqlx::query_scalar(
+            "SELECT calendar_id FROM event_type_calendars WHERE event_type_id = ? ORDER BY calendar_id",
+        )
+        .bind(&et_id)
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+        assert!(selected.contains(&owner_calendar));
+        assert!(!selected.contains(&member_calendar_one));
+        assert!(selected.contains(&member_calendar_two));
+        assert_eq!(selected.len(), 2);
     }
 
     fn post_bare(uri: &str) -> axum::http::Request<Body> {

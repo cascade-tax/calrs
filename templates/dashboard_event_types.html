@@ -102,6 +102,9 @@
             {% if et.can_manage %}
             <a href="{{ et.overrides_url }}">{{ t("event-types-overrides") }}</a>
             {% endif %}
+            {% if et.is_team and et.can_set_calendars %}
+            <a href="{{ et.calendar_settings_url }}">Conflict calendars</a>
+            {% endif %}
             {% if et.is_team and et.can_manage %}
             <a href="/dashboard/teams/{{ et.team_id }}/settings">{{ t("event-types-team-settings") }}</a>
             {% endif %}

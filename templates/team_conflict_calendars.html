@@ -1,0 +1,58 @@
+{% extends "dashboard_base.html" %}
+{% block title %}Conflict calendars — Cascade{% endblock %}
+{% block dashboard_content %}
+
+<div class="page-head">
+  <div class="page-head-text">
+    <h1>Conflict calendars</h1>
+    <p>Choose which of your calendars determine your availability for <strong>{{ event_title }}</strong> on {{ team_name }}.</p>
+  </div>
+</div>
+
+{% if saved %}
+<div class="notice notice-success" style="margin-bottom: 1rem;">
+  <svg class="ic" aria-hidden="true"><use href="#i-circle-check"/></svg>
+  <span>Your conflict calendars were saved.</span>
+</div>
+{% endif %}
+
+<div class="card">
+  <form method="post" action="/dashboard/group-event-types/{{ team_id }}/{{ event_slug }}/calendars">
+    {% if calendars %}
+    <div class="field-label">Your calendars</div>
+    <p class="field-hint" style="margin: 0 0 0.75rem;">Only your choices are changed here. If none are selected, all of your calendars marked busy are checked.</p>
+    <div class="check-list">
+      {% set selected_padded = "," ~ selected_calendar_ids ~ "," %}
+      {% for cal in calendars %}
+      <label class="check-option">
+        <input type="checkbox" class="cal-check" value="{{ cal.id }}" {% if ("," ~ cal.id ~ ",") in selected_padded %}checked{% endif %}>
+        {{ cal.name }}
+      </label>
+      {% endfor %}
+    </div>
+    <input type="hidden" name="calendar_ids" id="calendar_ids" value="{{ selected_calendar_ids }}">
+    <div class="btn-row" style="margin-top: 1rem;">
+      <button type="submit" class="btn">Save calendars</button>
+      <a href="/dashboard/event-types" class="btn btn-secondary">Back</a>
+    </div>
+    {% else %}
+    <div class="empty">
+      <div class="empty-icon"><svg class="ic" aria-hidden="true"><use href="#i-calendar-days"/></svg></div>
+      <p class="empty-text">You do not have any calendars marked busy. Add or update a calendar source first.</p>
+      <a href="/dashboard/sources" class="btn btn-sm">Calendar sources</a>
+    </div>
+    {% endif %}
+  </form>
+</div>
+
+<script>
+document.querySelectorAll('.cal-check').forEach(function(checkbox) {
+  checkbox.addEventListener('change', function() {
+    var selected = Array.from(document.querySelectorAll('.cal-check:checked')).map(function(item) {
+      return item.value;
+    });
+    document.getElementById('calendar_ids').value = selected.join(',');
+  });
+});
+</script>
+{% endblock dashboard_content %}
