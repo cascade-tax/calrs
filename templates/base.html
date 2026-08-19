@@ -367,15 +367,6 @@
     .logo { text-align: center; margin-bottom: 1.5rem; }
     .logo img { max-height: 80px; max-width: 280px; object-fit: contain; }
 
-    .powered {
-      text-align: center;
-      color: var(--text-muted);
-      font-size: 0.75rem;
-      margin-top: 1.5rem;
-    }
-    .powered a { color: var(--text-muted); text-decoration: none; }
-    .powered a:hover { color: var(--text-secondary); }
-
     .error {
       color: var(--error-text);
       background: var(--error-bg);
@@ -483,7 +474,7 @@
        content. */
     body { padding: 1rem 0.75rem; background: transparent; display: block; min-height: 0; }
     .container { max-width: none; }
-    .logo, .powered, .theme-pill, #theme-toggle { display: none !important; }
+    .logo, .theme-pill, #theme-toggle { display: none !important; }
     {% if embed_brand %}
     /* Apply the brand accent in both light and dark mode. The `html.dark`
        selector is needed to out-specify base.html's `html.dark` accent rule;
@@ -528,7 +519,7 @@
   {% endif %}
   <div class="container">
     {% block content %}{% endblock %}
-    {% block footer %}<div class="powered"><span>{{ t('base-powered-by') }} <a href="https://cal.rs">calrs</a> 🦀</span></div>{% endblock %}
+    {% block footer %}{% endblock %}
     {% block theme_toggle %}
     <button id="theme-toggle" type="button" title="{{ t('base-theme-toggle') }}" aria-label="{{ t('base-theme-toggle') }}" class="theme-pill">
       <span class="theme-pill-track">

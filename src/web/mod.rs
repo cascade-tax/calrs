@@ -6216,6 +6216,7 @@ fn parse_provider_type(raw: Option<&str>) -> Result<String, String> {
 /// in sync with the preset choice.
 fn caldav_providers() -> Vec<(&'static str, &'static str, &'static str, &'static str)> {
     vec![
+        ("google", "Google Calendar", "", "caldav"),
         (
             "bluemind",
             "BlueMind",
@@ -6248,7 +6249,6 @@ fn caldav_providers() -> Vec<(&'static str, &'static str, &'static str, &'static
             "caldav",
         ),
         ("radicale", "Radicale", "https://cal.example.com/", "caldav"),
-        ("google", "Google Calendar", "", "caldav"),
         (
             "exchange",
             "Microsoft Exchange (EWS)",
@@ -6287,10 +6287,10 @@ async fn new_source_form(
     Html(
         tmpl.render(context! {
             providers => providers,
-            form_provider => "bluemind",
+            form_provider => "google",
             form_provider_type => "caldav",
             form_name => "",
-            form_url => "https://mail.example.com/dav/",
+            form_url => "",
             form_username => "",
             error => "",
             google_oauth2_configured => google_configured,
@@ -27862,6 +27862,8 @@ mod tests {
             "shared helpers must load before page-level scripts execute"
         );
         assert!(!rendered.contains("calrs_time_format"));
+        assert!(!rendered.contains("https://cal.rs"));
+        assert!(!rendered.contains("Powered by"));
         assert!(rendered.contains("['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']"));
         assert_eq!(
             rendered
@@ -29852,6 +29854,11 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(response.status(), 200);
+        let body = body_string(response).await;
+        assert!(
+            body.contains(r#"value="google" data-url="" data-backend="caldav" selected"#),
+            "Google Calendar should be selected by default"
+        );
     }
 
     /// Helper for the source-edit tests: insert a caldav source for the test user.
