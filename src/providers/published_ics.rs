@@ -7,11 +7,13 @@
 
 use anyhow::{bail, Result};
 use async_trait::async_trait;
+use chrono::{DateTime, Duration, NaiveDateTime, TimeZone, Utc};
+use chrono_tz::Tz;
 
 use super::{CalendarProvider, DeltaResult, RawEvent, RemoteCalendar};
 
 pub const PRIVATE_URL_SENTINEL: &str = "https://published-calendar.invalid/private.ics";
-const CALENDAR_ID: &str = "published-ics";
+pub(crate) const CALENDAR_ID: &str = "published-ics";
 
 pub struct PublishedIcsProvider {
     feed_url: String,
@@ -27,6 +29,113 @@ impl PublishedIcsProvider {
     async fn fetch(&self) -> Result<String> {
         crate::resources::fetch_feed(&self.feed_url).await
     }
+
+    async fn fetch_future(&self) -> Result<String> {
+        Ok(filter_future_vevents(&self.fetch().await?, Utc::now()))
+    }
+}
+
+fn event_datetime_utc(vevent: &str, field: &str) -> Option<DateTime<Utc>> {
+    let value = crate::utils::extract_vevent_field(vevent, field)?;
+    let naive = crate::utils::parse_ical_datetime(&value)?;
+    let tzid = crate::utils::extract_vevent_tzid(vevent, field);
+    match tzid.and_then(|value| value.parse::<Tz>().ok()) {
+        Some(tz) => tz
+            .from_local_datetime(&naive)
+            .earliest()
+            .map(|value| value.with_timezone(&Utc)),
+        None => Some(Utc.from_utc_datetime(&naive)),
+    }
+}
+
+fn local_now_for_event(vevent: &str, now: DateTime<Utc>) -> NaiveDateTime {
+    crate::utils::extract_vevent_tzid(vevent, "DTSTART")
+        .and_then(|value| value.parse::<Tz>().ok())
+        .map(|tz| now.with_timezone(&tz).naive_local())
+        .unwrap_or_else(|| now.naive_utc())
+}
+
+fn rrule_until_utc(vevent: &str, rrule: &str) -> Option<DateTime<Utc>> {
+    let raw = rrule
+        .split(';')
+        .find_map(|part| part.strip_prefix("UNTIL="))?;
+    let mut naive = crate::utils::parse_ical_datetime(raw)?;
+    if raw.trim_end_matches('Z').len() == 8 {
+        naive = naive.date().and_hms_opt(23, 59, 59)?;
+    }
+    if raw.ends_with('Z') {
+        return Some(Utc.from_utc_datetime(&naive));
+    }
+    let tzid = crate::utils::extract_vevent_tzid(vevent, "DTSTART");
+    match tzid.and_then(|value| value.parse::<Tz>().ok()) {
+        Some(tz) => tz
+            .from_local_datetime(&naive)
+            .earliest()
+            .map(|value| value.with_timezone(&Utc)),
+        None => Some(Utc.from_utc_datetime(&naive)),
+    }
+}
+
+fn recurring_event_has_future_occurrence(
+    vevent: &str,
+    rrule: &str,
+    now: DateTime<Utc>,
+) -> bool {
+    // Cal.rs currently expands these frequencies. Keep unknown frequencies so
+    // we fail open for availability rather than silently dropping a series.
+    let supported = ["FREQ=DAILY", "FREQ=WEEKLY", "FREQ=MONTHLY"]
+        .iter()
+        .any(|freq| rrule.contains(freq));
+    if !supported {
+        return true;
+    }
+
+    if let Some(until) = rrule_until_utc(vevent, rrule) {
+        return until >= now;
+    }
+    // An unbounded rule necessarily remains relevant. COUNT-bounded rules
+    // need expansion to determine whether their final instance has passed.
+    if !rrule.split(';').any(|part| part.starts_with("COUNT=")) {
+        return true;
+    }
+
+    let Some(start) = crate::utils::extract_vevent_field(vevent, "DTSTART")
+        .and_then(|value| crate::utils::parse_ical_datetime(&value))
+    else {
+        return false;
+    };
+    let end = crate::utils::extract_vevent_field(vevent, "DTEND")
+        .and_then(|value| crate::utils::parse_ical_datetime(&value))
+        .unwrap_or(start);
+    let window_start = local_now_for_event(vevent, now);
+    let window_end = window_start + Duration::days(730);
+    !crate::rrule::expand_rrule(
+        start,
+        end,
+        rrule,
+        &crate::rrule::extract_exdates(vevent),
+        window_start,
+        window_end,
+    )
+    .is_empty()
+}
+
+/// Published feeds can contain years of history. Retain only entries that can
+/// affect availability now or in the product's two-year scheduling horizon.
+fn filter_future_vevents(ical: &str, now: DateTime<Utc>) -> String {
+    crate::utils::split_vevents(ical)
+        .into_iter()
+        .filter(|vevent| {
+            if let Some(rrule) = crate::utils::extract_vevent_field(vevent, "RRULE") {
+                recurring_event_has_future_occurrence(vevent, &rrule, now)
+            } else {
+                event_datetime_utc(vevent, "DTEND")
+                    .or_else(|| event_datetime_utc(vevent, "DTSTART"))
+                    .is_some_and(|end| end > now)
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\r\n")
 }
 
 /// Accept a direct HTTPS feed, a `webcal://` subscription URL, or Outlook's
@@ -100,9 +209,13 @@ impl CalendarProvider for PublishedIcsProvider {
         if calendar_id != CALENDAR_ID {
             bail!("Unknown published calendar");
         }
+        let ical = self.fetch_future().await?;
+        if ical.is_empty() {
+            return Ok(Vec::new());
+        }
         Ok(vec![RawEvent {
             remote_id: CALENDAR_ID.to_string(),
-            ical: self.fetch().await?,
+            ical,
         }])
     }
 
@@ -163,5 +276,22 @@ mod tests {
     #[test]
     fn rejects_insecure_urls() {
         assert!(normalize_subscription_url("http://example.com/calendar.ics").is_err());
+    }
+
+    #[test]
+    fn keeps_only_future_entries_and_live_recurring_series() {
+        let now = Utc.with_ymd_and_hms(2026, 8, 19, 12, 0, 0).unwrap();
+        let body = "BEGIN:VCALENDAR\r\n\
+BEGIN:VEVENT\r\nUID:past\r\nDTSTART:20260818T100000Z\r\nDTEND:20260818T110000Z\r\nEND:VEVENT\r\n\
+BEGIN:VEVENT\r\nUID:future\r\nDTSTART;TZID=Eastern Standard Time:20260819T100000\r\nDTEND;TZID=Eastern Standard Time:20260819T110000\r\nEND:VEVENT\r\n\
+BEGIN:VEVENT\r\nUID:expired-series\r\nDTSTART:20260801T100000Z\r\nDTEND:20260801T110000Z\r\nRRULE:FREQ=DAILY;UNTIL=20260818T100000Z\r\nEND:VEVENT\r\n\
+BEGIN:VEVENT\r\nUID:live-series\r\nDTSTART:20260801T100000Z\r\nDTEND:20260801T110000Z\r\nRRULE:FREQ=WEEKLY;UNTIL=20260930T100000Z\r\nEND:VEVENT\r\n\
+END:VCALENDAR\r\n";
+        let filtered = filter_future_vevents(body, now);
+        assert!(!filtered.contains("UID:past"));
+        assert!(filtered.contains("UID:future"));
+        assert!(!filtered.contains("UID:expired-series"));
+        assert!(filtered.contains("UID:live-series"));
+        assert!(!filtered.contains("BEGIN:VCALENDAR"));
     }
 }

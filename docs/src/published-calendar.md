@@ -15,8 +15,10 @@ calendar” links and any public HTTPS URL that returns an iCalendar file.
 4. Click **Add calendar source**.
 
 Cascade extracts and normalizes the feed URL, validates it, downloads the
-calendar, and syncs its events immediately. Booking pages refresh a stale feed
-on demand after five minutes.
+calendar, and syncs its current and future events immediately. Past one-off
+events, past recurrence overrides, and recurring series that can no longer
+produce an occurrence are discarded. Booking pages refresh a stale feed on
+demand after five minutes.
 
 ## Privacy and permissions
 

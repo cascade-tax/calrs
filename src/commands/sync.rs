@@ -586,13 +586,15 @@ pub async fn sync_provider_source(
             Ok(raw_events) => {
                 did_full_sync = true;
                 let count = upsert_provider_events(pool, &cal_id, &raw_events).await;
+                let reconcile_all =
+                    cal_info.id == crate::providers::published_ics::CALENDAR_ID;
                 let deleted = remove_orphaned_provider_events(
                     pool,
                     key,
                     &cal_id,
                     &raw_events,
-                    &since_prefix,
-                    &until_prefix,
+                    if reconcile_all { "" } else { &since_prefix },
+                    if reconcile_all { "" } else { &until_prefix },
                 )
                 .await;
                 if deleted > 0 {
