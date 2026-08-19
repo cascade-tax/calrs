@@ -2,8 +2,6 @@
 
 The admin dashboard is available at `/dashboard/admin` for users with the `admin` role.
 
-![Admin dashboard](images/admin.png)
-
 ## User management
 
 Lists all registered users with:
@@ -37,8 +35,6 @@ For each event type, the dashboard offers a **Troubleshoot** link that opens a v
 - Shows candidate slots for the next 7 days
 - Displays why each slot is blocked (calendar event name, existing booking, buffer overlap)
 - Helps debug availability issues when users report incorrect free/busy status
-
-![Availability troubleshoot](images/troubleshoot.png)
 
 ## Authentication settings
 

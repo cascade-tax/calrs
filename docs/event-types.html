@@ -219,7 +219,6 @@
 <li><strong>Availability schedule</strong> — which days and hours you’re available</li>
 </ul>
 <p>Description fields support Markdown formatting (bold, italic, links) with a toolbar and live preview.</p>
-<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="images/event-type-form.png" alt="Event type edit form"><span class="img-wrapper"><img src="images/event-type-form.png" alt="Event type edit form"></span></label></p>
 <h3 id="from-the-cli"><a class="header" href="#from-the-cli">From the CLI</a></h3>
 <pre><code class="language-bash">calrs event-type create \
   --title "30min intro call" \
@@ -378,7 +377,6 @@ calrs event-type slots intro --days 14
 </ul>
 <p>Multiple custom hour windows can be added for the same date (e.g., morning + afternoon with a lunch break). Overrides are visible in the <strong>Troubleshoot</strong> view with a banner showing when they’re active.</p>
 <h2 id="public-urls"><a class="header" href="#public-urls">Public URLs</a></h2>
-<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="images/profile.png" alt="Public profile page"><span class="img-wrapper"><img src="images/profile.png" alt="Public profile page"></span></label></p>
 <ul>
 <li><strong>Profile:</strong> <code>/u/yourname</code> — lists all enabled, non-private event types</li>
 <li><strong>Slot picker:</strong> <code>/u/yourname/slug</code> — shows available time slots</li>
@@ -395,10 +393,8 @@ calrs event-type slots intro --days 14
 /u/alice+bob+carol/intro      → collective booking (Alice, Bob &amp; Carol)
 </code></pre>
 <p>The first username owns the event type. Their event type settings (duration, buffer, availability rules) define the meeting. All participants’ calendars are checked — only slots where <strong>everyone</strong> is free are shown.</p>
-<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="images/dynamic-group-slots.png" alt="Dynamic group slot picker"><span class="img-wrapper"><img src="images/dynamic-group-slots.png" alt="Dynamic group slot picker"></span></label></p>
 <h3 id="building-a-dynamic-group-link"><a class="header" href="#building-a-dynamic-group-link">Building a dynamic group link</a></h3>
 <p>From the event type edit page, public personal event types show a <strong>Dynamic Group Link</strong> card at the bottom. Type a username to search — only users who have opted in are shown. Click to add them, and the URL is built live with a copy button.</p>
-<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="images/dynamic-group-card.png" alt="Dynamic group link builder"><span class="img-wrapper"><img src="images/dynamic-group-card.png" alt="Dynamic group link builder"></span></label></p>
 <h3 id="opt-out"><a class="header" href="#opt-out">Opt-out</a></h3>
 <p>Users can disable being included in dynamic group links from <strong>Profile &amp; Settings</strong>. The checkbox “Allow others to include me in dynamic group links” is enabled by default. When disabled, the user won’t appear in the search dropdown and any URL containing their username will show an error.</p>
 <h3 id="caldav-write-back"><a class="header" href="#caldav-write-back">CalDAV write-back</a></h3>

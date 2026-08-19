@@ -30,8 +30,6 @@ calrs is an open-source scheduling platform. Connect your CalDAV calendar (Nextc
 - **Onboarding** — getting-started checklist and guided action cards on the dashboard overview
 - **Single binary** — no runtime dependencies
 
-![calrs dashboard](images/dashboard.png)
-
 ## How it works
 
 1. Connect your CalDAV calendar (or multiple calendars)

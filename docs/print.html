@@ -207,7 +207,6 @@
 <li><strong>Onboarding</strong> — getting-started checklist and guided action cards on the dashboard overview</li>
 <li><strong>Single binary</strong> — no runtime dependencies</li>
 </ul>
-<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="images/dashboard.png" alt="calrs dashboard"><span class="img-wrapper"><img src="images/dashboard.png" alt="calrs dashboard"></span></label></p>
 <h2 id="how-it-works"><a class="header" href="#how-it-works">How it works</a></h2>
 <ol>
 <li>Connect your CalDAV calendar (or multiple calendars)</li>
@@ -295,7 +294,6 @@ calrs serve --port 3000
 <li>Click <strong>Add source</strong></li>
 </ol>
 <p>The connection is tested automatically before saving. Use “Skip connection test” if your server doesn’t respond to OPTIONS requests (e.g., BlueMind).</p>
-<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="images/source-form.png" alt="Add calendar source"><span class="img-wrapper"><img src="images/source-form.png" alt="Add calendar source"></span></label></p>
 <h3 id="from-the-cli"><a class="header" href="#from-the-cli">From the CLI</a></h3>
 <pre><code class="language-bash">calrs source add --url https://nextcloud.example.com/remote.php/dav \
                  --username alice --name "Work Calendar"
@@ -485,7 +483,6 @@ calrs source remove &lt;id-prefix&gt;
 <li><strong>Availability schedule</strong> — which days and hours you’re available</li>
 </ul>
 <p>Description fields support Markdown formatting (bold, italic, links) with a toolbar and live preview.</p>
-<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="images/event-type-form.png" alt="Event type edit form"><span class="img-wrapper"><img src="images/event-type-form.png" alt="Event type edit form"></span></label></p>
 <h3 id="from-the-cli-1"><a class="header" href="#from-the-cli-1">From the CLI</a></h3>
 <pre><code class="language-bash">calrs event-type create \
   --title "30min intro call" \
@@ -644,7 +641,6 @@ calrs event-type slots intro --days 14
 </ul>
 <p>Multiple custom hour windows can be added for the same date (e.g., morning + afternoon with a lunch break). Overrides are visible in the <strong>Troubleshoot</strong> view with a banner showing when they’re active.</p>
 <h2 id="public-urls"><a class="header" href="#public-urls">Public URLs</a></h2>
-<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="images/profile.png" alt="Public profile page"><span class="img-wrapper"><img src="images/profile.png" alt="Public profile page"></span></label></p>
 <ul>
 <li><strong>Profile:</strong> <code>/u/yourname</code> — lists all enabled, non-private event types</li>
 <li><strong>Slot picker:</strong> <code>/u/yourname/slug</code> — shows available time slots</li>
@@ -661,10 +657,8 @@ calrs event-type slots intro --days 14
 /u/alice+bob+carol/intro      → collective booking (Alice, Bob &amp; Carol)
 </code></pre>
 <p>The first username owns the event type. Their event type settings (duration, buffer, availability rules) define the meeting. All participants’ calendars are checked — only slots where <strong>everyone</strong> is free are shown.</p>
-<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="images/dynamic-group-slots.png" alt="Dynamic group slot picker"><span class="img-wrapper"><img src="images/dynamic-group-slots.png" alt="Dynamic group slot picker"></span></label></p>
 <h3 id="building-a-dynamic-group-link"><a class="header" href="#building-a-dynamic-group-link">Building a dynamic group link</a></h3>
 <p>From the event type edit page, public personal event types show a <strong>Dynamic Group Link</strong> card at the bottom. Type a username to search — only users who have opted in are shown. Click to add them, and the URL is built live with a copy button.</p>
-<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="images/dynamic-group-card.png" alt="Dynamic group link builder"><span class="img-wrapper"><img src="images/dynamic-group-card.png" alt="Dynamic group link builder"></span></label></p>
 <h3 id="opt-out"><a class="header" href="#opt-out">Opt-out</a></h3>
 <p>Users can disable being included in dynamic group links from <strong>Profile &amp; Settings</strong>. The checkbox “Allow others to include me in dynamic group links” is enabled by default. When disabled, the user won’t appear in the search dropdown and any URL containing their username will show an error.</p>
 <h3 id="caldav-write-back-1"><a class="header" href="#caldav-write-back-1">CalDAV write-back</a></h3>
@@ -694,8 +688,6 @@ calrs event-type slots intro --days 14
 <li><strong>Confirmation page</strong> — shows booking summary (including any additional attendees)</li>
 <li><strong>Email</strong> — guest and any additional attendees receive a confirmation email with an <code>.ics</code> calendar invite attached</li>
 </ol>
-<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="images/slots.png" alt="Available time slots"><span class="img-wrapper"><img src="images/slots.png" alt="Available time slots"></span></label></p>
-<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="images/booking-form.png" alt="Booking form"><span class="img-wrapper"><img src="images/booking-form.png" alt="Booking form"></span></label></p>
 <h2 id="booking-statuses"><a class="header" href="#booking-statuses">Booking statuses</a></h2>
 <div class="table-wrapper">
 <table>
@@ -1088,7 +1080,6 @@ calrs resource probe --url https://... --username svc-resources --write-test
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="authentication"><a class="header" href="#authentication">Authentication</a></h1>
 <p>calrs supports two authentication methods: local accounts and OIDC (OpenID Connect) SSO.</p>
-<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="images/login.png" alt="Login page"><span class="img-wrapper"><img src="images/login.png" alt="Login page"></span></label></p>
 <h2 id="local-accounts"><a class="header" href="#local-accounts">Local accounts</a></h2>
 <h3 id="registration"><a class="header" href="#registration">Registration</a></h3>
 <ul>
@@ -1189,7 +1180,6 @@ calrs config show
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="admin-dashboard"><a class="header" href="#admin-dashboard">Admin Dashboard</a></h1>
 <p>The admin dashboard is available at <code>/dashboard/admin</code> for users with the <code>admin</code> role.</p>
-<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="images/admin.png" alt="Admin dashboard"><span class="img-wrapper"><img src="images/admin.png" alt="Admin dashboard"></span></label></p>
 <h2 id="user-management"><a class="header" href="#user-management">User management</a></h2>
 <p>Lists all registered users with:</p>
 <ul>
@@ -1220,7 +1210,6 @@ calrs config show
 <li>Displays why each slot is blocked (calendar event name, existing booking, buffer overlap)</li>
 <li>Helps debug availability issues when users report incorrect free/busy status</li>
 </ul>
-<p><label class="checkbox-label"><input class="checkbox-img" type="checkbox"><img src="images/troubleshoot.png" alt="Availability troubleshoot"><span class="img-wrapper"><img src="images/troubleshoot.png" alt="Availability troubleshoot"></span></label></p>
 <h2 id="authentication-settings"><a class="header" href="#authentication-settings">Authentication settings</a></h2>
 <ul>
 <li><strong>Registration</strong> — toggle open registration on/off</li>

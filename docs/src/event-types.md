@@ -41,8 +41,6 @@ Go to **Dashboard > Event types > + New** and fill in:
 
 Description fields support Markdown formatting (bold, italic, links) with a toolbar and live preview.
 
-![Event type edit form](images/event-type-form.png)
-
 ### From the CLI
 
 ```bash
@@ -253,8 +251,6 @@ Multiple custom hour windows can be added for the same date (e.g., morning + aft
 
 ## Public URLs
 
-![Public profile page](images/profile.png)
-
 - **Profile:** `/u/yourname` — lists all enabled, non-private event types
 - **Slot picker:** `/u/yourname/slug` — shows available time slots
 - **Booking form:** `/u/yourname/slug/book?date=...&time=...` — booking form for a specific slot
@@ -277,13 +273,9 @@ Take any public event type URL and add other usernames with `+`:
 
 The first username owns the event type. Their event type settings (duration, buffer, availability rules) define the meeting. All participants' calendars are checked — only slots where **everyone** is free are shown.
 
-![Dynamic group slot picker](images/dynamic-group-slots.png)
-
 ### Building a dynamic group link
 
 From the event type edit page, public personal event types show a **Dynamic Group Link** card at the bottom. Type a username to search — only users who have opted in are shown. Click to add them, and the URL is built live with a copy button.
-
-![Dynamic group link builder](images/dynamic-group-card.png)
 
 ### Opt-out
 
