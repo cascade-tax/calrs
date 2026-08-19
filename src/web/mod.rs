@@ -18,6 +18,7 @@ use sqlx::SqlitePool;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::OnceLock;
 use subtle::ConstantTimeEq;
 use tokio::sync::Mutex;
 use tower_http::set_header::SetResponseHeaderLayer;
@@ -232,6 +233,7 @@ fn static_error_html(title: &str, message: &str) -> String {
 <html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{t}</title>
+<link rel="icon" href="/favicon.svg?v={v}" type="image/svg+xml">
 <style>
 @font-face{{font-family:'Bricolage Grotesque';font-weight:400 800;font-display:swap;src:url(/fonts/bricolage-latin.woff2) format('woff2')}}
 @font-face{{font-family:'Plus Jakarta Sans';font-weight:200 800;font-display:swap;src:url(/fonts/jakarta-latin.woff2) format('woff2')}}
@@ -253,7 +255,8 @@ p{{margin:0 auto;max-width:34rem;color:var(--muted)}}
 <p>{m}</p>
 </div></div></body></html>"##,
         t = esc(title),
-        m = esc(message)
+        m = esc(message),
+        v = icon_version()
     )
 }
 
@@ -1327,6 +1330,8 @@ pub async fn create_router(pool: SqlitePool, data_dir: PathBuf, secret_key: [u8;
     env.set_undefined_behavior(minijinja::UndefinedBehavior::Lenient);
     env.set_loader(minijinja::path_loader("templates"));
     env.add_filter("time12h", format_time_12h);
+    // Cache-busting token on the declared favicon URLs; see `icon_version`.
+    env.add_global("icon_v", minijinja::Value::from(icon_version()));
     crate::i18n::register(&mut env);
 
     // Populate the process-global runtime-settings cache (base URL, private-host
@@ -19045,11 +19050,19 @@ async fn serve_accent_css(State(state): State<Arc<AppState>>) -> impl IntoRespon
         .into_response()
 }
 
-async fn serve_brand_logo() -> impl IntoResponse {
+async fn serve_brand_logo(headers: HeaderMap) -> impl IntoResponse {
     static BRAND_LOGO: &[u8] = include_bytes!("../../assets/cascade-mark.png");
-    embedded_asset_response(BRAND_LOGO, "image/png")
+    static ETAG: OnceLock<String> = OnceLock::new();
+    embedded_branding_response(&headers, BRAND_LOGO, "image/png", &ETAG)
 }
 
+/// Cache policy for embedded assets whose bytes are pinned to their URL.
+///
+/// Only the webfonts qualify: a given `.woff2` filename names one specific
+/// font file forever, so a year of `immutable` costs nothing and saves a
+/// revalidation round trip on every page. Do not reach for this on anything
+/// whose *content* can change while its URL stays the same — see
+/// `embedded_branding_response`.
 fn embedded_asset_response(
     bytes: &'static [u8],
     content_type: &'static str,
@@ -19062,34 +19075,112 @@ fn embedded_asset_response(
         .unwrap_or_else(|_| axum::response::Response::new(axum::body::Body::empty()))
 }
 
-async fn serve_favicon_ico() -> impl IntoResponse {
+/// Strong ETag for an embedded asset: the first 16 hex characters of its
+/// SHA-256 digest, quoted per RFC 9110. 64 bits distinguishes the handful of
+/// branding assets we ship with room to spare.
+fn asset_etag(bytes: &[u8]) -> String {
+    use sha2::Digest;
+    format!("\"{}\"", &hex::encode(sha2::Sha256::digest(bytes))[..16])
+}
+
+/// Cache policy for embedded *branding* assets: favicons, the webmanifest and
+/// the brand mark.
+///
+/// These live at fixed, unversioned URLs whose content changes whenever the
+/// branding does. Serving them `immutable` — as they were until this — pins
+/// the old artwork in the cache of every visitor who ever loaded the site, for
+/// a year, with no way to push a correction. They are instead served
+/// `max-age=0, must-revalidate` with a strong content ETag: the browser still
+/// caches the bytes, it just asks first, and the answer is a cheap 304 until
+/// the artwork actually changes.
+fn embedded_branding_response(
+    headers: &HeaderMap,
+    bytes: &'static [u8],
+    content_type: &'static str,
+    etag_cell: &'static OnceLock<String>,
+) -> axum::response::Response {
+    const CACHE_CONTROL: &str = "public, max-age=0, must-revalidate";
+    // One digest per asset per process, not per request.
+    let etag = etag_cell.get_or_init(|| asset_etag(bytes));
+
+    // `If-None-Match` may carry a comma-separated list and/or a `W/` weak
+    // prefix. Our tags are strong and hex, so a substring test for the quoted
+    // tag matches every well-formed spelling a client can send without hand
+    // rolling a list parser. `*` is deliberately not honoured; it does not
+    // appear on a plain GET from a browser, and treating it as a miss only
+    // costs a full body.
+    let matched = headers
+        .get(axum::http::header::IF_NONE_MATCH)
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|value| value.contains(etag.as_str()));
+
+    let builder = axum::response::Response::builder()
+        .header("Cache-Control", CACHE_CONTROL)
+        .header("ETag", etag.as_str());
+    let response = if matched {
+        builder.status(304).body(axum::body::Body::empty())
+    } else {
+        builder
+            .status(200)
+            .header("Content-Type", content_type)
+            .body(axum::body::Body::from(bytes))
+    };
+    response.unwrap_or_else(|_| axum::response::Response::new(axum::body::Body::empty()))
+}
+
+/// Short content version for the favicon family, exposed to every template as
+/// the `icon_v` global and appended to the declared icon URLs as `?v=`.
+///
+/// Browsers key favicon caches per page URL and hold them far more stubbornly
+/// than ordinary images, so a rebrand that reuses `/favicon.svg` can stay
+/// invisible to a returning visitor indefinitely — fixing the cache headers
+/// only helps caches that have not already been poisoned. A query string is a
+/// distinct cache key, so the fetch happens again. The token is derived from
+/// the SVG's own bytes: it changes exactly when the artwork changes, and never
+/// otherwise.
+pub(crate) fn icon_version() -> &'static str {
+    static VERSION: OnceLock<String> = OnceLock::new();
+    VERSION.get_or_init(|| {
+        use sha2::Digest;
+        static ASSET: &[u8] = include_bytes!("../../assets/favicon.svg");
+        hex::encode(sha2::Sha256::digest(ASSET))[..8].to_string()
+    })
+}
+
+async fn serve_favicon_ico(headers: HeaderMap) -> impl IntoResponse {
     static ASSET: &[u8] = include_bytes!("../../assets/favicon.ico");
-    embedded_asset_response(ASSET, "image/x-icon")
+    static ETAG: OnceLock<String> = OnceLock::new();
+    embedded_branding_response(&headers, ASSET, "image/x-icon", &ETAG)
 }
 
-async fn serve_favicon_svg() -> impl IntoResponse {
+async fn serve_favicon_svg(headers: HeaderMap) -> impl IntoResponse {
     static ASSET: &[u8] = include_bytes!("../../assets/favicon.svg");
-    embedded_asset_response(ASSET, "image/svg+xml")
+    static ETAG: OnceLock<String> = OnceLock::new();
+    embedded_branding_response(&headers, ASSET, "image/svg+xml", &ETAG)
 }
 
-async fn serve_favicon_192() -> impl IntoResponse {
+async fn serve_favicon_192(headers: HeaderMap) -> impl IntoResponse {
     static ASSET: &[u8] = include_bytes!("../../assets/favicon-192x192.png");
-    embedded_asset_response(ASSET, "image/png")
+    static ETAG: OnceLock<String> = OnceLock::new();
+    embedded_branding_response(&headers, ASSET, "image/png", &ETAG)
 }
 
-async fn serve_favicon_512() -> impl IntoResponse {
+async fn serve_favicon_512(headers: HeaderMap) -> impl IntoResponse {
     static ASSET: &[u8] = include_bytes!("../../assets/favicon-512x512.png");
-    embedded_asset_response(ASSET, "image/png")
+    static ETAG: OnceLock<String> = OnceLock::new();
+    embedded_branding_response(&headers, ASSET, "image/png", &ETAG)
 }
 
-async fn serve_apple_touch_icon() -> impl IntoResponse {
+async fn serve_apple_touch_icon(headers: HeaderMap) -> impl IntoResponse {
     static ASSET: &[u8] = include_bytes!("../../assets/apple-touch-icon.png");
-    embedded_asset_response(ASSET, "image/png")
+    static ETAG: OnceLock<String> = OnceLock::new();
+    embedded_branding_response(&headers, ASSET, "image/png", &ETAG)
 }
 
-async fn serve_site_webmanifest() -> impl IntoResponse {
+async fn serve_site_webmanifest(headers: HeaderMap) -> impl IntoResponse {
     static ASSET: &[u8] = include_bytes!("../../assets/site.webmanifest");
-    embedded_asset_response(ASSET, "application/manifest+json")
+    static ETAG: OnceLock<String> = OnceLock::new();
+    embedded_branding_response(&headers, ASSET, "application/manifest+json", &ETAG)
 }
 
 /// Serves the embed runtime that consumers paste into their own sites. It's
@@ -31394,6 +31485,39 @@ mod tests {
         assert!(!body.contains('🦀'));
     }
 
+    /// The favicon lives at a fixed URL whose *content* changes with the
+    /// branding, so it must never be served `immutable`: that pins whatever
+    /// artwork a visitor saw first for a year and makes a rebrand unshippable
+    /// to anyone who has already loaded the site. It must instead revalidate,
+    /// which requires an ETag to stay cheap. Router level because the bug was
+    /// in which cache helper the route was wired to, not in the helper itself.
+    #[tokio::test]
+    async fn favicon_revalidates_instead_of_being_immutable() {
+        let (app, _, _, _) = setup_test_app().await;
+        let response = app.oneshot(get("/favicon.svg")).await.unwrap();
+        assert_eq!(response.status(), 200);
+        let cache_control = response
+            .headers()
+            .get("cache-control")
+            .expect("favicon carries a cache policy")
+            .to_str()
+            .expect("cache policy is ASCII")
+            .to_string();
+        assert!(
+            !cache_control.contains("immutable"),
+            "favicon URL is unversioned and its content changes with branding, \
+             so it must not be immutable; got {cache_control:?}"
+        );
+        assert!(
+            cache_control.contains("must-revalidate"),
+            "favicon must revalidate; got {cache_control:?}"
+        );
+        assert!(
+            response.headers().get("etag").is_some(),
+            "favicon must carry an ETag so revalidation costs a 304, not a body"
+        );
+    }
+
     #[test]
     fn cascade_templates_do_not_expose_upstream_branding() {
         const FORBIDDEN: &[&str] = &[
@@ -31430,9 +31554,11 @@ mod tests {
 
         let base = include_str!("../../templates/base.html");
         assert!(base.contains("<title>{% block title %}Cascade{% endblock %}</title>"));
-        assert!(base.contains("href=\"/favicon.svg\""));
-        assert!(base.contains("href=\"/apple-touch-icon.png\""));
-        assert!(base.contains("href=\"/site.webmanifest\""));
+        // The `?v=` token is part of the contract: it is what defeats favicon
+        // caches poisoned before the rebrand. See `icon_version`.
+        assert!(base.contains("href=\"/favicon.svg?v={{ icon_v }}\""));
+        assert!(base.contains("href=\"/apple-touch-icon.png?v={{ icon_v }}\""));
+        assert!(base.contains("href=\"/site.webmanifest?v={{ icon_v }}\""));
 
         let landing = include_str!("../../index.html");
         assert!(landing.contains("<title>Cascade Calendar</title>"));

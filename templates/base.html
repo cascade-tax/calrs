@@ -10,10 +10,13 @@
   <meta name="color-scheme" content="light dark">
   {% endif %}
   <title>{% block title %}Cascade{% endblock %}</title>
-  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-  <link rel="alternate icon" href="/favicon.ico" sizes="16x16 32x32">
-  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
-  <link rel="manifest" href="/site.webmanifest">
+  {# ?v= is a cache buster: favicon caches are keyed per page URL and survive a
+     rebrand that reuses these paths. `icon_v` is derived from the SVG's bytes
+     in src/web/mod.rs::icon_version. #}
+  <link rel="icon" href="/favicon.svg?v={{ icon_v }}" type="image/svg+xml">
+  <link rel="alternate icon" href="/favicon.ico?v={{ icon_v }}" sizes="16x16 32x32">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png?v={{ icon_v }}">
+  <link rel="manifest" href="/site.webmanifest?v={{ icon_v }}">
   <meta name="theme-color" content="#1A3A4A">
   <script>
   // Apply theme ASAP to avoid flash. In embed mode the parent controls theme
