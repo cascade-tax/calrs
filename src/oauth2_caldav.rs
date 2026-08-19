@@ -93,38 +93,67 @@ pub async fn refresh_access_token(
     .await?;
     let (refresh_token_enc, provider) = row;
 
-    if provider != "google" {
-        bail!("Unsupported OAuth2 provider: {}", provider);
-    }
-
     let refresh_token = crate::crypto::decrypt_password(key, &refresh_token_enc)?;
 
-    // Load admin-configured Google OAuth2 credentials. The client_secret is
-    // encrypted at rest (see crypto::encrypt_value); decrypt before use.
-    let creds: (String, String) = sqlx::query_as(
-        "SELECT google_oauth2_client_id, google_oauth2_client_secret FROM auth_config LIMIT 1",
-    )
-    .fetch_one(pool)
-    .await?;
-    let (client_id, client_secret_enc) = creds;
-    let client_secret = crate::crypto::decrypt_value(key, &client_secret_enc)
-        .map_err(|e| anyhow::anyhow!("Google OAuth2 client secret decryption failed: {}", e))?;
-
-    let token = post_to_google_token(
-        "refresh",
-        &[
-            ("client_id", &client_id),
-            ("client_secret", &client_secret),
-            ("refresh_token", &refresh_token),
-            ("grant_type", "refresh_token"),
-        ],
-    )
-    .await?;
-    let expires_in = token.expires_in.unwrap_or(3600);
+    let (access_token, rotated_refresh, expires_in) = match provider.as_str() {
+        "google" => {
+            // The client secret is encrypted at rest; decrypt only for the
+            // token request.
+            let (client_id, client_secret_enc): (String, String) = sqlx::query_as(
+                "SELECT google_oauth2_client_id, google_oauth2_client_secret FROM auth_config LIMIT 1",
+            )
+            .fetch_one(pool)
+            .await?;
+            let client_secret =
+                crate::crypto::decrypt_value(key, &client_secret_enc).map_err(|e| {
+                    anyhow::anyhow!("Google OAuth2 client secret decryption failed: {}", e)
+                })?;
+            let token = post_to_google_token(
+                "refresh",
+                &[
+                    ("client_id", &client_id),
+                    ("client_secret", &client_secret),
+                    ("refresh_token", &refresh_token),
+                    ("grant_type", "refresh_token"),
+                ],
+            )
+            .await?;
+            (
+                token.access_token,
+                token.refresh_token,
+                token.expires_in.unwrap_or(3600),
+            )
+        }
+        "microsoft" => {
+            let (client_id, client_secret_enc, tenant): (String, String, String) =
+                sqlx::query_as(
+                    "SELECT microsoft_oauth2_client_id, microsoft_oauth2_client_secret, microsoft_oauth2_tenant FROM auth_config LIMIT 1",
+                )
+                .fetch_one(pool)
+                .await?;
+            let client_secret =
+                crate::crypto::decrypt_value(key, &client_secret_enc).map_err(|e| {
+                    anyhow::anyhow!("Microsoft OAuth2 client secret decryption failed: {}", e)
+                })?;
+            let token = crate::microsoft_graph::refresh_token(
+                &client_id,
+                &client_secret,
+                &tenant,
+                &refresh_token,
+            )
+            .await?;
+            (
+                token.access_token,
+                token.refresh_token,
+                token.expires_in.unwrap_or(3600),
+            )
+        }
+        other => bail!("Unsupported OAuth2 provider: {}", other),
+    };
     let expires_at = chrono::Utc::now() + chrono::Duration::seconds(expires_in);
 
     // Encrypt and store the new access token
-    let access_token_enc = crate::crypto::encrypt_password(key, &token.access_token)?;
+    let access_token_enc = crate::crypto::encrypt_password(key, &access_token)?;
     sqlx::query(
         "UPDATE caldav_sources SET access_token_enc = ?, token_expires_at = ? WHERE id = ?",
     )
@@ -136,7 +165,7 @@ pub async fn refresh_access_token(
 
     // Google may rotate the refresh token on a refresh response. Persist it so
     // the next refresh doesn't fail with the now-invalid stored token.
-    if let Some(new_refresh) = token.refresh_token {
+    if let Some(new_refresh) = rotated_refresh {
         let refresh_enc = crate::crypto::encrypt_password(key, &new_refresh)?;
         sqlx::query("UPDATE caldav_sources SET refresh_token_enc = ? WHERE id = ?")
             .bind(&refresh_enc)
@@ -147,7 +176,7 @@ pub async fn refresh_access_token(
     }
 
     tracing::info!(source_id = %source_id, "refreshed OAuth2 access token");
-    Ok(token.access_token)
+    Ok(access_token)
 }
 
 /// Get a valid access token for an OAuth2 source.

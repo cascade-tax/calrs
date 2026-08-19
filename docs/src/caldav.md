@@ -38,11 +38,7 @@ calrs source add --url https://mail.company.com/dav/ \
 
 > **Tip:** Use app-specific passwords for Fastmail and iCloud.
 
-### Google Calendar is not currently supported
-
-Google dropped Basic Auth for CalDAV in 2020 and now requires OAuth2. Google "app passwords" only work for IMAP/SMTP, not CalDAV, so they will fail with `401 loginRequired` against the CalDAV endpoint. OAuth2 support for CalDAV sources is not implemented yet.
-
-If you need Google Calendar availability in calrs, a working pattern is to bridge it through a CalDAV server that can subscribe to a Google calendar (for example, Nextcloud's calendar app), and point calrs at that server.
+Google Calendar is supported through OAuth2. See [Google Calendar](./google-calendar.md). Microsoft 365 uses Microsoft Graph instead of CalDAV; see [Microsoft 365 Calendar](./microsoft-365.md).
 
 ## Auto-discovery
 

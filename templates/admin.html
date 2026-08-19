@@ -1030,6 +1030,51 @@
   </form>
 </div>
 
+<!-- Microsoft 365 Calendar OAuth2 -->
+<div class="card">
+  <div class="admin-card-head">
+    <span class="admin-card-icon"><svg class="ic" aria-hidden="true"><use href="#i-calendar"/></svg></span>
+    <div class="admin-card-head-text">
+      <h2>Microsoft 365 Calendar</h2>
+      <p>Lets people connect Office 365 calendars through Microsoft Graph and delegated OAuth2 access.</p>
+    </div>
+  </div>
+  <div class="admin-status">
+    <span class="admin-status-item">
+      <span class="label">Status</span>
+      {% if microsoft_oauth2_configured %}<span class="badge badge-success">configured</span>{% else %}<span class="badge badge-muted">not configured</span>{% endif %}
+    </span>
+    {% if microsoft_oauth2_client_id %}
+    <span class="admin-status-item"><span class="label">Client</span> <span class="mono-val">{{ microsoft_oauth2_client_id }}</span></span>
+    {% endif %}
+  </div>
+  <form method="post" action="/dashboard/admin/microsoft-oauth2">
+    <p class="admin-note" style="margin-bottom: 1.25rem;">
+      Register a web application in
+      <a href="https://entra.microsoft.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade" target="_blank" rel="noopener">Microsoft Entra</a>,
+      add delegated <strong>User.Read</strong> and <strong>Calendars.ReadWrite</strong> permissions, then register
+      <code>{{ base_url }}/dashboard/sources/microsoft/callback</code>
+      as a web redirect URI.
+    </p>
+    <div class="form-group">
+      <label for="microsoft_oauth2_tenant">Tenant</label>
+      <input type="text" id="microsoft_oauth2_tenant" name="microsoft_oauth2_tenant" value="{{ microsoft_oauth2_tenant }}" placeholder="organizations">
+      <span class="field-hint">Use <code>organizations</code> for any work or school account, or enter one tenant ID/domain.</span>
+    </div>
+    <div class="form-group">
+      <label for="microsoft_oauth2_client_id">Application (client) ID</label>
+      <input type="text" id="microsoft_oauth2_client_id" name="microsoft_oauth2_client_id" value="{{ microsoft_oauth2_client_id }}" placeholder="00000000-0000-0000-0000-000000000000">
+    </div>
+    <div class="form-group">
+      <label for="microsoft_oauth2_client_secret">Client secret <span class="hint">(leave empty to keep current)</span></label>
+      <input type="password" id="microsoft_oauth2_client_secret" name="microsoft_oauth2_client_secret" value="" placeholder="Leave empty to keep unchanged">
+    </div>
+    <div class="admin-actions">
+      <button type="submit" class="btn btn-sm">Save Microsoft settings</button>
+    </div>
+  </form>
+</div>
+
 <!-- Jitsi auto-generated meeting links -->
 <div class="card">
   <div class="admin-card-head">

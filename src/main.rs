@@ -14,6 +14,7 @@ mod db;
 mod email;
 mod ews;
 mod i18n;
+mod microsoft_graph;
 mod models;
 mod oauth2_caldav;
 mod providers;
@@ -44,12 +45,12 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Manage CalDAV sources
+    /// Manage calendar sources
     Source {
         #[command(subcommand)]
         command: commands::source::SourceCommands,
     },
-    /// Pull latest events from CalDAV
+    /// Pull latest events from connected calendars
     Sync {
         /// Full re-sync (ignore sync tokens)
         #[arg(long)]

@@ -57,6 +57,10 @@ pub struct AuthConfig {
     pub oidc_auto_register: bool,
     pub google_oauth2_client_id: Option<String>,
     pub google_oauth2_client_secret: Option<String>,
+    pub microsoft_oauth2_client_id: Option<String>,
+    #[serde(skip)]
+    pub microsoft_oauth2_client_secret: Option<String>,
+    pub microsoft_oauth2_tenant: String,
 }
 
 #[derive(Debug, Clone, FromRow, Serialize, Deserialize)]

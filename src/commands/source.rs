@@ -5,7 +5,7 @@ use sqlx::SqlitePool;
 use tabled::{Table, Tabled};
 use uuid::Uuid;
 
-use crate::providers::{build_provider, factory};
+use crate::providers::{build_provider, factory, CalendarProvider};
 
 use std::io::{self, Write};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -14,7 +14,7 @@ use crate::utils::prompt;
 
 #[derive(Debug, Subcommand)]
 pub enum SourceCommands {
-    /// Connect a calendar source (CalDAV or Exchange/EWS)
+    /// Connect a password-authenticated calendar source (CalDAV or Exchange/EWS)
     Add {
         /// Source URL. CalDAV: discovery root. EWS: `Exchange.asmx` endpoint
         /// (auto-discovered when omitted with `--provider ews`).
@@ -50,6 +50,12 @@ pub enum SourceCommands {
     },
     /// Connect a Google Calendar via OAuth2
     AddGoogle {
+        /// Display name for this source
+        #[arg(long)]
+        name: Option<String>,
+    },
+    /// Connect a Microsoft 365 calendar via OAuth2 and Microsoft Graph
+    AddMicrosoft {
         /// Display name for this source
         #[arg(long)]
         name: Option<String>,
@@ -263,20 +269,24 @@ pub async fn run(pool: &SqlitePool, key: &[u8; 32], cmd: SourceCommands) -> Resu
             username,
             password,
         } => {
-            let existing: Option<(String, String, String, String)> = sqlx::query_as(
-                "SELECT id, name, url, username FROM caldav_sources WHERE id LIKE ? || '%'",
+            let existing: Option<(String, String, String, String, String)> = sqlx::query_as(
+                "SELECT id, name, url, username, auth_type FROM caldav_sources WHERE id LIKE ? || '%'",
             )
             .bind(&id)
             .fetch_optional(pool)
             .await?;
 
-            let (full_id, current_name, current_url, current_username) = match existing {
+            let (full_id, current_name, current_url, current_username, auth_type) = match existing {
                 Some(t) => t,
                 None => {
                     println!("{} No source found matching '{}'", "✗".red(), id);
                     return Ok(());
                 }
             };
+
+            if auth_type == "oauth2" {
+                bail!("OAuth2 sources are managed by reconnecting them through their provider");
+            }
 
             if let Some(url) = url.as_deref() {
                 crate::caldav::validate_caldav_url(url)?;
@@ -363,33 +373,19 @@ pub async fn run(pool: &SqlitePool, key: &[u8; 32], cmd: SourceCommands) -> Resu
                         factory::label(&provider_type)
                     );
 
-                    // OAuth2 sources are CalDAV-only (Google). Basic-auth
-                    // sources may be CalDAV or EWS; let the provider factory
-                    // pick the right back-end.
-                    let client: Box<dyn crate::providers::CalendarProvider> =
-                        if auth_type == "oauth2" {
-                            let caldav = crate::oauth2_caldav::build_client_for_source(
-                                pool,
-                                key,
-                                &source_id,
-                                &url,
-                                &auth_type,
-                                &username,
-                                password_enc.as_deref(),
-                                access_token_enc.as_deref(),
-                                token_expires_at.as_deref(),
-                            )
-                            .await?;
-                            Box::new(crate::providers::caldav::CaldavProvider::from_client(
-                                caldav,
-                            ))
-                        } else {
-                            let enc = password_enc.as_deref().ok_or_else(|| {
-                                anyhow::anyhow!("Basic auth source missing password")
-                            })?;
-                            let password = crate::crypto::decrypt_password(key, enc)?;
-                            build_provider(&provider_type, &url, &username, &password)?
-                        };
+                    let client = crate::providers::build_provider_for_source(
+                        pool,
+                        key,
+                        &source_id,
+                        &provider_type,
+                        &url,
+                        &username,
+                        password_enc.as_deref(),
+                        &auth_type,
+                        access_token_enc.as_deref(),
+                        token_expires_at.as_deref(),
+                    )
+                    .await?;
                     match client.check_connection().await {
                         Ok(true) => println!("{} Connection OK", "✓".green()),
                         Ok(false) => println!("{} Connected, partial detection", "⚠".yellow()),
@@ -429,9 +425,16 @@ pub async fn run(pool: &SqlitePool, key: &[u8; 32], cmd: SourceCommands) -> Resu
             let name = name.unwrap_or_else(|| prompt("Display name"));
 
             // Bind a temporary TCP listener on a random port for the OAuth2 callback
-            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
-            let port = listener.local_addr()?.port();
-            let redirect_uri = format!("http://localhost:{port}/callback");
+            // A confidential Entra web application requires an exact
+            // registered redirect URI, so the Microsoft CLI callback uses a
+            // stable port instead of the random-port flow used by Google.
+            const MICROSOFT_CLI_REDIRECT_URI: &str = "http://localhost:8400/callback";
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:8400")
+                .await
+                .map_err(|e| {
+                    anyhow::anyhow!("Could not open the Microsoft OAuth callback on port 8400: {e}")
+                })?;
+            let redirect_uri = MICROSOFT_CLI_REDIRECT_URI.to_string();
 
             let state = Uuid::new_v4().to_string();
             let auth_url =
@@ -557,6 +560,123 @@ pub async fn run(pool: &SqlitePool, key: &[u8; 32], cmd: SourceCommands) -> Resu
                 "{} Google Calendar source '{}' added (id: {}, user: {})",
                 "✓".green(),
                 name,
+                &id[..8],
+                username
+            );
+            println!("Run `calrs sync` to fetch your calendars.");
+        }
+        SourceCommands::AddMicrosoft { name } => {
+            let account: (String,) = sqlx::query_as("SELECT id FROM accounts LIMIT 1")
+                .fetch_optional(pool)
+                .await?
+                .ok_or_else(|| anyhow::anyhow!("No account found. Run `calrs init` first."))?;
+            let config: (Option<String>, Option<String>, String) = sqlx::query_as(
+                "SELECT microsoft_oauth2_client_id, microsoft_oauth2_client_secret, microsoft_oauth2_tenant FROM auth_config LIMIT 1",
+            )
+            .fetch_one(pool)
+            .await?;
+            let client_id = config
+                .0
+                .filter(|value| !value.is_empty())
+                .ok_or_else(|| anyhow::anyhow!("Microsoft OAuth2 is not configured. Add the Entra application credentials in the admin panel."))?;
+            let secret_enc = config.1.filter(|value| !value.is_empty()).ok_or_else(|| {
+                anyhow::anyhow!("Microsoft OAuth2 client secret is not configured.")
+            })?;
+            let client_secret = crate::crypto::decrypt_value(key, &secret_enc)?;
+
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+            let port = listener.local_addr()?.port();
+            let redirect_uri = format!("http://localhost:{port}/callback");
+            let state = Uuid::new_v4().to_string();
+            let auth_url = crate::microsoft_graph::build_auth_url(
+                &client_id,
+                &config.2,
+                &redirect_uri,
+                &state,
+            )?;
+            println!("\nOpen this URL to connect your Microsoft 365 calendar:\n");
+            println!("  {auth_url}\n");
+            if open::that(&auth_url).is_err() {
+                println!("(Could not open a browser automatically. Copy the URL above.)");
+            }
+            println!("{} Waiting for authorization…", "…".dimmed());
+
+            let (mut stream, _) = listener.accept().await?;
+            let mut buf = [0u8; 8192];
+            let n = stream.read(&mut buf).await?;
+            let request = String::from_utf8_lossy(&buf[..n]);
+            let path = request
+                .lines()
+                .next()
+                .and_then(|line| line.split_whitespace().nth(1))
+                .unwrap_or("");
+            let response_body = "<html><body><h2>Microsoft 365 connected</h2><p>You can close this tab and return to the terminal.</p></body></html>";
+            let response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                response_body.len(),
+                response_body
+            );
+            let _ = stream.write_all(response.as_bytes()).await;
+
+            let callback = reqwest::Url::parse(&format!("http://localhost:8400{path}"))?;
+            let params: std::collections::HashMap<String, String> =
+                callback.query_pairs().into_owned().collect();
+            if let Some(error) = params.get("error") {
+                bail!("Microsoft authorization failed: {error}");
+            }
+            if params.get("state") != Some(&state) {
+                bail!("CSRF state mismatch. Please start the connection again.");
+            }
+            let code = params
+                .get("code")
+                .ok_or_else(|| anyhow::anyhow!("No authorization code received"))?;
+            let token = crate::microsoft_graph::exchange_code(
+                &client_id,
+                &client_secret,
+                &config.2,
+                code,
+                &redirect_uri,
+            )
+            .await?;
+            let refresh_token = token
+                .refresh_token
+                .as_deref()
+                .ok_or_else(|| anyhow::anyhow!("Microsoft did not issue a refresh token"))?;
+            let identity = crate::microsoft_graph::fetch_identity(&token.access_token).await?;
+            let username = identity
+                .mail
+                .or(identity.user_principal_name)
+                .ok_or_else(|| anyhow::anyhow!("Microsoft profile has no email address"))?;
+            let provider = crate::microsoft_graph::GraphProvider::new(&token.access_token);
+            provider.check_connection().await?;
+
+            let access_token_enc = crate::crypto::encrypt_password(key, &token.access_token)?;
+            let refresh_token_enc = crate::crypto::encrypt_password(key, refresh_token)?;
+            let expires_at = (chrono::Utc::now()
+                + chrono::Duration::seconds(token.expires_in.unwrap_or(3600)))
+            .to_rfc3339();
+            let id = Uuid::new_v4().to_string();
+            let display_name = name.unwrap_or_else(|| "Microsoft 365 Calendar".to_string());
+            sqlx::query(
+                "INSERT INTO caldav_sources (id, account_id, name, url, username, auth_type, oauth2_provider, access_token_enc, refresh_token_enc, token_expires_at, provider_type)
+                 VALUES (?, ?, ?, ?, ?, 'oauth2', 'microsoft', ?, ?, ?, ?)",
+            )
+            .bind(&id)
+            .bind(&account.0)
+            .bind(&display_name)
+            .bind(crate::microsoft_graph::API_BASE)
+            .bind(&username)
+            .bind(&access_token_enc)
+            .bind(&refresh_token_enc)
+            .bind(&expires_at)
+            .bind(factory::kinds::MICROSOFT_GRAPH)
+            .execute(pool)
+            .await?;
+
+            println!(
+                "{} Microsoft 365 source '{}' added (id: {}, user: {})",
+                "✓".green(),
+                display_name,
                 &id[..8],
                 username
             );

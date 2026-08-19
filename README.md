@@ -49,9 +49,12 @@ and other compatibility identifiers retain their upstream names.
 - **Booking limits** — cap bookings per day/week/month/year, or show only the earliest slot per day (one slot per day mode)
 - **Dynamic group links** — combine usernames in a URL (`/u/alice+bob/intro`) for instant collective meetings without creating a team. All participants' calendars are intersected. Autocomplete user picker in the event type editor, opt-out toggle in settings
 
-### CalDAV integration
+### Calendar integrations
 
 - **CalDAV sync** — pull-based sync from any CalDAV server (Nextcloud, BlueMind, Fastmail, iCloud, Zimbra, SOGo, Radicale...), with multi-VEVENT support for recurring event modifications
+- **Microsoft 365 / Office 365** — delegated OAuth2 authentication through Microsoft Entra and calendar sync/write-back through Microsoft Graph
+- **Google Calendar** — delegated OAuth2 authentication with encrypted refresh-token storage and CalDAV sync/write-back
+- **On-prem Exchange** — Exchange Web Services support for Exchange 2013/2016/2019 installations that allow HTTP Basic authentication
 - **On-demand sync** — booking pages automatically sync the host's calendars if stale (>5 min), using RFC 4791 time-range filtering to fetch only future events
 - **CalDAV write-back** — confirmed bookings pushed to the host's calendar, deleted on cancellation
 - **Calendar source management** — add, test, sync, and remove sources from the web dashboard or CLI
@@ -265,7 +268,19 @@ calrs booking create intro --date 2026-03-20 --time 14:00 \
 
 ## Connecting your calendar
 
-calrs connects to any CalDAV server. You need the **DAV root URL** for your provider — not a calendar-specific or public link. When adding a source from the web dashboard, selecting a provider auto-fills the URL pattern.
+calrs connects to Microsoft 365 and Google through OAuth2, to on-prem Exchange through EWS, and to any CalDAV server. OAuth providers must be configured once by an administrator before individual users can connect their accounts.
+
+### Microsoft 365 / Office 365
+
+Register a web application in Microsoft Entra, add delegated `User.Read` and `Calendars.ReadWrite` permissions, create a client secret, and register this redirect URI:
+
+```text
+https://your-cascade-host/dashboard/sources/microsoft/callback
+```
+
+Enter the application ID, secret, and tenant in the admin panel. Use `organizations` to accept any Microsoft work or school account, or use one tenant ID/domain. Users can then choose **Microsoft 365 / Office 365** on the Add calendar page. The CLI equivalent is `calrs source add-microsoft`.
+
+The CLI also requires `http://localhost:8400/callback` as a second web redirect URI in the Entra application.
 
 ### Common CalDAV URLs
 
@@ -279,7 +294,7 @@ calrs connects to any CalDAV server. You need the **DAV root URL** for your prov
 
 calrs auto-discovers your principal URL and calendar-home-set via PROPFIND (RFC 4791). If the connection test hangs or fails, use the "skip connection test" option and try syncing directly.
 
-**Google Calendar is not currently supported.** Google dropped Basic Auth for CalDAV in 2020 and now requires OAuth2, and Google "app passwords" only work for IMAP/SMTP. To use Google Calendar availability in calrs, bridge it through a CalDAV server that can subscribe to a Google calendar (for example, Nextcloud's calendar app).
+Google Calendar uses OAuth2. Configure its client ID and secret in the admin panel, then connect it from the Add calendar page or with `calrs source add-google`.
 
 ## OIDC setup (Keycloak example)
 
@@ -463,6 +478,8 @@ RUST_LOG=calrs=error
 
 ```
 calrs source add [--no-test]         Connect a CalDAV calendar
+calrs source add-google              Connect Google Calendar with OAuth2
+calrs source add-microsoft           Connect Microsoft 365 with OAuth2
 calrs source list                    List connected sources
 calrs source remove <id>             Remove a source
 calrs source test <id>               Test a connection

@@ -18,9 +18,10 @@
       <select id="provider_type" name="provider_type" style="padding: 0.625rem 0.75rem; border: 1px solid var(--border); border-radius: var(--radius); font-size: 0.925rem; font-family: inherit; background: var(--surface); color: var(--text); width: 100%;">
         <option value="caldav" {% if form_provider_type == "caldav" %}selected{% endif %}>CalDAV</option>
         <option value="ews" {% if form_provider_type == "ews" %}selected{% endif %}>Microsoft Exchange (EWS)</option>
+        <option value="microsoft_graph" {% if form_provider_type == "microsoft_graph" %}selected{% endif %}>Microsoft 365 (Graph)</option>
       </select>
       <small style="display:block; margin-top: 0.25rem; color: var(--text-muted); font-size: 0.825rem;">
-        {{ t("source-form-backend-help") }}
+        Microsoft 365 uses OAuth2 through Microsoft Graph. EWS targets on-prem Exchange 2019/2016/2013.
       </small>
     </div>
 
@@ -66,6 +67,14 @@
       <div id="help-exchange" class="provider-help-text" style="display: none;">
         {{ t("source-form-help-exchange") | safe }}
       </div>
+      <div id="help-microsoft" class="provider-help-text" style="display: none;">
+        <strong>Microsoft 365 / Office 365</strong>: Connect securely with your work or school Microsoft account.<br>
+        {% if microsoft_oauth2_configured %}
+        Click the button below to authorize Cascade to read and write your calendars.
+        {% else %}
+        <span style="color: var(--error-text);">Microsoft 365 integration is not configured yet. Ask your administrator to add the Entra application credentials in the admin panel.</span>
+        {% endif %}
+      </div>
       <div id="help-other" class="provider-help-text" style="display: none;">
         {{ t("source-form-help-other") | safe }}
       </div>
@@ -76,6 +85,14 @@
       <a href="/dashboard/sources/google/connect" class="btn">Connect with Google</a>
       {% else %}
       <p style="color: var(--text-muted); font-size: 0.875rem;">{{ t("source-form-google-unavailable") }}</p>
+      {% endif %}
+    </div>
+
+    <div id="microsoft-connect" style="display: none; margin-bottom: 1rem;">
+      {% if microsoft_oauth2_configured %}
+      <a href="/dashboard/sources/microsoft/connect" class="btn">Connect with Microsoft</a>
+      {% else %}
+      <p style="color: var(--text-muted); font-size: 0.875rem;">Microsoft 365 is not available. Contact your administrator.</p>
       {% endif %}
     </div>
 
@@ -174,6 +191,7 @@
     var id = opt.value;
     var url = opt.getAttribute('data-url');
     var isGoogle = (id === 'google');
+    var isMicrosoft = (id === 'microsoft');
 
     // Auto-fill URL only if user hasn't entered their own value
     if (autoFill && url && !userEdited) {
@@ -192,7 +210,8 @@
 
     // Toggle Google connect button vs basic auth fields
     document.getElementById('google-connect').style.display = isGoogle ? 'block' : 'none';
-    document.getElementById('basic-auth-fields').style.display = isGoogle ? 'none' : 'block';
+    document.getElementById('microsoft-connect').style.display = isMicrosoft ? 'block' : 'none';
+    document.getElementById('basic-auth-fields').style.display = (isGoogle || isMicrosoft) ? 'none' : 'block';
 
     updateUrlLabel();
   }

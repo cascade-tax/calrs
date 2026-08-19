@@ -1441,6 +1441,14 @@ pub async fn create_router(pool: SqlitePool, data_dir: PathBuf, secret_key: [u8;
         .route("/dashboard/sources/{id}/test", post(test_source))
         .route("/dashboard/sources/google/connect", get(google_connect))
         .route("/dashboard/sources/google/callback", get(google_callback))
+        .route(
+            "/dashboard/sources/microsoft/connect",
+            get(microsoft_connect),
+        )
+        .route(
+            "/dashboard/sources/microsoft/callback",
+            get(microsoft_callback),
+        )
         .route("/dashboard/sources/{id}/sync", post(sync_source))
         .route(
             "/dashboard/sources/{id}/force-sync",
@@ -1501,6 +1509,10 @@ pub async fn create_router(pool: SqlitePool, data_dir: PathBuf, secret_key: [u8;
         .route(
             "/dashboard/admin/google-oauth2",
             post(admin_update_google_oauth2),
+        )
+        .route(
+            "/dashboard/admin/microsoft-oauth2",
+            post(admin_update_microsoft_oauth2),
         )
         .route("/dashboard/admin/captcha", post(admin_update_captcha))
         .route("/dashboard/admin/resources", post(admin_create_resource))
@@ -6307,6 +6319,12 @@ fn caldav_providers() -> Vec<(&'static str, &'static str, &'static str, &'static
     vec![
         ("google", "Google Calendar", "", "caldav"),
         (
+            "microsoft",
+            "Microsoft 365 / Office 365",
+            crate::microsoft_graph::API_BASE,
+            "microsoft_graph",
+        ),
+        (
             "bluemind",
             "BlueMind",
             "https://mail.example.com/dav/",
@@ -6371,6 +6389,16 @@ async fn new_source_form(
     .flatten()
     .map(|s| !s.is_empty())
     .unwrap_or(false);
+    let microsoft_configured = sqlx::query_as::<_, (Option<String>, Option<String>)>(
+        "SELECT microsoft_oauth2_client_id, microsoft_oauth2_client_secret FROM auth_config LIMIT 1",
+    )
+    .fetch_optional(&state.pool)
+    .await
+    .unwrap_or(None)
+    .is_some_and(|(id, secret)| {
+        id.is_some_and(|value| !value.is_empty())
+            && secret.is_some_and(|value| !value.is_empty())
+    });
 
     let (impersonating, impersonating_name, _) = impersonation_ctx(&auth_user);
     Html(
@@ -6383,6 +6411,7 @@ async fn new_source_form(
             form_username => "",
             error => "",
             google_oauth2_configured => google_configured,
+            microsoft_oauth2_configured => microsoft_configured,
             sidebar => sidebar_context(&auth_user, "sources"),
             lang => auth_user.lang,
             impersonating => impersonating,
@@ -6874,79 +6903,29 @@ async fn test_source(
 
     let label = crate::providers::factory::label(&provider_type);
 
-    // EWS sources go through the provider trait; CalDAV (basic or OAuth2) keeps
-    // the existing CaldavClient path so OAuth2 refresh + ctag stay intact.
-    let result = if provider_type == crate::providers::factory::kinds::EWS {
-        let password = match password_enc.as_deref() {
-            Some(enc) => match crate::crypto::decrypt_password(&state.secret_key, enc) {
-                Ok(p) => p,
-                Err(_) => {
-                    return render_error_page(
-                        &state,
-                        &headers,
-                        axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-                        "Something went wrong",
-                        "Failed to decrypt stored credentials.",
-                    )
-                    .into_response()
-                }
-            },
-            None => {
-                return render_error_page(
-                    &state,
-                    &headers,
-                    axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-                    "Something went wrong",
-                    "Source has no stored password.",
-                )
-                .into_response();
-            }
-        };
-        match crate::providers::build_provider(&provider_type, &url, &username, &password) {
-            Ok(client) => match client.check_connection().await {
-                Ok(true) => format!("'{}' — connection OK ({}).", name, label),
-                Ok(false) => format!(
-                    "'{}' — connected but {} features not explicitly advertised. Sync may still work.",
-                    name, label,
-                ),
-                Err(e) => format!("'{}' — connection failed: {}", name, e),
-            },
-            Err(e) => format!("'{}' — could not build provider: {}", name, e),
-        }
-    } else {
-        let client = match crate::oauth2_caldav::build_client_for_source(
-            &state.pool,
-            &state.secret_key,
-            &source_id,
-            &url,
-            &auth_type,
-            &username,
-            password_enc.as_deref(),
-            access_token_enc.as_deref(),
-            token_expires_at.as_deref(),
-        )
-        .await
-        {
-            Ok(c) => c,
-            Err(_) => {
-                return render_error_page(
-                    &state,
-                    &headers,
-                    axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-                    "Something went wrong",
-                    "Failed to decrypt stored credentials.",
-                )
-                .into_response()
-            }
-        };
-        match client.check_connection().await {
-            Ok(true) => format!("'{}' — connection OK, CalDAV supported.", name),
+    let result = match crate::providers::build_provider_for_source(
+        &state.pool,
+        &state.secret_key,
+        &source_id,
+        &provider_type,
+        &url,
+        &username,
+        password_enc.as_deref(),
+        &auth_type,
+        access_token_enc.as_deref(),
+        token_expires_at.as_deref(),
+    )
+    .await
+    {
+        Ok(client) => match client.check_connection().await {
+            Ok(true) => format!("'{}' — connection OK ({}).", name, label),
             Ok(false) => format!(
-                "'{}' — connected but CalDAV not explicitly detected. Sync may still work.",
-                name
+                "'{}' — connected but {} features not explicitly advertised. Sync may still work.",
+                name, label,
             ),
             Err(e) => format!("'{}' — connection failed: {}", name, e),
-        }
+        },
+        Err(e) => format!("'{}' — could not build provider: {}", name, e),
     };
 
     // Return a simple page with back link
@@ -6974,7 +6953,7 @@ async fn test_source(
     .into_response()
 }
 
-/// Runs CalDAV sync using build_client_for_source (supports both basic and OAuth2).
+/// Runs sync for a persisted source, including OAuth token refresh.
 async fn run_sync_for_source(
     pool: &SqlitePool,
     key: &[u8; 32],
@@ -6987,26 +6966,36 @@ async fn run_sync_for_source(
     token_expires_at: Option<&str>,
     provider_type: &str,
 ) -> (Vec<String>, usize) {
-    // EWS sources go through the provider trait — no OAuth2 dispatch needed.
-    if provider_type == crate::providers::factory::kinds::EWS {
-        let enc = match password_enc {
-            Some(e) => e,
-            None => return (vec!["EWS source missing password".to_string()], 0),
-        };
-        let password = match crate::crypto::decrypt_password(key, enc) {
-            Ok(p) => p,
-            Err(e) => return (vec![format!("Decrypt failed: {}", e)], 0),
-        };
-        return run_sync(
+    if provider_type != crate::providers::factory::kinds::CALDAV {
+        let provider = match crate::providers::build_provider_for_source(
             pool,
             key,
             source_id,
             provider_type,
             url,
             username,
-            &password,
+            password_enc,
+            auth_type,
+            access_token_enc,
+            token_expires_at,
         )
-        .await;
+        .await
+        {
+            Ok(p) => p,
+            Err(e) => return (vec![format!("Failed to build provider: {}", e)], 0),
+        };
+        let result =
+            crate::commands::sync::sync_provider_source(pool, key, provider.as_ref(), source_id)
+                .await;
+        let count = sqlx::query_scalar("SELECT COUNT(*) FROM calendars WHERE source_id = ?")
+            .bind(source_id)
+            .fetch_one(pool)
+            .await
+            .unwrap_or(0i64) as usize;
+        return match result {
+            Ok(()) => (vec!["Sync complete.".to_string()], count),
+            Err(e) => (vec![format!("Sync failed: {}", e)], 0),
+        };
     }
     let client = match crate::oauth2_caldav::build_client_for_source(
         pool,
@@ -7057,7 +7046,8 @@ async fn run_sync(
                 Ok(p) => p,
                 Err(e) => return (vec![format!("Could not build provider: {}", e)], 0),
             };
-        match crate::commands::sync::sync_ews_source(pool, key, provider.as_ref(), source_id).await
+        match crate::commands::sync::sync_provider_source(pool, key, provider.as_ref(), source_id)
+            .await
         {
             Ok(()) => {
                 let cal_count: i64 =
@@ -16852,6 +16842,19 @@ async fn admin_dashboard(
         .and_then(|c| c.google_oauth2_client_id.clone())
         .unwrap_or_default();
     let google_oauth2_configured = !google_oauth2_client_id.is_empty();
+    let microsoft_oauth2_client_id = auth_config
+        .as_ref()
+        .and_then(|c| c.microsoft_oauth2_client_id.clone())
+        .unwrap_or_default();
+    let microsoft_oauth2_tenant = auth_config
+        .as_ref()
+        .map(|c| c.microsoft_oauth2_tenant.clone())
+        .unwrap_or_else(|| "organizations".to_string());
+    let microsoft_oauth2_configured = !microsoft_oauth2_client_id.is_empty()
+        && auth_config
+            .as_ref()
+            .and_then(|c| c.microsoft_oauth2_client_secret.as_ref())
+            .is_some_and(|value| !value.is_empty());
 
     let (
         smtp_configured,
@@ -17062,6 +17065,9 @@ async fn admin_dashboard(
             oidc_auto_register => oidc_auto_register,
             google_oauth2_client_id => google_oauth2_client_id,
             google_oauth2_configured => google_oauth2_configured,
+            microsoft_oauth2_client_id => microsoft_oauth2_client_id,
+            microsoft_oauth2_tenant => microsoft_oauth2_tenant,
+            microsoft_oauth2_configured => microsoft_oauth2_configured,
             base_url => crate::settings::base_url().unwrap_or_default(),
             base_url_db => crate::settings::base_url_db().unwrap_or_default(),
             base_url_from_env => crate::settings::base_url_from_env(),
@@ -17796,6 +17802,77 @@ async fn admin_update_google_oauth2(
     Redirect::to("/dashboard/admin").into_response()
 }
 
+#[derive(Deserialize)]
+struct AdminMicrosoftOAuth2Form {
+    _csrf: Option<String>,
+    microsoft_oauth2_client_id: Option<String>,
+    microsoft_oauth2_client_secret: Option<String>,
+    microsoft_oauth2_tenant: Option<String>,
+}
+
+async fn admin_update_microsoft_oauth2(
+    State(state): State<Arc<AppState>>,
+    _admin: crate::auth::AdminUser,
+    headers: HeaderMap,
+    Form(form): Form<AdminMicrosoftOAuth2Form>,
+) -> impl IntoResponse {
+    if let Err(resp) = verify_csrf_token(&headers, &form._csrf) {
+        return resp;
+    }
+    let client_id = form
+        .microsoft_oauth2_client_id
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+    let tenant = match crate::microsoft_graph::normalize_tenant(
+        form.microsoft_oauth2_tenant
+            .as_deref()
+            .unwrap_or("organizations"),
+    ) {
+        Ok(value) => value,
+        Err(e) => {
+            return render_error_page(
+                &state,
+                &headers,
+                axum::http::StatusCode::BAD_REQUEST,
+                "Invalid Microsoft tenant",
+                &e.to_string(),
+            )
+            .into_response()
+        }
+    };
+
+    let secret = form
+        .microsoft_oauth2_client_secret
+        .filter(|s| !s.trim().is_empty());
+    let result = if let Some(secret) = secret {
+        let encrypted = match crate::crypto::encrypt_value(&state.secret_key, &secret) {
+            Ok(value) => value,
+            Err(e) => return internal_error_response("encrypt Microsoft client secret", &e),
+        };
+        sqlx::query(
+            "UPDATE auth_config SET microsoft_oauth2_client_id = ?, microsoft_oauth2_client_secret = ?, microsoft_oauth2_tenant = ?, updated_at = datetime('now') WHERE id = 'singleton'",
+        )
+        .bind(&client_id)
+        .bind(&encrypted)
+        .bind(&tenant)
+        .execute(&state.pool)
+        .await
+    } else {
+        sqlx::query(
+            "UPDATE auth_config SET microsoft_oauth2_client_id = ?, microsoft_oauth2_tenant = ?, updated_at = datetime('now') WHERE id = 'singleton'",
+        )
+        .bind(&client_id)
+        .bind(&tenant)
+        .execute(&state.pool)
+        .await
+    };
+    if let Err(e) = result {
+        return internal_error_response("save Microsoft OAuth2 settings", &e);
+    }
+    tracing::info!(admin = %_admin.0.email, "admin: Microsoft OAuth2 config updated");
+    Redirect::to("/dashboard/admin").into_response()
+}
+
 // --- Google Calendar OAuth2 connect flow ---
 
 async fn google_connect(
@@ -18121,6 +18198,296 @@ async fn google_callback(
 
     let redirect = if calendar_count > 0 {
         Redirect::to(&format!("/dashboard/sources/{}/setup-write", source_id))
+    } else {
+        Redirect::to("/dashboard/sources")
+    };
+    (headers, redirect).into_response()
+}
+
+// --- Microsoft 365 Calendar OAuth2 connect flow ---
+
+async fn microsoft_connect(
+    State(state): State<Arc<AppState>>,
+    auth_user: crate::auth::AuthUser,
+) -> impl IntoResponse {
+    let config: Option<(Option<String>, Option<String>, String)> = sqlx::query_as(
+        "SELECT microsoft_oauth2_client_id, microsoft_oauth2_client_secret, microsoft_oauth2_tenant FROM auth_config LIMIT 1",
+    )
+    .fetch_optional(&state.pool)
+    .await
+    .unwrap_or(None);
+    let (client_id, tenant) = match config {
+        Some((Some(client_id), Some(secret), tenant))
+            if !client_id.is_empty() && !secret.is_empty() =>
+        {
+            (client_id, tenant)
+        }
+        _ => {
+            return render_error_page_no_headers(
+                &state,
+                axum::http::StatusCode::SERVICE_UNAVAILABLE,
+                "Microsoft 365 unavailable",
+                "Microsoft 365 calendar integration is not configured. Ask your administrator to add the Entra application credentials.",
+            )
+            .into_response()
+        }
+    };
+    let base_url = crate::settings::base_url().unwrap_or_default();
+    if base_url.is_empty() {
+        return render_error_page_no_headers(
+            &state,
+            axum::http::StatusCode::SERVICE_UNAVAILABLE,
+            "Microsoft 365 unavailable",
+            "The public base URL must be configured before using OAuth2.",
+        )
+        .into_response();
+    }
+    let redirect_uri = format!(
+        "{}/dashboard/sources/microsoft/callback",
+        base_url.trim_end_matches('/')
+    );
+    let csrf_state = uuid::Uuid::new_v4().to_string();
+    let auth_url = match crate::microsoft_graph::build_auth_url(
+        &client_id,
+        &tenant,
+        &redirect_uri,
+        &csrf_state,
+    ) {
+        Ok(url) => url,
+        Err(e) => return internal_error_response("build Microsoft authorization URL", &e),
+    };
+
+    let cookie_opts = "; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=600";
+    let mut headers = HeaderMap::new();
+    headers.append(
+        axum::http::header::SET_COOKIE,
+        format!("__Host-calrs_microsoft_state={}{}", csrf_state, cookie_opts)
+            .parse()
+            .unwrap(),
+    );
+    headers.append(
+        axum::http::header::SET_COOKIE,
+        format!(
+            "__Host-calrs_microsoft_user={}{}",
+            auth_user.user.id, cookie_opts
+        )
+        .parse()
+        .unwrap(),
+    );
+    (headers, Redirect::to(&auth_url)).into_response()
+}
+
+async fn microsoft_callback(
+    State(state): State<Arc<AppState>>,
+    auth_user: crate::auth::AuthUser,
+    jar: axum_extra::extract::CookieJar,
+    Query(query): Query<GoogleCallbackQuery>,
+) -> impl IntoResponse {
+    if let Some(error) = query.error {
+        return render_error_page_no_headers(
+            &state,
+            axum::http::StatusCode::BAD_REQUEST,
+            "Microsoft authorization failed",
+            &error,
+        )
+        .into_response();
+    }
+    let stored_state = jar
+        .get("__Host-calrs_microsoft_state")
+        .map(|c| c.value())
+        .unwrap_or_default();
+    if stored_state.is_empty() || query.state.as_deref() != Some(stored_state) {
+        return render_error_page_no_headers(
+            &state,
+            axum::http::StatusCode::BAD_REQUEST,
+            "Authorization failed",
+            "Invalid state parameter. Please try again.",
+        )
+        .into_response();
+    }
+    let stored_user = jar
+        .get("__Host-calrs_microsoft_user")
+        .map(|c| c.value())
+        .unwrap_or_default();
+    if stored_user != auth_user.user.id {
+        return render_error_page_no_headers(
+            &state,
+            axum::http::StatusCode::BAD_REQUEST,
+            "Authorization failed",
+            "Your session changed during Microsoft authorization. Please try again.",
+        )
+        .into_response();
+    }
+    let code = match query.code {
+        Some(code) => code,
+        None => {
+            return render_error_page_no_headers(
+                &state,
+                axum::http::StatusCode::BAD_REQUEST,
+                "Authorization failed",
+                "Microsoft did not return an authorization code.",
+            )
+            .into_response()
+        }
+    };
+
+    let config: Option<(String, String, String)> = sqlx::query_as(
+        "SELECT microsoft_oauth2_client_id, microsoft_oauth2_client_secret, microsoft_oauth2_tenant FROM auth_config LIMIT 1",
+    )
+    .fetch_optional(&state.pool)
+    .await
+    .unwrap_or(None);
+    let (client_id, secret_enc, tenant) = match config {
+        Some(values) => values,
+        None => {
+            return render_error_page_no_headers(
+                &state,
+                axum::http::StatusCode::SERVICE_UNAVAILABLE,
+                "Microsoft 365 unavailable",
+                "Microsoft 365 integration is not configured.",
+            )
+            .into_response()
+        }
+    };
+    let client_secret = match crate::crypto::decrypt_value(&state.secret_key, &secret_enc) {
+        Ok(value) => value,
+        Err(e) => return internal_error_response("decrypt Microsoft client secret", &e),
+    };
+    let base_url = crate::settings::base_url().unwrap_or_default();
+    let redirect_uri = format!(
+        "{}/dashboard/sources/microsoft/callback",
+        base_url.trim_end_matches('/')
+    );
+    let token = match crate::microsoft_graph::exchange_code(
+        &client_id,
+        &client_secret,
+        &tenant,
+        &code,
+        &redirect_uri,
+    )
+    .await
+    {
+        Ok(token) => token,
+        Err(e) => {
+            return render_error_page_no_headers(
+                &state,
+                axum::http::StatusCode::BAD_GATEWAY,
+                "Microsoft authorization failed",
+                &e.to_string(),
+            )
+            .into_response()
+        }
+    };
+    let refresh_token =
+        match token.refresh_token.as_deref() {
+            Some(value) => value,
+            None => return render_error_page_no_headers(
+                &state,
+                axum::http::StatusCode::BAD_GATEWAY,
+                "Microsoft authorization failed",
+                "Microsoft did not issue a refresh token. Remove the app's consent and try again.",
+            )
+            .into_response(),
+        };
+    let identity = match crate::microsoft_graph::fetch_identity(&token.access_token).await {
+        Ok(identity) => identity,
+        Err(e) => {
+            return render_error_page_no_headers(
+                &state,
+                axum::http::StatusCode::BAD_GATEWAY,
+                "Microsoft authorization failed",
+                &e.to_string(),
+            )
+            .into_response()
+        }
+    };
+    let microsoft_email =
+        match identity.mail.or(identity.user_principal_name) {
+            Some(value) if !value.is_empty() => value,
+            _ => return render_error_page_no_headers(
+                &state,
+                axum::http::StatusCode::BAD_GATEWAY,
+                "Microsoft authorization failed",
+                "The Microsoft profile did not include an email address or user principal name.",
+            )
+            .into_response(),
+        };
+    let account_id: Option<String> =
+        sqlx::query_scalar("SELECT id FROM accounts WHERE user_id = ? LIMIT 1")
+            .bind(&auth_user.user.id)
+            .fetch_optional(&state.pool)
+            .await
+            .unwrap_or(None);
+    let Some(account_id) = account_id else {
+        return render_error_page_no_headers(
+            &state,
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            "Something went wrong",
+            "No scheduling account found.",
+        )
+        .into_response();
+    };
+    let access_token_enc =
+        match crate::crypto::encrypt_password(&state.secret_key, &token.access_token) {
+            Ok(value) => value,
+            Err(e) => return internal_error_response("encrypt Microsoft access token", &e),
+        };
+    let refresh_token_enc = match crate::crypto::encrypt_password(&state.secret_key, refresh_token)
+    {
+        Ok(value) => value,
+        Err(e) => return internal_error_response("encrypt Microsoft refresh token", &e),
+    };
+    let expires_at = Utc::now() + chrono::Duration::seconds(token.expires_in.unwrap_or(3600));
+    let source_id = uuid::Uuid::new_v4().to_string();
+    if let Err(e) = sqlx::query(
+        "INSERT INTO caldav_sources (id, account_id, name, url, username, auth_type, oauth2_provider, access_token_enc, refresh_token_enc, token_expires_at, provider_type)
+         VALUES (?, ?, 'Microsoft 365 Calendar', ?, ?, 'oauth2', 'microsoft', ?, ?, ?, ?)",
+    )
+    .bind(&source_id)
+    .bind(&account_id)
+    .bind(crate::microsoft_graph::API_BASE)
+    .bind(&microsoft_email)
+    .bind(&access_token_enc)
+    .bind(&refresh_token_enc)
+    .bind(expires_at.to_rfc3339())
+    .bind(crate::providers::factory::kinds::MICROSOFT_GRAPH)
+    .execute(&state.pool)
+    .await
+    {
+        return internal_error_response("save Microsoft calendar source", &e);
+    }
+
+    let (_, calendar_count) = run_sync_for_source(
+        &state.pool,
+        &state.secret_key,
+        &source_id,
+        crate::microsoft_graph::API_BASE,
+        &microsoft_email,
+        None,
+        "oauth2",
+        Some(&access_token_enc),
+        Some(&expires_at.to_rfc3339()),
+        crate::providers::factory::kinds::MICROSOFT_GRAPH,
+    )
+    .await;
+    tracing::info!(user = %auth_user.user.email, microsoft_user = %microsoft_email, "Microsoft 365 calendar source added");
+
+    let clear_opts = "; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0";
+    let mut headers = HeaderMap::new();
+    headers.append(
+        axum::http::header::SET_COOKIE,
+        format!("__Host-calrs_microsoft_state={clear_opts}")
+            .parse()
+            .unwrap(),
+    );
+    headers.append(
+        axum::http::header::SET_COOKIE,
+        format!("__Host-calrs_microsoft_user={clear_opts}")
+            .parse()
+            .unwrap(),
+    );
+    let redirect = if calendar_count > 0 {
+        Redirect::to(&format!("/dashboard/sources/{source_id}/setup-write"))
     } else {
         Redirect::to("/dashboard/sources")
     };
@@ -22015,56 +22382,27 @@ async fn caldav_push_booking_for_user(
     {
         tracing::debug!(uid = %booking_uid, calendar_href = %calendar_href, provider = %provider_type, "pushing booking to calendar");
 
-        let put_result = if provider_type == crate::providers::factory::kinds::EWS {
-            let enc = match password_enc.as_deref() {
-                Some(e) => e,
-                None => {
-                    tracing::error!(url = %url, "calendar write-back failed: EWS source missing password");
-                    continue;
-                }
-            };
-            let password = match crate::crypto::decrypt_password(key, enc) {
-                Ok(p) => p,
-                Err(e) => {
-                    tracing::error!(url = %url, error = %e, "calendar write-back failed: could not decrypt credentials");
-                    continue;
-                }
-            };
-            let client = match crate::providers::build_provider(
-                provider_type,
-                url,
-                username,
-                &password,
-            ) {
-                Ok(c) => c,
-                Err(e) => {
-                    tracing::error!(url = %url, error = %e, "calendar write-back failed: unknown provider");
-                    continue;
-                }
-            };
-            client.put_event(calendar_href, booking_uid, &ics).await
-        } else {
-            let client = match crate::oauth2_caldav::build_client_for_source(
-                pool,
-                key,
-                source_id,
-                url,
-                auth_type,
-                username,
-                password_enc.as_deref(),
-                access_token_enc.as_deref(),
-                token_expires_at.as_deref(),
-            )
-            .await
-            {
-                Ok(c) => c,
-                Err(e) => {
-                    tracing::error!(url = %url, error = %e, "calendar write-back failed: could not build client");
-                    continue;
-                }
-            };
-            client.put_event(calendar_href, booking_uid, &ics).await
+        let client = match crate::providers::build_provider_for_source(
+            pool,
+            key,
+            source_id,
+            provider_type,
+            url,
+            username,
+            password_enc.as_deref(),
+            auth_type,
+            access_token_enc.as_deref(),
+            token_expires_at.as_deref(),
+        )
+        .await
+        {
+            Ok(c) => c,
+            Err(e) => {
+                tracing::error!(url = %url, error = %e, "calendar write-back failed: could not build provider");
+                continue;
+            }
         };
+        let put_result = client.put_event(calendar_href, booking_uid, &ics).await;
 
         if let Err(e) = put_result {
             tracing::error!(uid = %booking_uid, calendar_href = %calendar_href, error = %e, "calendar write-back failed");
@@ -22123,40 +22461,24 @@ async fn caldav_delete_for_user(
         provider_type,
     ) in &sources
     {
-        let delete_result = if provider_type == crate::providers::factory::kinds::EWS {
-            let enc = match password_enc.as_deref() {
-                Some(e) => e,
-                None => continue,
-            };
-            let password = match crate::crypto::decrypt_password(key, enc) {
-                Ok(p) => p,
-                Err(_) => continue,
-            };
-            let client =
-                match crate::providers::build_provider(provider_type, url, username, &password) {
-                    Ok(c) => c,
-                    Err(_) => continue,
-                };
-            client.delete_event(calendar_href, booking_uid).await
-        } else {
-            let client = match crate::oauth2_caldav::build_client_for_source(
-                pool,
-                key,
-                source_id,
-                url,
-                auth_type,
-                username,
-                password_enc.as_deref(),
-                access_token_enc.as_deref(),
-                token_expires_at.as_deref(),
-            )
-            .await
-            {
-                Ok(c) => c,
-                Err(_) => continue,
-            };
-            client.delete_event(calendar_href, booking_uid).await
+        let client = match crate::providers::build_provider_for_source(
+            pool,
+            key,
+            source_id,
+            provider_type,
+            url,
+            username,
+            password_enc.as_deref(),
+            auth_type,
+            access_token_enc.as_deref(),
+            token_expires_at.as_deref(),
+        )
+        .await
+        {
+            Ok(c) => c,
+            Err(_) => continue,
         };
+        let delete_result = client.delete_event(calendar_href, booking_uid).await;
         if let Err(e) = delete_result {
             tracing::error!(uid = %booking_uid, user = %user_id, calendar = %calendar_href, error = %e, "calendar event delete failed");
         }
@@ -22273,40 +22595,24 @@ pub(crate) async fn caldav_delete_booking(
         }
     };
 
-    let delete_result = if provider_type == crate::providers::factory::kinds::EWS {
-        let enc = match password_enc.as_deref() {
-            Some(e) => e,
-            None => return,
-        };
-        let password = match crate::crypto::decrypt_password(key, enc) {
-            Ok(p) => p,
-            Err(_) => return,
-        };
-        let client =
-            match crate::providers::build_provider(&provider_type, &url, &username, &password) {
-                Ok(c) => c,
-                Err(_) => return,
-            };
-        client.delete_event(&calendar_href, booking_uid).await
-    } else {
-        let client = match crate::oauth2_caldav::build_client_for_source(
-            pool,
-            key,
-            &source_id,
-            &url,
-            &auth_type,
-            &username,
-            password_enc.as_deref(),
-            access_token_enc.as_deref(),
-            token_expires_at.as_deref(),
-        )
-        .await
-        {
-            Ok(c) => c,
-            Err(_) => return,
-        };
-        client.delete_event(&calendar_href, booking_uid).await
+    let client = match crate::providers::build_provider_for_source(
+        pool,
+        key,
+        &source_id,
+        &provider_type,
+        &url,
+        &username,
+        password_enc.as_deref(),
+        &auth_type,
+        access_token_enc.as_deref(),
+        token_expires_at.as_deref(),
+    )
+    .await
+    {
+        Ok(c) => c,
+        Err(_) => return,
     };
+    let delete_result = client.delete_event(&calendar_href, booking_uid).await;
     if let Err(e) = delete_result {
         tracing::error!(uid = %booking_uid, error = %e, "calendar event delete failed");
     }
@@ -30589,6 +30895,11 @@ mod tests {
         assert!(
             body.contains(r#"value="google" data-url="" data-backend="caldav" selected"#),
             "Google Calendar should be selected by default"
+        );
+        assert!(
+            body.contains("Microsoft 365 / Office 365")
+                && body.contains("Microsoft 365 is not available"),
+            "Microsoft 365 OAuth option should be present"
         );
     }
 

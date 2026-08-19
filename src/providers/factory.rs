@@ -5,6 +5,7 @@
 //! `build_provider`.
 
 use anyhow::{bail, Result};
+use sqlx::SqlitePool;
 
 use super::CalendarProvider;
 
@@ -12,6 +13,7 @@ use super::CalendarProvider;
 pub mod kinds {
     pub const CALDAV: &str = "caldav";
     pub const EWS: &str = "ews";
+    pub const MICROSOFT_GRAPH: &str = "microsoft_graph";
 }
 
 /// Build a provider client for the given source row.
@@ -33,6 +35,67 @@ pub fn build_provider(
         kinds::EWS => Ok(Box::new(crate::ews::EwsProvider::new(
             url, username, password,
         ))),
+        kinds::MICROSOFT_GRAPH => Ok(Box::new(crate::microsoft_graph::GraphProvider::new(
+            password,
+        ))),
+        other => bail!("Unknown calendar provider type: '{}'", other),
+    }
+}
+
+/// Build any persisted source, decrypting its credential and refreshing an
+/// OAuth2 token when required. This keeps sync, test, and write-back paths on
+/// the same authentication behavior.
+#[allow(clippy::too_many_arguments)]
+pub async fn build_provider_for_source(
+    pool: &SqlitePool,
+    key: &[u8; 32],
+    source_id: &str,
+    provider_type: &str,
+    url: &str,
+    username: &str,
+    password_enc: Option<&str>,
+    auth_type: &str,
+    access_token_enc: Option<&str>,
+    token_expires_at: Option<&str>,
+) -> Result<Box<dyn CalendarProvider>> {
+    match provider_type {
+        kinds::CALDAV => {
+            let client = crate::oauth2_caldav::build_client_for_source(
+                pool,
+                key,
+                source_id,
+                url,
+                auth_type,
+                username,
+                password_enc,
+                access_token_enc,
+                token_expires_at,
+            )
+            .await?;
+            Ok(Box::new(super::caldav::CaldavProvider::from_client(client)))
+        }
+        kinds::EWS => {
+            let encrypted =
+                password_enc.ok_or_else(|| anyhow::anyhow!("Exchange source missing password"))?;
+            let password = crate::crypto::decrypt_password(key, encrypted)?;
+            build_provider(provider_type, url, username, &password)
+        }
+        kinds::MICROSOFT_GRAPH => {
+            if auth_type != "oauth2" {
+                bail!("Microsoft 365 source is missing OAuth2 authentication");
+            }
+            let encrypted = access_token_enc
+                .ok_or_else(|| anyhow::anyhow!("Microsoft 365 source missing access token"))?;
+            let access_token = crate::oauth2_caldav::get_valid_access_token(
+                pool,
+                key,
+                source_id,
+                encrypted,
+                token_expires_at,
+            )
+            .await?;
+            build_provider(provider_type, url, username, &access_token)
+        }
         other => bail!("Unknown calendar provider type: '{}'", other),
     }
 }
@@ -42,6 +105,8 @@ pub fn build_provider(
 pub fn validate_url(provider_type: &str, url: &str) -> Result<()> {
     match provider_type {
         kinds::CALDAV | kinds::EWS => crate::caldav::validate_caldav_url(url),
+        kinds::MICROSOFT_GRAPH if url == crate::microsoft_graph::API_BASE => Ok(()),
+        kinds::MICROSOFT_GRAPH => bail!("Microsoft Graph API URL is not configurable"),
         other => bail!("Unknown calendar provider type: '{}'", other),
     }
 }
@@ -51,6 +116,7 @@ pub fn label(provider_type: &str) -> &'static str {
     match provider_type {
         kinds::CALDAV => "CalDAV",
         kinds::EWS => "Microsoft Exchange (EWS)",
+        kinds::MICROSOFT_GRAPH => "Microsoft 365",
         _ => "Unknown",
     }
 }

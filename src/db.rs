@@ -268,6 +268,10 @@ pub async fn migrate(pool: &SqlitePool) -> Result<()> {
             "063_booking_horizon",
             include_str!("../migrations/063_booking_horizon.sql"),
         ),
+        (
+            "064_microsoft_graph",
+            include_str!("../migrations/064_microsoft_graph.sql"),
+        ),
     ];
 
     let mut applied_count = 0u32;
@@ -794,6 +798,29 @@ pub async fn migrate_passwords(pool: &SqlitePool, key: &[u8; 32]) -> Result<()> 
         }
     }
 
+    // Microsoft Graph uses the same encrypted-at-rest client-secret pattern
+    // as Google OAuth2 and OIDC.
+    let microsoft_row: Option<(String,)> = sqlx::query_as(
+        "SELECT microsoft_oauth2_client_secret FROM auth_config WHERE id = 'singleton' AND microsoft_oauth2_client_secret IS NOT NULL",
+    )
+    .fetch_optional(pool)
+    .await?;
+
+    if let Some((stored,)) = microsoft_row {
+        let already_encrypted = crate::crypto::is_encrypted_value(&stored)
+            && crate::crypto::decrypt_value(key, &stored).is_ok();
+        if !stored.is_empty() && !already_encrypted {
+            let encrypted = crate::crypto::encrypt_value(key, &stored)?;
+            sqlx::query(
+                "UPDATE auth_config SET microsoft_oauth2_client_secret = ? WHERE id = 'singleton'",
+            )
+            .bind(&encrypted)
+            .execute(pool)
+            .await?;
+            migrated += 1;
+        }
+    }
+
     if migrated > 0 {
         println!(
             "{} Migrated {} credential(s) to encrypted storage.",
@@ -875,7 +902,7 @@ mod tests {
             .fetch_one(&pool)
             .await
             .unwrap();
-        assert_eq!(count.0, 63, "All 63 migrations should be tracked");
+        assert_eq!(count.0, 64, "All 64 migrations should be tracked");
     }
 
     #[tokio::test]
@@ -889,7 +916,7 @@ mod tests {
             .fetch_one(&pool)
             .await
             .unwrap();
-        assert_eq!(count.0, 63, "Still 63 migrations after second run");
+        assert_eq!(count.0, 64, "Still 64 migrations after second run");
     }
 
     #[tokio::test]
@@ -1224,6 +1251,35 @@ mod tests {
         assert_eq!(after_first.0, after_second.0);
         assert_eq!(
             crate::crypto::decrypt_value(&key, &after_second.0).unwrap(),
+            plaintext,
+        );
+    }
+
+    #[tokio::test]
+    async fn migrate_passwords_encrypts_microsoft_oauth2_secret() {
+        let pool = memory_pool().await;
+        migrate(&pool).await.unwrap();
+        let key = [23u8; 32];
+        let plaintext = "microsoft-client-secret";
+
+        sqlx::query(
+            "UPDATE auth_config SET microsoft_oauth2_client_secret = ? WHERE id = 'singleton'",
+        )
+        .bind(plaintext)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        migrate_passwords(&pool, &key).await.unwrap();
+        let stored: (String,) = sqlx::query_as(
+            "SELECT microsoft_oauth2_client_secret FROM auth_config WHERE id = 'singleton'",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert!(crate::crypto::is_encrypted_value(&stored.0));
+        assert_eq!(
+            crate::crypto::decrypt_value(&key, &stored.0).unwrap(),
             plaintext,
         );
     }

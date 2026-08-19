@@ -693,6 +693,9 @@ async fn register_page(
         oidc_auto_register: true,
         google_oauth2_client_id: None,
         google_oauth2_client_secret: None,
+        microsoft_oauth2_client_id: None,
+        microsoft_oauth2_client_secret: None,
+        microsoft_oauth2_tenant: "organizations".to_string(),
     });
 
     if !auth_config.registration_enabled {

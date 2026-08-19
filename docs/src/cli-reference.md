@@ -10,7 +10,7 @@
 
 ### `calrs source`
 
-Manage CalDAV calendar sources.
+Manage calendar sources.
 
 ```
 calrs source add [OPTIONS]
@@ -26,9 +26,16 @@ calrs source test <ID>    Test a connection (ID prefix match)
 calrs source remove <ID>  Remove a source and all its data (ID prefix match)
 ```
 
+OAuth calendar sources use dedicated commands after the administrator configures the provider credentials:
+
+```bash
+calrs source add-google
+calrs source add-microsoft
+```
+
 ### `calrs sync`
 
-Pull latest events from all CalDAV sources.
+Pull latest events from all connected calendar sources.
 
 ```
 calrs sync [OPTIONS]

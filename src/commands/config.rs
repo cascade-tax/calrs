@@ -83,8 +83,7 @@ pub enum ConfigCommands {
 
 // ── Dump-specific structs (no secret fields) ──
 
-// Note: oidc_client_secret, captcha_secret, google_oauth2_client_secret and
-// meeting_webhook_secret are deliberately excluded (secrets).
+// OAuth, OIDC, captcha, SMTP, and webhook secrets are deliberately excluded.
 #[derive(serde::Serialize, sqlx::FromRow)]
 #[serde(rename_all = "snake_case")]
 struct AuthConfigDump {
@@ -108,6 +107,8 @@ struct AuthConfigDump {
     captcha_site_key: Option<String>,
     captcha_widget_url: Option<String>,
     google_oauth2_client_id: Option<String>,
+    microsoft_oauth2_client_id: Option<String>,
+    microsoft_oauth2_tenant: String,
     jitsi_base_url: Option<String>,
     jitsi_pattern: Option<String>,
     jitsi_display_name: Option<String>,
@@ -347,7 +348,7 @@ async fn build_dump_output(pool: &SqlitePool) -> Result<serde_json::Value> {
          accent_color, theme, custom_accent, custom_accent_hover, custom_bg, \
          custom_surface, custom_text, company_link, \
          captcha_instance_url, captcha_site_key, captcha_widget_url, \
-         google_oauth2_client_id, \
+         google_oauth2_client_id, microsoft_oauth2_client_id, microsoft_oauth2_tenant, \
          jitsi_base_url, jitsi_pattern, jitsi_display_name, \
          meeting_webhook_url, meeting_webhook_auth_mode, meeting_webhook_display_name, \
          created_at, updated_at \
@@ -1347,6 +1348,7 @@ mod tests {
             "oidc_client_secret",
             "captcha_secret",
             "google_oauth2_client_secret",
+            "microsoft_oauth2_client_secret",
             "meeting_webhook_secret",
         ] {
             assert!(
