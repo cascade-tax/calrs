@@ -1,5 +1,5 @@
 {% extends "dashboard_base.html" %}
-{% block title %}Embed — {{ event_type_title }} — calrs{% endblock %}
+{% block title %}Embed — {{ event_type_title }} — Cascade{% endblock %}
 {% block dashboard_content %}
 <style>
   /* The embed page is preview-heavy, so let it use more horizontal space than
@@ -222,14 +222,14 @@
   function indent(n) { return new Array(n + 1).join(' '); }
 
   function snippetInline() {
-    var divId = 'calrs-inline-' + encodeURIComponent(calPath.replace(/^\//, '').replace(/\//g, '-'));
+    var divId = 'cascade-calendar-inline-' + encodeURIComponent(calPath.replace(/^\//, '').replace(/\//g, '-'));
     return [
-      '<!-- calrs inline embed -->',
+      '<!-- Cascade Calendar inline embed -->',
       '<div id="' + divId + '" style="width:100%;min-height:600px"></div>',
       '<script src="' + snippetBase + '/embed.js" defer><' + '/script>',
       '<script>',
       indent(2) + 'window.addEventListener("DOMContentLoaded", function () {',
-      indent(4) + 'Calrs.inline({',
+      indent(4) + 'CascadeCalendar.inline({',
       indent(6) + 'selector: "#' + divId + '",',
       indent(6) + 'link: "' + snippetBase + calPath + '",',
       indent(6) + 'config: ' + buildConfigJs(),
@@ -241,11 +241,11 @@
 
   function snippetFloating() {
     return [
-      '<!-- calrs floating-button embed -->',
+      '<!-- Cascade Calendar floating-button embed -->',
       '<script src="' + snippetBase + '/embed.js" defer><' + '/script>',
       '<script>',
       indent(2) + 'window.addEventListener("DOMContentLoaded", function () {',
-      indent(4) + 'Calrs.floatingButton({',
+      indent(4) + 'CascadeCalendar.floatingButton({',
       indent(6) + 'link: "' + snippetBase + calPath + '",',
       indent(6) + 'buttonText: ' + JSON.stringify(state.buttonText) + ',',
       indent(6) + 'buttonPosition: "' + state.buttonPosition + '",',
@@ -261,10 +261,10 @@
 
   function snippetElement() {
     return [
-      '<!-- calrs element-click embed -->',
+      '<!-- Cascade Calendar element-click embed -->',
       '<!-- Add these attributes to any clickable element on your page: -->',
-      '<!--   data-calrs-link="' + snippetBase + calPath + '" -->',
-      '<!--   data-calrs-config=\'' + buildConfigJs() + '\' -->',
+      '<!--   data-cascade-calendar-link="' + snippetBase + calPath + '" -->',
+      '<!--   data-cascade-calendar-config=\'' + buildConfigJs() + '\' -->',
       '<script src="' + snippetBase + '/embed.js" defer><' + '/script>'
     ].join('\n');
   }
@@ -355,7 +355,7 @@
       previewBtn = btn;
     } else {
       // element-click — render demo trigger elements so the user can try the
-      // modal. On a real site they'd add data-calrs-link to their own markup;
+      // modal. On a real site they'd add data-cascade-calendar-link to their own markup;
       // here we just wire the click directly to the same modal simulation.
       var wrap = document.createElement('div');
       wrap.style.cssText = 'position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1rem;padding:1rem;text-align:center;';

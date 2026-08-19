@@ -9,8 +9,12 @@
   {% else %}
   <meta name="color-scheme" content="light dark">
   {% endif %}
-  <title>{% block title %}calrs{% endblock %}</title>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🦀</text></svg>">
+  <title>{% block title %}Cascade{% endblock %}</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="alternate icon" href="/favicon.ico" sizes="16x16 32x32">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="manifest" href="/site.webmanifest">
+  <meta name="theme-color" content="#1A3A4A">
   <script>
   // Apply theme ASAP to avoid flash. In embed mode the parent controls theme
   // via ?theme= so we skip localStorage and respect the URL param only.

@@ -437,7 +437,7 @@ pub async fn run(pool: &SqlitePool, key: &[u8; 32], cmd: SourceCommands) -> Resu
             let auth_url =
                 crate::oauth2_caldav::build_google_auth_url(&client_id, &redirect_uri, &state);
 
-            println!("\nOpen this URL in your browser to authorize calrs:\n");
+            println!("\nOpen this URL in your browser to authorize Cascade Calendar:\n");
             println!("  {}\n", auth_url);
 
             // Try to open browser automatically

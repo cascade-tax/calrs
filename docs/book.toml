@@ -1,9 +1,9 @@
 [book]
-title = "calrs Documentation"
+title = "Cascade Calendar Documentation"
 authors = ["Olivier Lambert"]
 language = "en"
 src = "src"
 
 [output.html]
-git-repository-url = "https://github.com/olivierlambert/calrs"
-edit-url-template = "https://github.com/olivierlambert/calrs/edit/main/docs/src/{path}"
+git-repository-url = "https://github.com/cascade-tax/calrs"
+edit-url-template = "https://github.com/cascade-tax/calrs/edit/cascade-main/docs/src/{path}"

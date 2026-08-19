@@ -284,7 +284,7 @@ fn render_html_email_with_actions(
     <!-- Footer -->
     <tr><td style="padding:16px 28px;border-top:1px solid #f0f0f3;text-align:center;">
       <span style="font-size:12px;color:#9ca3af;">Sent by </span>
-      <a href="https://cal.rs" style="font-size:12px;color:#6b7280;font-weight:600;text-decoration:none;">calrs</a>
+      <a href="https://cascade.tax" style="font-size:12px;color:#6b7280;font-weight:600;text-decoration:none;">Cascade</a>
     </td></tr>
   </table>
 </td></tr>
@@ -577,7 +577,7 @@ fn generate_ics_impl(
     format!(
         "BEGIN:VCALENDAR\r\n\
          VERSION:2.0\r\n\
-         PRODID:-//calrs//calrs//EN\r\n\
+         PRODID:-//Cascade//Calendar//EN\r\n\
          {method_line}\
          BEGIN:VEVENT\r\n\
          UID:{uid}\r\n\
@@ -637,7 +637,7 @@ fn generate_cancel_ics(details: &CancellationDetails) -> String {
     format!(
         "BEGIN:VCALENDAR\r\n\
          VERSION:2.0\r\n\
-         PRODID:-//calrs//calrs//EN\r\n\
+         PRODID:-//Cascade//Calendar//EN\r\n\
          METHOD:CANCEL\r\n\
          BEGIN:VEVENT\r\n\
          UID:{uid}\r\n\
@@ -810,7 +810,7 @@ pub async fn send_guest_confirmation_ex(
         actions.push(EmailAction {
             label: t(lang, "email-action-reschedule"),
             url: u.to_string(),
-            color: "#3b82f6".to_string(),
+            color: "#1A3A4A".to_string(),
         });
     }
     if let Some(u) = cancel_url {
@@ -881,7 +881,7 @@ pub async fn send_guest_confirmation_ex(
              Organizer: {}\n\
              Booked by: {} <{}>\n\n\
              A calendar invite is attached.\n\n\
-             \u{2014} calrs",
+             \u{2014} Cascade",
             details.event_title,
             details.date,
             display_time(&details.start_time),
@@ -966,7 +966,7 @@ pub async fn send_host_notification(config: &SmtpConfig, details: &BookingDetail
          Guest: {} <{}>\n\
          {}{}{}\n\
          A calendar invite is attached.\n\n\
-         \u{2014} calrs",
+         \u{2014} Cascade",
         details.event_title,
         date_display,
         time_display,
@@ -1081,7 +1081,7 @@ pub async fn send_host_booking_confirmed(
          Guest: {} <{}>\n\
          {}\
          The event has been added to your calendar.\n\n\
-         \u{2014} calrs",
+         \u{2014} Cascade",
         details.event_title,
         date_display,
         time_display,
@@ -1244,7 +1244,7 @@ pub async fn send_guest_reminder(
         .unwrap_or_default();
 
     let html =
-        render_html_email_with_actions(&h(&greeting), &headline, "#3b82f6", &rows, None, &actions);
+        render_html_email_with_actions(&h(&greeting), &headline, "#1A3A4A", &rows, None, &actions);
 
     let body = build_multipart_body(&plain, &html);
 
@@ -1285,7 +1285,7 @@ pub async fn send_host_reminder(config: &SmtpConfig, details: &BookingDetails) -
          Time: {}\n\
          Guest: {} <{}>\n\
          {}\n\
-         \u{2014} calrs",
+         \u{2014} Cascade",
         details.event_title,
         date_display,
         time_display,
@@ -1329,7 +1329,7 @@ pub async fn send_host_reminder(config: &SmtpConfig, details: &BookingDetails) -
             "Reminder: you have a booking with {} coming up.",
             h(&details.guest_name)
         ),
-        "#3b82f6",
+        "#1A3A4A",
         &rows,
         None,
     );
@@ -1506,7 +1506,7 @@ pub async fn send_host_cancellation(
          Guest: {} <{}>\n\n\
          {}\
          A calendar cancellation is attached.\n\n\
-         \u{2014} calrs",
+         \u{2014} Cascade",
         details.event_title,
         date_display,
         time_display,
@@ -1609,7 +1609,7 @@ pub async fn send_guest_pending_notice_ex(
          {}\
          You'll receive another email once it's confirmed.\n\
          {}\n\
-         \u{2014} calrs",
+         \u{2014} Cascade",
         details.guest_name,
         details.host_name,
         details.event_title,
@@ -1655,7 +1655,7 @@ pub async fn send_guest_pending_notice_ex(
         actions.push(EmailAction {
             label: "Reschedule".to_string(),
             url: u.to_string(),
-            color: "#3b82f6".to_string(),
+            color: "#1A3A4A".to_string(),
         });
     }
     if let Some(u) = cancel_url {
@@ -1739,7 +1739,7 @@ pub async fn send_host_approval_request(
          Guest: {} <{}>\n\
          {}{}\n\
          {}\n\n\
-         \u{2014} calrs",
+         \u{2014} Cascade",
         details.event_title,
         date_display,
         time_display,
@@ -1860,7 +1860,7 @@ pub async fn send_guest_decline_notice(
          Time: {}\n\
          With: {}\n\n\
          {}\
-         \u{2014} calrs",
+         \u{2014} Cascade",
         details.guest_name,
         details.event_title,
         details.date,
@@ -2156,12 +2156,12 @@ pub async fn load_smtp_status(pool: &SqlitePool) -> Result<Option<SmtpStatus>> {
 pub async fn send_test_email(config: &SmtpConfig, to_email: &str) -> Result<()> {
     let to = to_email.parse()?;
 
-    let plain = "This is a test email from calrs. SMTP is working!".to_string();
+    let plain = "This is a test email from Cascade Calendar. SMTP is working!".to_string();
 
     let html = render_html_email(
         "SMTP test",
-        "This is a test email from calrs. SMTP is working!",
-        "#6366f1",
+        "This is a test email from Cascade Calendar. SMTP is working!",
+        "#1A3A4A",
         &[],
         None,
     );
@@ -2171,7 +2171,7 @@ pub async fn send_test_email(config: &SmtpConfig, to_email: &str) -> Result<()> 
     let email = Message::builder()
         .from(config.mailbox_from()?)
         .to(to)
-        .subject("calrs \u{2014} SMTP test")
+        .subject("Cascade \u{2014} SMTP test")
         .multipart(body)?;
 
     // Debug is only useful when sending a test email
@@ -2208,7 +2208,7 @@ pub async fn send_invite_email(
          Click the link below to choose a time:\n\
          {}\n\
          {}\n\
-         \u{2014} calrs",
+         \u{2014} Cascade",
         guest_name, host_name, event_title, message_note, invite_url, expiry_note,
     );
 
@@ -2238,7 +2238,7 @@ pub async fn send_invite_email(
     let actions = vec![EmailAction {
         label: "Choose a time".to_string(),
         url: invite_url.to_string(),
-        color: "#6366f1".to_string(),
+        color: "#1A3A4A".to_string(),
     }];
 
     let html = render_html_email_with_actions(
@@ -2248,7 +2248,7 @@ pub async fn send_invite_email(
             h(host_name),
             h(event_title)
         ),
-        "#6366f1",
+        "#1A3A4A",
         &rows,
         None,
         &actions,
@@ -2375,7 +2375,7 @@ pub async fn send_guest_pick_new_time(
          Originally: {} at {}\n\n\
          Please pick a new time: {}\n\
          {}\n\
-         \u{2014} calrs",
+         \u{2014} Cascade",
         details.guest_name,
         details.host_name,
         details.event_title,
@@ -2405,7 +2405,7 @@ pub async fn send_guest_pick_new_time(
     let mut actions = vec![EmailAction {
         label: "Pick a new time".to_string(),
         url: reschedule_url.to_string(),
-        color: "#d97706".to_string(),
+        color: "#1A3A4A".to_string(),
     }];
     if let Some(u) = cancel_url {
         actions.push(EmailAction {
@@ -2490,7 +2490,7 @@ pub async fn send_guest_reschedule_notification(
          {}\
          An updated calendar invite is attached.\n\
          {}{}\n\
-         \u{2014} calrs",
+         \u{2014} Cascade",
         details.guest_name,
         details.host_name,
         details.event_title,
@@ -2539,7 +2539,7 @@ pub async fn send_guest_reschedule_notification(
         actions.push(EmailAction {
             label: "Reschedule".to_string(),
             url: u.to_string(),
-            color: "#d97706".to_string(),
+            color: "#1A3A4A".to_string(),
         });
     }
     if let Some(u) = cancel_url {
@@ -2639,7 +2639,7 @@ pub async fn send_host_reschedule_request(
          Guest: {} <{}>\n\
          {}\n\n\
          {}\n\n\
-         \u{2014} calrs",
+         \u{2014} Cascade",
         details.guest_name,
         details.event_title,
         old_date_display,
@@ -2744,7 +2744,7 @@ pub async fn send_watcher_claim_notification(
          Assigned to: {}\n\
          {}\
          Claim this booking: {}\n\n\
-         \u{2014} calrs",
+         \u{2014} Cascade",
         details.event_title,
         details.date,
         time_display,
@@ -2791,13 +2791,13 @@ pub async fn send_watcher_claim_notification(
     let actions = vec![EmailAction {
         label: "Claim this booking".to_string(),
         url: claim_url.to_string(),
-        color: "#3b82f6".to_string(),
+        color: "#1A3A4A".to_string(),
     }];
 
     let html = render_html_email_with_actions(
         &format!("Hi {},", h(watcher_name)),
         "A new booking is available to claim. Click below to join as an attendee.",
-        "#3b82f6",
+        "#1A3A4A",
         &rows,
         Some("You can also claim from your dashboard."),
         &actions,
@@ -2839,7 +2839,7 @@ pub async fn send_claim_confirmation(
          Guest: {} <{}>\n\
          {}\
          A calendar invite has been sent.\n\n\
-         \u{2014} calrs",
+         \u{2014} Cascade",
         details.event_title,
         details.date,
         time_display,
@@ -3658,7 +3658,8 @@ mod tests {
         assert!(html.contains("Intro Call"));
         assert!(html.contains("2026-03-10"));
         assert!(html.contains("Calendar invite attached."));
-        assert!(html.contains("calrs")); // footer branding
+        assert!(html.contains("https://cascade.tax"));
+        assert!(html.contains("Cascade"));
     }
 
     #[test]
@@ -4643,7 +4644,7 @@ mod tests {
             actions.push(EmailAction {
                 label: "Reschedule".to_string(),
                 url: u.to_string(),
-                color: "#3b82f6".to_string(),
+                color: "#1A3A4A".to_string(),
             });
         }
         if let Some(u) = cancel_url {
@@ -4675,7 +4676,7 @@ mod tests {
             actions.push(EmailAction {
                 label: "Reschedule".to_string(),
                 url: u.to_string(),
-                color: "#3b82f6".to_string(),
+                color: "#1A3A4A".to_string(),
             });
         }
         if let Some(u) = cancel_url {
@@ -4969,7 +4970,7 @@ mod tests {
             ..Default::default()
         };
         let ics = generate_ics(&details, "PUBLISH");
-        assert!(ics.contains("PRODID:-//calrs//calrs//EN"));
+        assert!(ics.contains("PRODID:-//Cascade//Calendar//EN"));
         assert!(ics.contains("VERSION:2.0"));
     }
 
@@ -5180,7 +5181,7 @@ mod tests {
             ..Default::default()
         };
         let ics = generate_cancel_ics(&details);
-        assert!(ics.contains("PRODID:-//calrs//calrs//EN"));
+        assert!(ics.contains("PRODID:-//Cascade//Calendar//EN"));
         assert!(ics.contains("VERSION:2.0"));
     }
 
@@ -5205,18 +5206,18 @@ mod tests {
         let html = render_html_email_with_actions(
             "Hi,",
             "Click below.",
-            "#3b82f6",
+            "#1A3A4A",
             &[],
             None,
             &[EmailAction {
                 label: "Book now".to_string(),
                 url: "https://cal.rs/book".to_string(),
-                color: "#6366f1".to_string(),
+                color: "#1A3A4A".to_string(),
             }],
         );
         assert!(html.contains("Book now"));
         assert!(html.contains("https://cal.rs/book"));
-        assert!(html.contains("#6366f1"));
+        assert!(html.contains("#1A3A4A"));
     }
 
     #[test]
@@ -5319,7 +5320,7 @@ mod tests {
                 EmailAction {
                     label: "Reschedule".to_string(),
                     url: "https://cal.rs/reschedule/abc".to_string(),
-                    color: "#3b82f6".to_string(),
+                    color: "#1A3A4A".to_string(),
                 },
                 EmailAction {
                     label: "Cancel booking".to_string(),
@@ -5341,7 +5342,8 @@ mod tests {
         assert!(html.contains("https://cal.rs/reschedule/abc"));
         assert!(html.contains("https://cal.rs/cancel/def"));
         assert!(html.contains("#16a34a")); // accent
-        assert!(html.contains("calrs")); // footer branding
+        assert!(html.contains("https://cascade.tax"));
+        assert!(html.contains("Cascade"));
     }
 
     // --- build_multipart_body tests ---
@@ -5444,7 +5446,7 @@ mod tests {
             actions.push(EmailAction {
                 label: "Reschedule".to_string(),
                 url: u.to_string(),
-                color: "#3b82f6".to_string(),
+                color: "#1A3A4A".to_string(),
             });
         }
         if let Some(u) = cancel_url {
@@ -5818,7 +5820,7 @@ mod tests {
         let actions = vec![EmailAction {
             label: "Choose a time".to_string(),
             url: invite_url.to_string(),
-            color: "#6366f1".to_string(),
+            color: "#1A3A4A".to_string(),
         }];
 
         let html = render_html_email_with_actions(
@@ -5828,7 +5830,7 @@ mod tests {
                 h(host_name),
                 h(event_title)
             ),
-            "#6366f1",
+            "#1A3A4A",
             &rows,
             None,
             &actions,
@@ -5840,7 +5842,7 @@ mod tests {
         assert!(html.contains("2026-04-20"));
         assert!(html.contains("Choose a time"));
         assert!(html.contains(invite_url));
-        assert!(html.contains("#6366f1")); // indigo accent
+        assert!(html.contains("#1A3A4A")); // Cascade Ocean accent
     }
 
     #[test]
@@ -5911,7 +5913,7 @@ mod tests {
         let html = render_html_email_with_actions(
             &format!("Hi {},", h(&details.guest_name)),
             "Reminder: you have an upcoming booking.",
-            "#3b82f6",
+            "#1A3A4A",
             &[
                 EmailRow {
                     label: "Event".to_string(),
@@ -5927,7 +5929,7 @@ mod tests {
         );
 
         assert!(html.contains("Reminder"));
-        assert!(html.contains("#3b82f6")); // blue accent for reminders
+        assert!(html.contains("#1A3A4A")); // Cascade Ocean accent for reminders
         assert!(html.contains("Cancel booking"));
         assert!(html.contains("rem-tok"));
     }
@@ -5949,7 +5951,7 @@ mod tests {
         assert!(actions.is_empty());
 
         let html =
-            render_html_email_with_actions("Hi,", "Reminder.", "#3b82f6", &[], None, &actions);
+            render_html_email_with_actions("Hi,", "Reminder.", "#1A3A4A", &[], None, &actions);
         assert!(!html.contains("Cancel booking"));
     }
 
@@ -6017,7 +6019,7 @@ mod tests {
         let mut actions = vec![EmailAction {
             label: "Pick a new time".to_string(),
             url: reschedule_url.to_string(),
-            color: "#d97706".to_string(),
+            color: "#1A3A4A".to_string(),
         }];
         if let Some(u) = cancel_url {
             actions.push(EmailAction {
@@ -6229,10 +6231,12 @@ mod tests {
     }
 
     #[test]
-    fn html_email_has_calrs_footer_link() {
+    fn html_email_has_cascade_footer_link() {
         let html = render_html_email("Hi,", "Test", "#000", &[], None);
-        assert!(html.contains("https://cal.rs"));
-        assert!(html.contains("calrs"));
+        assert!(html.contains("https://cascade.tax"));
+        assert!(html.contains("Cascade"));
+        assert!(!html.contains("https://cal.rs"));
+        assert!(!html.contains(">calrs<"));
     }
 
     // --- Cancellation email body tests ---

@@ -272,7 +272,7 @@ async fn run_write_test(client: &CaldavClient, url: &str) {
     let start = Utc::now() + Duration::hours(24);
     let end = start + Duration::minutes(15);
     let ics = format!(
-        "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//calrs//probe//EN\r\nBEGIN:VEVENT\r\nUID:{}\r\nDTSTAMP:{}\r\nDTSTART:{}\r\nDTEND:{}\r\nSUMMARY:calrs write probe (safe to delete)\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
+        "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Cascade//Calendar//EN\r\nBEGIN:VEVENT\r\nUID:{}\r\nDTSTAMP:{}\r\nDTSTART:{}\r\nDTEND:{}\r\nSUMMARY:Cascade Calendar write test (safe to delete)\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
         uid,
         Utc::now().format("%Y%m%dT%H%M%SZ"),
         start.format("%Y%m%dT%H%M%SZ"),

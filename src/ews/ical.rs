@@ -56,7 +56,7 @@ pub fn synth_vcalendar(item: &EwsCalendarItem) -> Option<String> {
     let mut buf = String::new();
     buf.push_str("BEGIN:VCALENDAR\r\n");
     buf.push_str("VERSION:2.0\r\n");
-    buf.push_str("PRODID:-//calrs//ews-bridge//EN\r\n");
+    buf.push_str("PRODID:-//Cascade//Calendar//EN\r\n");
     buf.push_str("BEGIN:VEVENT\r\n");
     buf.push_str(&format!("UID:{uid}\r\n"));
     buf.push_str(&format!("DTSTAMP:{dtstamp}\r\n"));

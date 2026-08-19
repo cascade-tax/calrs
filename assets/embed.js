@@ -1,19 +1,23 @@
-/* calrs embed runtime — pasted into a host site and exposes window.Calrs.
+/* Cascade Calendar embed runtime — exposes window.CascadeCalendar.
  *
  * API:
- *   Calrs.inline({ selector, link, config })
- *   Calrs.floatingButton({ link, buttonText, buttonPosition, buttonColor, textColor, showIcon, config })
- *   Calrs.elementClick()
+ *   CascadeCalendar.inline({ selector, link, config })
+ *   CascadeCalendar.floatingButton({ link, buttonText, buttonPosition, buttonColor, textColor, showIcon, config })
+ *   CascadeCalendar.elementClick()
  *
- * Where `link` is a full URL to a calrs booking page (e.g.
+ * Where `link` is a full URL to a Cascade booking page (e.g.
  * "https://cal.example.com/u/alice/intro") and `config` is an object with
  * optional `layout` ("month" | "week" | "column"), `theme` ("auto" | "light"
  * | "dark"), and `brand` (hex color, with or without leading "#"). These end
  * up as query parameters on the iframe src and feed into the embed-mode
- * rendering on the calrs side.
+ * rendering on the booking-service side.
  */
 (function () {
-  if (window.Calrs) return;
+  if (window.CascadeCalendar || window.Calrs) {
+    window.CascadeCalendar = window.CascadeCalendar || window.Calrs;
+    window.Calrs = window.Calrs || window.CascadeCalendar;
+    return;
+  }
 
   function buildSrc(link, config) {
     if (!link) return 'about:blank';
@@ -124,7 +128,7 @@
     return svg;
   }
 
-  var Calrs = {
+  var CascadeCalendar = {
     inline: function (opts) {
       opts = opts || {};
       var target = typeof opts.selector === 'string' ? document.querySelector(opts.selector) : opts.selector;
@@ -173,22 +177,24 @@
       if (elementClickBound) return;
       elementClickBound = true;
       document.addEventListener('click', function (ev) {
-        var el = ev.target.closest('[data-calrs-link]');
+        var el = ev.target.closest('[data-cascade-calendar-link], [data-calrs-link]');
         if (!el) return;
         ev.preventDefault();
-        var raw = el.getAttribute('data-calrs-config');
+        var raw = el.getAttribute('data-cascade-calendar-config') || el.getAttribute('data-calrs-config');
         var cfg = {};
         if (raw) { try { cfg = JSON.parse(raw); } catch (e) {} }
-        openModal(el.getAttribute('data-calrs-link'), cfg);
+        openModal(el.getAttribute('data-cascade-calendar-link') || el.getAttribute('data-calrs-link'), cfg);
       });
     }
   };
 
-  window.Calrs = Calrs;
+  window.CascadeCalendar = CascadeCalendar;
+  // Backward compatibility for snippets copied before the Cascade rebrand.
+  window.Calrs = CascadeCalendar;
 
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', function () { Calrs.elementClick(); });
+    document.addEventListener('DOMContentLoaded', function () { CascadeCalendar.elementClick(); });
   } else {
-    Calrs.elementClick();
+    CascadeCalendar.elementClick();
   }
 })();

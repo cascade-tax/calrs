@@ -900,7 +900,7 @@
   var calDataEl = document.getElementById('calendar-data');
   if (!calDataEl) return;
   var calData;
-  try { calData = JSON.parse(calDataEl.textContent); } catch(e) { console.error('calrs: failed to parse calendar data', e); return; }
+  try { calData = JSON.parse(calDataEl.textContent); } catch(e) { console.error('Cascade Calendar: failed to parse calendar data', e); return; }
   var slotData = calData.slotData;
   var availableDates = calData.availableDates;
   var firstWeekday = calData.firstWeekday;
@@ -1632,7 +1632,7 @@
       if (currentView === 'week') buildWeekView();
       else if (currentView === 'column') buildColumnView();
     }).catch(function(e) {
-      console.error('calrs: deferred slot load failed', e);
+      console.error('Cascade Calendar: deferred slot load failed', e);
       var loader = document.getElementById('deferred-loader');
       if (loader) {
         loader.innerHTML = '<div style="color:var(--error-text);">Failed to load availability. Please refresh the page.</div>';

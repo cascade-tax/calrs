@@ -1,26 +1,26 @@
 <p align="center">
-  <img src="assets/calrs.png" alt="calrs logo" width="200">
+  <img src="assets/cascade-mark.png" alt="Cascade Calendar logo" width="200">
 </p>
 
-# calrs
+# Cascade Calendar
 
-[![CI](https://github.com/olivierlambert/calrs/actions/workflows/ci.yml/badge.svg)](https://github.com/olivierlambert/calrs/actions/workflows/ci.yml)
-[![codecov](https://codecov.io/gh/olivierlambert/calrs/graph/badge.svg)](https://codecov.io/gh/olivierlambert/calrs)
+[![CI](https://github.com/cascade-tax/calrs/actions/workflows/ci.yml/badge.svg?branch=cascade-main)](https://github.com/cascade-tax/calrs/actions/workflows/ci.yml)
 
-**Fast, self-hostable scheduling. Like Cal.com, but written in Rust.**
+**Cascade's self-hosted scheduling service.**
 
 <p align="center">
-  <a href="https://cal.rs">Website</a> &middot;
-  <a href="https://cal.rs/docs/">Documentation</a> &middot;
-  <a href="https://github.com/olivierlambert/calrs/releases">Releases</a>
+  <a href="https://calendar.cascade.tax">Calendar</a> &middot;
+  <a href="https://cascade.tax">Cascade</a> &middot;
+  <a href="CASCADE.md">Fork notes</a>
 </p>
 
-> _"Your time, your stack."_
-
-`calrs` is an open-source scheduling platform built in Rust. Connect your CalDAV calendar (Nextcloud, Fastmail, BlueMind, iCloud...), define bookable meeting types, and share a link. No Node.js, no PostgreSQL, no subscription.
+Cascade Calendar is Cascade's maintained deployment of the open-source `calrs`
+scheduling platform. Product branding and installation-specific behavior are
+documented in [CASCADE.md](CASCADE.md); the `calrs` binary, configuration names,
+and other compatibility identifiers retain their upstream names.
 
 <p align="center">
-  <img src="assets/screenshot.png" alt="calrs dashboard" width="720">
+  <img src="assets/screenshot.png" alt="Cascade Calendar dashboard" width="720">
 </p>
 
 ## Star History

@@ -170,7 +170,7 @@ action-error-page-title = Erreur d'action sur la réservation
 
 # Host-initiated reschedule (booking_host_reschedule.html)
 
-host-resched-page-title = Reprogrammer la réservation — calrs
+host-resched-page-title = Reprogrammer la réservation — Cascade
 host-resched-heading = Reprogrammer la réservation
 host-resched-subtitle = Cela enverra à { $guest } un e-mail lui demandant de choisir un nouveau créneau.
 host-resched-currently = Actuellement :
@@ -234,7 +234,7 @@ common-format-long-date = { $weekday } { $day } { $month } { $year }
 
 # Email signatures and shared bits (src/email.rs)
 
-email-signature = — calrs
+email-signature = — Cascade
 email-action-reschedule = Reprogrammer
 email-action-cancel-booking = Annuler la réservation
 

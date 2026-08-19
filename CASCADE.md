@@ -12,6 +12,10 @@ branch is based on the production release pinned by
 - Month and week views, plus weekly booking-limit windows, start on Sunday.
 - The custom theme recognizes Cascade's application palette and uses the exact
   light and dark design-system colors.
+- Browser titles, dashboard branding, generated embed snippets, calendar test
+  events, and notification emails use Cascade naming. The bundled favicon and
+  sidebar mark are exact copies of the Cascade marketing-site assets. Internal
+  compatibility identifiers retain their upstream names.
 - Upstream dark-theme fix `fd34a1a` is carried until it is included in the next
   production release we adopt.
 

@@ -1162,6 +1162,12 @@ fn is_embeddable_path(path: &str) -> bool {
         "logo",
         "accent.css",
         "brand-logo",
+        "favicon.ico",
+        "favicon.svg",
+        "favicon-192x192.png",
+        "favicon-512x512.png",
+        "apple-touch-icon.png",
+        "site.webmanifest",
         "embed.js",
         "fonts",
         "t",
@@ -1498,6 +1504,12 @@ pub async fn create_router(pool: SqlitePool, data_dir: PathBuf, secret_key: [u8;
         .route("/logo", get(serve_logo))
         .route("/accent.css", get(serve_accent_css))
         .route("/brand-logo", get(serve_brand_logo))
+        .route("/favicon.ico", get(serve_favicon_ico))
+        .route("/favicon.svg", get(serve_favicon_svg))
+        .route("/favicon-192x192.png", get(serve_favicon_192))
+        .route("/favicon-512x512.png", get(serve_favicon_512))
+        .route("/apple-touch-icon.png", get(serve_apple_touch_icon))
+        .route("/site.webmanifest", get(serve_site_webmanifest))
         .route("/embed.js", get(serve_embed_js))
         .route("/fonts/inter-latin.woff2", get(serve_font_inter_latin))
         .route(
@@ -16942,11 +16954,11 @@ async fn admin_test_write_resource(
     }
     // Full PUT / verify / DELETE / verify cycle with a clearly-labeled
     // temporary event placed 24h out.
-    let test_uid = format!("calrs-write-test-{}", uuid::Uuid::new_v4());
+    let test_uid = format!("cascade-calendar-write-test-{}", uuid::Uuid::new_v4());
     let start = chrono::Utc::now() + Duration::hours(24);
     let end = start + Duration::minutes(15);
     let ics = format!(
-        "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//calrs//write-test//EN\r\nBEGIN:VEVENT\r\nUID:{}\r\nDTSTAMP:{}\r\nDTSTART:{}\r\nDTEND:{}\r\nSUMMARY:calrs write test (safe to delete)\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
+        "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Cascade//Calendar//EN\r\nBEGIN:VEVENT\r\nUID:{}\r\nDTSTAMP:{}\r\nDTSTART:{}\r\nDTEND:{}\r\nSUMMARY:Cascade Calendar write test (safe to delete)\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n",
         test_uid,
         chrono::Utc::now().format("%Y%m%dT%H%M%SZ"),
         start.format("%Y%m%dT%H%M%SZ"),
@@ -17319,8 +17331,8 @@ async fn google_connect(
     let base_url = crate::settings::base_url().unwrap_or_default();
     if base_url.is_empty() {
         return Html(
-            "The public base URL is not configured. Set it via the CALRS_BASE_URL environment \
-             variable or in the admin panel under System settings before using OAuth2 flows."
+            "The public base URL is not configured. Set it in the deployment environment or in \
+             the admin panel under System settings before using OAuth2 flows."
                 .to_string(),
         )
         .into_response();
@@ -18544,14 +18556,50 @@ async fn serve_accent_css(State(state): State<Arc<AppState>>) -> impl IntoRespon
 }
 
 async fn serve_brand_logo() -> impl IntoResponse {
-    static BRAND_LOGO: &[u8] = include_bytes!("../../assets/calrs.png");
+    static BRAND_LOGO: &[u8] = include_bytes!("../../assets/cascade-mark.png");
+    embedded_asset_response(BRAND_LOGO, "image/png")
+}
+
+fn embedded_asset_response(
+    bytes: &'static [u8],
+    content_type: &'static str,
+) -> axum::response::Response {
     axum::response::Response::builder()
         .status(200)
-        .header("Content-Type", "image/png")
-        .header("Cache-Control", "public, max-age=86400")
-        .body(axum::body::Body::from(BRAND_LOGO))
+        .header("Content-Type", content_type)
+        .header("Cache-Control", "public, max-age=31536000, immutable")
+        .body(axum::body::Body::from(bytes))
         .unwrap_or_else(|_| axum::response::Response::new(axum::body::Body::empty()))
-        .into_response()
+}
+
+async fn serve_favicon_ico() -> impl IntoResponse {
+    static ASSET: &[u8] = include_bytes!("../../assets/favicon.ico");
+    embedded_asset_response(ASSET, "image/x-icon")
+}
+
+async fn serve_favicon_svg() -> impl IntoResponse {
+    static ASSET: &[u8] = include_bytes!("../../assets/favicon.svg");
+    embedded_asset_response(ASSET, "image/svg+xml")
+}
+
+async fn serve_favicon_192() -> impl IntoResponse {
+    static ASSET: &[u8] = include_bytes!("../../assets/favicon-192x192.png");
+    embedded_asset_response(ASSET, "image/png")
+}
+
+async fn serve_favicon_512() -> impl IntoResponse {
+    static ASSET: &[u8] = include_bytes!("../../assets/favicon-512x512.png");
+    embedded_asset_response(ASSET, "image/png")
+}
+
+async fn serve_apple_touch_icon() -> impl IntoResponse {
+    static ASSET: &[u8] = include_bytes!("../../assets/apple-touch-icon.png");
+    embedded_asset_response(ASSET, "image/png")
+}
+
+async fn serve_site_webmanifest() -> impl IntoResponse {
+    static ASSET: &[u8] = include_bytes!("../../assets/site.webmanifest");
+    embedded_asset_response(ASSET, "application/manifest+json")
 }
 
 /// Serves the embed runtime that consumers paste into their own sites. It's
@@ -26836,6 +26884,8 @@ mod tests {
         assert!(!is_embeddable_path("/"));
         assert!(!is_embeddable_path("/embed.js"));
         assert!(!is_embeddable_path("/accent.css"));
+        assert!(!is_embeddable_path("/favicon.svg"));
+        assert!(!is_embeddable_path("/site.webmanifest"));
         assert!(!is_embeddable_path("/avatar/123"));
         assert!(!is_embeddable_path("/booking/approve/tok"));
     }
@@ -30737,6 +30787,105 @@ mod tests {
         // 200 if logo exists, or 404/redirect if not
         let status = response.status().as_u16();
         assert!(status == 200 || status == 404 || status == 303);
+    }
+
+    #[tokio::test]
+    async fn cascade_favicon_is_served() {
+        let (app, _, _, _) = setup_test_app().await;
+        let response = app.oneshot(get("/favicon.svg")).await.unwrap();
+        assert_eq!(response.status(), 200);
+        assert_eq!(
+            response.headers().get("content-type").unwrap(),
+            "image/svg+xml"
+        );
+        let body = body_string(response).await;
+        assert!(body.contains("aria-label=\"Cascade\""));
+        assert!(body.contains("#1A3A4A"));
+        assert!(!body.contains('🦀'));
+    }
+
+    #[test]
+    fn cascade_templates_do_not_expose_upstream_branding() {
+        const FORBIDDEN: &[&str] = &[
+            " — calrs",
+            ">calrs<",
+            "calrs account",
+            "calrs can",
+            "calrs will",
+            "calrs builds",
+            "calrs POSTs",
+            "olivierlambert/calrs/releases",
+            "🦀",
+        ];
+
+        fn check_dir(path: &std::path::Path) {
+            for entry in std::fs::read_dir(path).expect("template directory is readable") {
+                let entry = entry.expect("template entry is readable");
+                let path = entry.path();
+                if path.is_dir() {
+                    check_dir(&path);
+                } else if path.extension().and_then(|ext| ext.to_str()) == Some("html") {
+                    let source = std::fs::read_to_string(&path).expect("template is readable");
+                    for phrase in FORBIDDEN {
+                        assert!(
+                            !source.contains(phrase),
+                            "{} exposes upstream branding through {:?}",
+                            path.display(),
+                            phrase
+                        );
+                    }
+                }
+            }
+        }
+
+        let base = include_str!("../../templates/base.html");
+        assert!(base.contains("<title>{% block title %}Cascade{% endblock %}</title>"));
+        assert!(base.contains("href=\"/favicon.svg\""));
+        assert!(base.contains("href=\"/apple-touch-icon.png\""));
+        assert!(base.contains("href=\"/site.webmanifest\""));
+
+        let landing = include_str!("../../index.html");
+        assert!(landing.contains("<title>Cascade Calendar</title>"));
+        assert!(landing.contains("https://calendar.cascade.tax/"));
+        assert!(!landing.to_ascii_lowercase().contains("cal.rs"));
+        assert!(!landing.to_ascii_lowercase().contains("calrs"));
+        assert!(!landing.contains('🦀'));
+
+        let book_config = include_str!("../../docs/book.toml");
+        assert!(book_config.contains("title = \"Cascade Calendar Documentation\""));
+
+        for entry in std::fs::read_dir("docs").expect("rendered docs directory is readable") {
+            let entry = entry.expect("rendered docs entry is readable");
+            let path = entry.path();
+            if path.extension().and_then(|ext| ext.to_str()) == Some("html") {
+                let source = std::fs::read_to_string(&path).expect("rendered docs are readable");
+                if !source.contains("<title>") {
+                    continue;
+                }
+                assert!(
+                    source.contains("Cascade Calendar Documentation"),
+                    "{} has stale documentation branding",
+                    path.display()
+                );
+                assert!(!source.contains("calrs Documentation"));
+                assert!(source.contains("favicon-5a54c015.svg"));
+                assert!(source.contains("favicon-5580ce5c.png"));
+            }
+        }
+        assert_eq!(
+            include_bytes!("../../docs/favicon-5a54c015.svg"),
+            include_bytes!("../../assets/favicon.svg")
+        );
+        assert_eq!(
+            include_bytes!("../../docs/favicon-5580ce5c.png"),
+            include_bytes!("../../assets/favicon-192x192.png")
+        );
+
+        let readme = include_str!("../../README.md");
+        assert!(!readme.contains("assets/calrs.png"));
+        assert!(readme.contains("assets/cascade-mark.png"));
+
+        check_dir(std::path::Path::new("templates"));
     }
 
     // --- Legacy routes ---
