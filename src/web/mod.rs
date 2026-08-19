@@ -7409,12 +7409,10 @@ async fn set_write_calendar(
     };
 
     if !crate::providers::factory::supports_write_back(&provider_type) {
-        let _ = sqlx::query(
-            "UPDATE caldav_sources SET write_calendar_href = NULL WHERE id = ?",
-        )
-        .bind(&source_id)
-        .execute(&state.pool)
-        .await;
+        let _ = sqlx::query("UPDATE caldav_sources SET write_calendar_href = NULL WHERE id = ?")
+            .bind(&source_id)
+            .execute(&state.pool)
+            .await;
         return Redirect::to("/dashboard/sources").into_response();
     }
 
