@@ -4,6 +4,7 @@
 *.db-wal
 .env
 .claude/
+.discord-media/
 docs/book/
 tools/node_modules/
 tools/package-lock.json
