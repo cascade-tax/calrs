@@ -76,11 +76,7 @@ fn rrule_until_utc(vevent: &str, rrule: &str) -> Option<DateTime<Utc>> {
     }
 }
 
-fn recurring_event_has_future_occurrence(
-    vevent: &str,
-    rrule: &str,
-    now: DateTime<Utc>,
-) -> bool {
+fn recurring_event_has_future_occurrence(vevent: &str, rrule: &str, now: DateTime<Utc>) -> bool {
     // Cal.rs currently expands these frequencies. Keep unknown frequencies so
     // we fail open for availability rather than silently dropping a series.
     let supported = ["FREQ=DAILY", "FREQ=WEEKLY", "FREQ=MONTHLY"]
