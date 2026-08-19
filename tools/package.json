@@ -1,0 +1,10 @@
+{
+  "name": "calrs-tools",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Local dev tooling for calrs (screenshot harness). Not published, not part of the Rust build.",
+  "dependencies": {
+    "puppeteer-core": "^24.10.0"
+  }
+}
