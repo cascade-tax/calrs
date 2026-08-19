@@ -613,3 +613,11 @@ When adding a new subcommand:
 2. Add `pub mod yourcmd;` to `src/commands/mod.rs`.
 3. Add the variant to the `Commands` enum in `src/main.rs`.
 4. Wire it in the `match` block in `main()`.
+
+---
+
+## Durable memory
+
+| Area | Reference |
+|---|---|
+| Cascade-branded production branch, design pass, deployment, and error-response follow-up | `memory/topics/cascade-production.md` |
