@@ -272,13 +272,13 @@ calrs connects to Microsoft 365 and Google through OAuth2, to on-prem Exchange t
 
 ### Microsoft 365 / Office 365
 
-Register a web application in Microsoft Entra, add delegated `User.Read` and `Calendars.ReadWrite` permissions, create a client secret, and register this redirect URI:
+Register a web application in Microsoft Entra, add delegated `User.Read` and `Calendars.Read` permissions, create a client secret, and register this redirect URI:
 
 ```text
 https://your-cascade-host/dashboard/sources/microsoft/callback
 ```
 
-Enter the application ID, secret, and tenant in the admin panel. Use `organizations` to accept any Microsoft work or school account, or use one tenant ID/domain. Users can then choose **Microsoft 365 / Office 365** on the Add calendar page. The CLI equivalent is `calrs source add-microsoft`.
+Enter the application ID, secret, and tenant in the admin panel. Use `organizations` to accept any Microsoft work or school account, or use one tenant ID/domain. Users can then choose **Microsoft 365 / Office 365** on the Add calendar page. Microsoft sources are availability-only and never receive booking write-back. The CLI equivalent is `calrs source add-microsoft`.
 
 The CLI also requires `http://localhost:8400/callback` as a second web redirect URI in the Entra application.
 

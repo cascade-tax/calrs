@@ -69,7 +69,7 @@
           <form method="post" action="/dashboard/sources/{{ s.id }}/remove" class="remove-form" style="display: none;"></form>
         </div>
       </div>
-      {% if s.calendars %}
+      {% if s.calendars and s.supports_write_back %}
         {% if not s.write_calendar_href %}
         <div class="notice notice-warning" style="margin: 0.75rem 0 0;">
           <svg class="ic" aria-hidden="true"><use href="#i-alert"/></svg>
@@ -85,6 +85,11 @@
             {% endfor %}
           </select>
         </form>
+      {% elif s.calendars %}
+        <div class="notice notice-info" style="margin: 0.75rem 0 0;">
+          <svg class="ic" aria-hidden="true"><use href="#i-info"/></svg>
+          <span>Read-only source. Cascade uses these events for availability and never writes bookings back to Microsoft.</span>
+        </div>
       {% endif %}
     </div>
     {% endfor %}

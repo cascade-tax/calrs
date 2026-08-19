@@ -1,6 +1,6 @@
 # Microsoft 365 Calendar
 
-calrs connects to Office 365 calendars through Microsoft Graph using delegated OAuth2 access. Each person authorizes their own work or school account. Access and refresh tokens are encrypted at rest, and confirmed bookings can be written back to a selected Microsoft calendar.
+calrs connects to Office 365 calendars through Microsoft Graph using delegated OAuth2 access. Each person authorizes their own work or school account. Access and refresh tokens are encrypted at rest. Microsoft sources are read-only and are used only to calculate availability.
 
 The older **Microsoft Exchange (EWS)** source remains available for on-prem Exchange. Microsoft 365 should use this Graph integration.
 
@@ -23,7 +23,7 @@ The older **Microsoft Exchange (EWS)** source remains available for on-prem Exch
 4. Under **API permissions**, add these delegated Microsoft Graph permissions:
 
    - `User.Read` — identifies the Microsoft account that authorized the connection.
-   - `Calendars.ReadWrite` — lists calendars, reads busy events, and creates or deletes Cascade booking events.
+   - `Calendars.Read` — lists calendars and reads events for availability. Cascade cannot create, edit, or delete Microsoft calendar events.
 
 5. Under **Certificates & secrets**, create a client secret and copy its value before leaving the page.
 
@@ -41,7 +41,7 @@ The client secret is encrypted with the same AES-256-GCM key used for other stor
 
 ## Connect a calendar
 
-From **Calendar sources → Add source**, choose the **Microsoft 365 (Graph)** backend and the **Microsoft 365 / Office 365** preset, then select **Connect with Microsoft**. After consent, calrs discovers the calendars available to that account, syncs their events, and asks which calendar should receive confirmed bookings.
+From **Calendar sources → Add source**, choose the **Microsoft 365 (Graph)** backend and the **Microsoft 365 / Office 365** preset, then select **Connect with Microsoft**. After consent, calrs discovers the calendars available to that account and syncs their events for availability checks.
 
 The CLI flow is:
 
@@ -52,11 +52,11 @@ calrs sync
 
 The CLI starts a temporary localhost callback and opens the Microsoft authorization page.
 
-## Sync and write-back behavior
+## Sync behavior
 
 - Sync reads a bounded calendar view from 90 days in the past through roughly two years in the future. Microsoft Graph expands recurring events and exceptions inside that window.
 - Events marked free remain non-blocking; busy events block booking slots.
-- Booking write-back creates an appointment without Microsoft-generated attendee invitations because Cascade sends its own booking email. A private extended property ties the Graph event to the Cascade booking UID for reliable update and cancellation.
+- Microsoft sources cannot be selected as write-back targets. Confirmed bookings remain in Cascade unless another write-enabled calendar source is configured.
 - Access tokens refresh automatically. If consent is revoked, the source test and sync surfaces report the authorization failure and the user can remove and reconnect the source.
 
 Microsoft Graph endpoints and permissions are documented in Microsoft's [delegated access guide](https://learn.microsoft.com/graph/auth-v2-user), [calendar overview](https://learn.microsoft.com/graph/api/resources/calendar-overview), and [calendar view API](https://learn.microsoft.com/graph/api/user-list-calendarview).

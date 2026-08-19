@@ -14,7 +14,7 @@ use crate::utils::{extract_vevent_field, extract_vevent_tzid};
 
 pub const API_BASE: &str = "https://graph.microsoft.com/v1.0";
 const LOGIN_BASE: &str = "https://login.microsoftonline.com";
-const SCOPES: &str = "openid profile email offline_access User.Read Calendars.ReadWrite";
+const SCOPES: &str = "openid profile email offline_access User.Read Calendars.Read";
 const CALRS_UID_PROPERTY: &str =
     "String {4c36e9a0-4348-4fb8-a2d2-705e42aafb7d} Name CalrsBookingUid";
 const MAX_PAGES: usize = 1000;
@@ -658,9 +658,11 @@ mod tests {
             query.get("state").map(|v| v.as_ref()),
             Some("state with & symbols")
         );
-        assert!(query.get("scope").is_some_and(
-            |scope| scope.contains("Calendars.ReadWrite") && scope.contains("offline_access")
-        ));
+        let scope = query.get("scope").expect("scope query parameter");
+        let scopes: std::collections::HashSet<_> = scope.split_whitespace().collect();
+        assert!(scopes.contains("Calendars.Read"));
+        assert!(scopes.contains("offline_access"));
+        assert!(!scopes.iter().any(|scope| scope.contains("ReadWrite")));
     }
 
     #[test]

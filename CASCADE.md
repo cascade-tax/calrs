@@ -16,6 +16,8 @@ branch is based on the production release pinned by
   events, and notification emails use Cascade naming. The bundled favicon and
   sidebar mark are exact copies of the Cascade marketing-site assets. Internal
   compatibility identifiers retain their upstream names.
+- Microsoft 365 connections request delegated read-only calendar access and
+  cannot be selected as booking write-back targets.
 - Upstream dark-theme fix `fd34a1a` is carried until it is included in the next
   production release we adopt.
 

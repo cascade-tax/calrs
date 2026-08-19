@@ -2995,6 +2995,7 @@ async fn dashboard_sources(
                     auth_type => auth_type,
                     provider_type => provider_type,
                     provider_label => crate::providers::factory::label(provider_type),
+                    supports_write_back => crate::providers::factory::supports_write_back(provider_type),
                     calendars => cals,
                 }
             },
@@ -7248,7 +7249,10 @@ async fn sync_source(
             .unwrap_or(None)
             .flatten();
 
-    if write_href.is_none() && calendar_count > 0 {
+    if crate::providers::factory::supports_write_back(&provider_type)
+        && write_href.is_none()
+        && calendar_count > 0
+    {
         let joined_messages = messages.join("\n");
         let encoded_messages = urlencoding::encode(&joined_messages);
         return Redirect::to(&format!(
@@ -7304,8 +7308,8 @@ async fn setup_write_calendar(
     let user = &auth_user.user;
 
     // Fetch source name and verify ownership
-    let source: Option<(String, String)> = sqlx::query_as(
-        "SELECT cs.id, cs.name FROM caldav_sources cs
+    let source: Option<(String, String, String)> = sqlx::query_as(
+        "SELECT cs.id, cs.name, cs.provider_type FROM caldav_sources cs
          JOIN accounts a ON a.id = cs.account_id
          WHERE cs.id = ? AND a.user_id = ?",
     )
@@ -7315,10 +7319,14 @@ async fn setup_write_calendar(
     .await
     .unwrap_or(None);
 
-    let (_sid, source_name) = match source {
+    let (_sid, source_name, provider_type) = match source {
         Some(s) => s,
         None => return Redirect::to("/dashboard/sources").into_response(),
     };
+
+    if !crate::providers::factory::supports_write_back(&provider_type) {
+        return Redirect::to("/dashboard/sources").into_response();
+    }
 
     // Get calendars for this source, sorted by event count (most events first)
     let calendars: Vec<(String, Option<String>, Option<String>, i64)> = sqlx::query_as(
@@ -7385,8 +7393,8 @@ async fn set_write_calendar(
     let user = &auth_user.user;
 
     // Verify source belongs to this user
-    let owned: Option<(String,)> = sqlx::query_as(
-        "SELECT cs.id FROM caldav_sources cs
+    let owned: Option<(String, String)> = sqlx::query_as(
+        "SELECT cs.id, cs.provider_type FROM caldav_sources cs
          JOIN accounts a ON a.id = cs.account_id
          WHERE cs.id = ? AND a.user_id = ?",
     )
@@ -7396,7 +7404,17 @@ async fn set_write_calendar(
     .await
     .unwrap_or(None);
 
-    if owned.is_none() {
+    let Some((_id, provider_type)) = owned else {
+        return Redirect::to("/dashboard/sources").into_response();
+    };
+
+    if !crate::providers::factory::supports_write_back(&provider_type) {
+        let _ = sqlx::query(
+            "UPDATE caldav_sources SET write_calendar_href = NULL WHERE id = ?",
+        )
+        .bind(&source_id)
+        .execute(&state.pool)
+        .await;
         return Redirect::to("/dashboard/sources").into_response();
     }
 
@@ -18457,7 +18475,7 @@ async fn microsoft_callback(
         return internal_error_response("save Microsoft calendar source", &e);
     }
 
-    let (_, calendar_count) = run_sync_for_source(
+    let _ = run_sync_for_source(
         &state.pool,
         &state.secret_key,
         &source_id,
@@ -18486,12 +18504,7 @@ async fn microsoft_callback(
             .parse()
             .unwrap(),
     );
-    let redirect = if calendar_count > 0 {
-        Redirect::to(&format!("/dashboard/sources/{source_id}/setup-write"))
-    } else {
-        Redirect::to("/dashboard/sources")
-    };
-    (headers, redirect).into_response()
+    (headers, Redirect::to("/dashboard/sources")).into_response()
 }
 
 // --- Captcha settings ---

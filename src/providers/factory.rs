@@ -120,3 +120,24 @@ pub fn label(provider_type: &str) -> &'static str {
         _ => "Unknown",
     }
 }
+
+/// Whether a source can be selected as a booking write-back target.
+///
+/// Microsoft Graph is intentionally read-only: its OAuth grant requests
+/// `Calendars.Read`, so exposing a write target would create a configuration
+/// that can never succeed.
+pub fn supports_write_back(provider_type: &str) -> bool {
+    provider_type != kinds::MICROSOFT_GRAPH
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn microsoft_graph_is_read_only() {
+        assert!(!supports_write_back(kinds::MICROSOFT_GRAPH));
+        assert!(supports_write_back(kinds::CALDAV));
+        assert!(supports_write_back(kinds::EWS));
+    }
+}
