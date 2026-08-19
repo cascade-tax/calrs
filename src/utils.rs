@@ -421,7 +421,10 @@ END:VCALENDAR";
         ];
         for (windows, iana) in cases {
             let vevent = format!("DTSTART;TZID={windows}:20260819T090000");
-            assert_eq!(extract_vevent_tzid(&vevent, "DTSTART").as_deref(), Some(iana));
+            assert_eq!(
+                extract_vevent_tzid(&vevent, "DTSTART").as_deref(),
+                Some(iana)
+            );
         }
     }
 

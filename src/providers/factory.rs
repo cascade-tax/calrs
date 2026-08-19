@@ -39,9 +39,9 @@ pub fn build_provider(
         kinds::MICROSOFT_GRAPH => Ok(Box::new(crate::microsoft_graph::GraphProvider::new(
             password,
         ))),
-        kinds::PUBLISHED_ICS => Ok(Box::new(
-            super::published_ics::PublishedIcsProvider::new(password),
-        )),
+        kinds::PUBLISHED_ICS => Ok(Box::new(super::published_ics::PublishedIcsProvider::new(
+            password,
+        ))),
         other => bail!("Unknown calendar provider type: '{}'", other),
     }
 }
@@ -115,9 +115,7 @@ pub async fn build_provider_for_source(
 pub fn validate_url(provider_type: &str, url: &str) -> Result<()> {
     match provider_type {
         kinds::CALDAV | kinds::EWS => crate::caldav::validate_caldav_url(url),
-        kinds::PUBLISHED_ICS => {
-            super::published_ics::validate_subscription_url(url).map(|_| ())
-        }
+        kinds::PUBLISHED_ICS => super::published_ics::validate_subscription_url(url).map(|_| ()),
         kinds::MICROSOFT_GRAPH if url == crate::microsoft_graph::API_BASE => Ok(()),
         kinds::MICROSOFT_GRAPH => bail!("Microsoft Graph API URL is not configurable"),
         other => bail!("Unknown calendar provider type: '{}'", other),
@@ -141,10 +139,7 @@ pub fn label(provider_type: &str) -> &'static str {
 /// `Calendars.Read`, so exposing a write target would create a configuration
 /// that can never succeed.
 pub fn supports_write_back(provider_type: &str) -> bool {
-    !matches!(
-        provider_type,
-        kinds::MICROSOFT_GRAPH | kinds::PUBLISHED_ICS
-    )
+    !matches!(provider_type, kinds::MICROSOFT_GRAPH | kinds::PUBLISHED_ICS)
 }
 
 #[cfg(test)]

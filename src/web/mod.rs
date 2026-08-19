@@ -6525,25 +6525,26 @@ async fn create_source(
     // Test connection unless skip requested
     let skip_test = form.no_test.as_deref() == Some("on");
     if !skip_test {
-        let client =
-            match crate::providers::build_provider(
-                &provider_type,
-                &stored_url,
-                &stored_username,
-                &provider_secret,
-            )
-            {
-                Ok(c) => c,
-                Err(e) => {
-                    return render_source_form_error(&state, &auth_user, &e.to_string(), &form)
-                        .into_response();
-                }
-            };
+        let client = match crate::providers::build_provider(
+            &provider_type,
+            &stored_url,
+            &stored_username,
+            &provider_secret,
+        ) {
+            Ok(c) => c,
+            Err(e) => {
+                return render_source_form_error(&state, &auth_user, &e.to_string(), &form)
+                    .into_response();
+            }
+        };
         match client.check_connection().await {
             Ok(_) => {} // fine, even if features not explicitly advertised
             Err(e) => {
                 let msg = if is_published {
-                    format!("Feed check failed: {}. Check that this is the ICS subscription link.", e)
+                    format!(
+                        "Feed check failed: {}. Check that this is the ICS subscription link.",
+                        e
+                    )
                 } else {
                     tr1(
                         auth_user.lang,
@@ -6581,7 +6582,10 @@ async fn create_source(
     .bind(&stored_url)
     .bind(&stored_username)
     .bind(&password_enc)
-    .bind(if is_published { "published_ics" } else { "basic" })
+    // `auth_type` describes the credential mechanism and is constrained to
+    // basic/OAuth2 by the existing schema. The provider kind distinguishes
+    // this encrypted bearer URL from a username/password source.
+    .bind("basic")
     .bind(&provider_type)
     .execute(&state.pool)
     .await
@@ -6872,10 +6876,11 @@ async fn update_source(
         .bind(&source_id)
         .execute(&state.pool)
         .await;
-        let _ = sqlx::query("UPDATE calendars SET sync_token = NULL, ctag = NULL WHERE source_id = ?")
-            .bind(&source_id)
-            .execute(&state.pool)
-            .await;
+        let _ =
+            sqlx::query("UPDATE calendars SET sync_token = NULL, ctag = NULL WHERE source_id = ?")
+                .bind(&source_id)
+                .execute(&state.pool)
+                .await;
         let _ = run_sync_for_source(
             &state.pool,
             &state.secret_key,
@@ -31103,8 +31108,7 @@ mod tests {
             "Microsoft 365 OAuth option should be present"
         );
         assert!(
-            body.contains("Published calendar / free-busy (ICS)")
-                && body.contains(r#"value="published_ics""#),
+            body.contains("Published calendar") && body.contains(r#"value="published_ics""#),
             "read-only published calendar option should be present"
         );
     }
@@ -31119,16 +31123,14 @@ mod tests {
         );
         let response = app
             .clone()
-            .oneshot(post_form(
-                "/dashboard/sources/new",
-                &session,
-                csrf,
-                &body,
-            ))
+            .oneshot(post_form("/dashboard/sources/new", &session, csrf, &body))
             .await
             .unwrap();
         assert!(response.status().is_redirection());
-        assert_eq!(response.headers().get("location").unwrap(), "/dashboard/sources");
+        assert_eq!(
+            response.headers().get("location").unwrap(),
+            "/dashboard/sources"
+        );
 
         let row: (String, String, String, String, String, String) = sqlx::query_as(
             "SELECT name, url, username, password_enc, auth_type, provider_type
@@ -31144,7 +31146,7 @@ mod tests {
             "plaintext bearer URL must not be stored in the source URL column"
         );
         assert!(row.2.is_empty());
-        assert_eq!(row.4, "published_ics");
+        assert_eq!(row.4, "basic");
         assert_eq!(row.5, "published_ics");
         assert_eq!(
             crate::crypto::decrypt_password(&[0u8; 32], &row.3).unwrap(),

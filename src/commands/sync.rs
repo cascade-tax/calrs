@@ -1792,9 +1792,7 @@ mod tests {
             Ok(true)
         }
 
-        async fn list_calendars(
-            &self,
-        ) -> anyhow::Result<Vec<crate::providers::RemoteCalendar>> {
+        async fn list_calendars(&self) -> anyhow::Result<Vec<crate::providers::RemoteCalendar>> {
             Ok(vec![crate::providers::RemoteCalendar {
                 id: "published-ics".to_string(),
                 display_name: Some("Published calendar".to_string()),
@@ -1839,11 +1837,7 @@ mod tests {
             anyhow::bail!("read-only")
         }
 
-        async fn delete_event(
-            &self,
-            _calendar_id: &str,
-            _uid: &str,
-        ) -> anyhow::Result<()> {
+        async fn delete_event(&self, _calendar_id: &str, _uid: &str) -> anyhow::Result<()> {
             anyhow::bail!("read-only")
         }
     }
@@ -1864,12 +1858,11 @@ mod tests {
             .await
             .unwrap();
 
-        let rows: Vec<(String, Option<String>, Option<String>)> = sqlx::query_as(
-            "SELECT uid, timezone, transp FROM events ORDER BY uid",
-        )
-        .fetch_all(&pool)
-        .await
-        .unwrap();
+        let rows: Vec<(String, Option<String>, Option<String>)> =
+            sqlx::query_as("SELECT uid, timezone, transp FROM events ORDER BY uid")
+                .fetch_all(&pool)
+                .await
+                .unwrap();
         assert_eq!(
             rows,
             vec![

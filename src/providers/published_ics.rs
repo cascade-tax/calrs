@@ -48,7 +48,9 @@ pub fn normalize_subscription_url(input: &str) -> Result<String> {
         outer
             .query_pairs()
             .find_map(|(key, value)| (key == "url").then(|| value.into_owned()))
-            .ok_or_else(|| anyhow::anyhow!("Outlook subscription link is missing its calendar URL"))?
+            .ok_or_else(|| {
+                anyhow::anyhow!("Outlook subscription link is missing its calendar URL")
+            })?
     } else {
         trimmed.to_string()
     };
@@ -112,7 +114,11 @@ impl CalendarProvider for PublishedIcsProvider {
         self.fetch_events(calendar_id).await
     }
 
-    async fn sync_delta(&self, _calendar_id: &str, _sync_state: Option<&str>) -> Result<DeltaResult> {
+    async fn sync_delta(
+        &self,
+        _calendar_id: &str,
+        _sync_state: Option<&str>,
+    ) -> Result<DeltaResult> {
         Ok(DeltaResult::default())
     }
 
