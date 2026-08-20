@@ -48,6 +48,8 @@ calrs/
 ├── CLAUDE.md                     ← you are here
 ├── README.md
 ├── .gitignore
+├── assets/
+│   └── intl-tel-input/           ← vendored phone widget (MIT) + libphonenumber utils.js (Apache-2.0)
 ├── migrations/
 │   ├── 001_initial.sql           ← full SQLite schema
 │   ├── 002_auth.sql              ← users, sessions, auth_config, groups
@@ -478,7 +480,11 @@ Adapters own request building **and** response parsing, because "the credentials
 
 **Phone numbers:** the guest types whatever they like (`06 12 34 56 78`, `0033612345678`, `+33 6 12 34 56 78`); `phone::normalize()` converts to E.164 server-side using the configured default country code, and `bookings.guest_phone` is E.164 from then on. This is not libphonenumber: it handles trunk and international prefixes and leaves real validity to the gateway. Numbers are shown to the host on the bookings dashboard and never to other guests.
 
-**Phone modes** (`event_types.sms_phone_mode`, three states rather than a boolean, same shape Cal.com converged on): `off` shows no field; `optional` shows one and says plainly that an empty answer means no SMS, so the guest is never silently dropped from a channel they expected; `required` enforces it, for event types where the message is the point. `book.html` mirrors `phone::normalize` in JS via `setCustomValidity`, so a bad number is an inline field error rather than a full-page one; `resolve_guest_phone()` is the server-side backstop and returns the localised (title, message) pair to render.
+**Phone modes** (`event_types.sms_phone_mode`, three states rather than a boolean, same shape Cal.com converged on): `off` shows no field; `optional` shows one and says plainly that an empty answer means no SMS, so the guest is never silently dropped from a channel they expected; `required` enforces it, for event types where the message is the point. `book.html` renders the field through the vendored intl-tel-input widget (see below), so a bad number is an inline field error rather than a full-page one; `resolve_guest_phone()` is the server-side backstop and returns the localised (title, message) pair to render.
+
+**Country picker** (`assets/intl-tel-input/`, vendored at 25.3.1): the phone field is an intl-tel-input widget with a flag picker, format-as-you-type, and libphonenumber validation. All seven files are baked into the binary and served from `/static/intl-tel-input/` by one allowlist handler, so a booking page makes no third-party request; `utils.js` is 265 KB of libphonenumber and is lazy-loaded via `loadUtils` rather than linked on every page. Two licences apply, MIT for the widget and Apache-2.0 for `utils.js`, both recorded in `assets/intl-tel-input/README.md` and pinned by a test.
+
+The country is **seeded, not guessed**. Only an explicit BCP-47 region subtag counts (`fr-FR`, `pt-BR`); otherwise the seed is `sms_config.default_country_code` mapped to a country through the widget's own data. A bare language tag is deliberately ignored, because a language is not a country: `sv` is Swedish but reads as El Salvador, `pt` would send Brazilian guests to Portugal, and `uk` is Ukrainian rather than the United Kingdom. The dial-code lookup honours the `priority` field, without which the name-sorted list resolves `+1` to American Samoa and `+44` to Guernsey. Since the flag is visible and editable, a wrong seed is a visible default rather than a silent rewrite. The visible input keeps `name="phone"`, so with no JavaScript the field still posts and `phone::normalize()` still resolves it against the configured country.
 
 **Spend controls.** SMS is the one feature where a public, unauthenticated form spends real money on a recipient the guest chooses, which is the SMS pumping (AIT) attack. Three layers:
 - **Who may enable it**: `auth_config.sms_allow_all_users`, off by default, so only admins can put an event type into an SMS mode (same reasoning as shared resources). `can_enable_sms()` and `resolve_phone_mode()` enforce it server-side; a user who may not change it has the stored value carried forward, so a member editing an admin's event type cannot turn SMS off either.

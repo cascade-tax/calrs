@@ -1505,6 +1505,10 @@ pub async fn create_router(pool: SqlitePool, data_dir: PathBuf, secret_key: [u8;
             "/fonts/inter-latin-ext.woff2",
             get(serve_font_inter_latin_ext),
         )
+        .route(
+            "/static/intl-tel-input/{file}",
+            get(serve_intl_tel_input_asset),
+        )
         // Group public routes
         .route("/team/{team_slug}", get(team_profile_page))
         .route("/team/{team_slug}/{slug}", get(show_group_slots))
@@ -17830,6 +17834,56 @@ async fn serve_font_inter_latin_ext() -> impl IntoResponse {
         .into_response()
 }
 
+/// Vendored intl-tel-input bundle, baked into the binary and served
+/// same-origin so a booking page never reaches a CDN. See
+/// `assets/intl-tel-input/README.md` for the two licences that apply.
+///
+/// One handler with an exact-match allowlist rather than a file server: the
+/// bundle is seven known files, and matching them by name means no request
+/// path can address anything else. The stylesheet references the images by
+/// flat relative URL, which is why they all share this one prefix.
+async fn serve_intl_tel_input_asset(Path(file): Path<String>) -> impl IntoResponse {
+    let (bytes, content_type): (&'static [u8], &str) = match file.as_str() {
+        "intlTelInput.min.js" => (
+            include_bytes!("../../assets/intl-tel-input/intlTelInput.min.js"),
+            "application/javascript; charset=utf-8",
+        ),
+        "intlTelInput.min.css" => (
+            include_bytes!("../../assets/intl-tel-input/intlTelInput.min.css"),
+            "text/css; charset=utf-8",
+        ),
+        "utils.js" => (
+            include_bytes!("../../assets/intl-tel-input/utils.js"),
+            "application/javascript; charset=utf-8",
+        ),
+        "flags.webp" => (
+            include_bytes!("../../assets/intl-tel-input/flags.webp"),
+            "image/webp",
+        ),
+        "flags@2x.webp" => (
+            include_bytes!("../../assets/intl-tel-input/flags@2x.webp"),
+            "image/webp",
+        ),
+        "globe.webp" => (
+            include_bytes!("../../assets/intl-tel-input/globe.webp"),
+            "image/webp",
+        ),
+        "globe@2x.webp" => (
+            include_bytes!("../../assets/intl-tel-input/globe@2x.webp"),
+            "image/webp",
+        ),
+        _ => return axum::http::StatusCode::NOT_FOUND.into_response(),
+    };
+
+    axum::response::Response::builder()
+        .status(200)
+        .header("Content-Type", content_type)
+        .header("Cache-Control", "public, max-age=31536000, immutable")
+        .body(axum::body::Body::from(bytes))
+        .unwrap_or_else(|_| axum::response::Response::new(axum::body::Body::empty()))
+        .into_response()
+}
+
 async fn admin_upload_logo(
     State(state): State<Arc<AppState>>,
     _admin: crate::auth::AdminUser,
@@ -27507,6 +27561,166 @@ mod tests {
                 .to_str()
                 .unwrap(),
             "/auth/login"
+        );
+    }
+
+    // --- Vendored intl-tel-input bundle ---
+
+    #[tokio::test]
+    async fn intl_tel_input_assets_are_served_with_their_content_types() {
+        let (app, _, _, _) = setup_test_app().await;
+        let expected = [
+            ("intlTelInput.min.js", "application/javascript"),
+            ("intlTelInput.min.css", "text/css"),
+            ("utils.js", "application/javascript"),
+            ("flags.webp", "image/webp"),
+            ("flags@2x.webp", "image/webp"),
+            ("globe.webp", "image/webp"),
+            ("globe@2x.webp", "image/webp"),
+        ];
+        for (file, content_type) in expected {
+            let response = app
+                .clone()
+                .oneshot(get(&format!("/static/intl-tel-input/{file}")))
+                .await
+                .unwrap();
+            assert_eq!(response.status(), 200, "{file} should be served");
+            let served = response
+                .headers()
+                .get("Content-Type")
+                .and_then(|v| v.to_str().ok())
+                .unwrap_or_default()
+                .to_string();
+            assert!(
+                served.starts_with(content_type),
+                "{file} should be served as {content_type}, got {served}"
+            );
+            let bytes = response.into_body().collect().await.unwrap().to_bytes();
+            assert!(!bytes.is_empty(), "{file} should not be empty");
+        }
+    }
+
+    #[tokio::test]
+    async fn intl_tel_input_route_serves_only_the_vendored_files() {
+        // The handler matches names exactly rather than reading from a
+        // directory, so nothing outside the bundle is addressable.
+        let (app, _, _, _) = setup_test_app().await;
+        for probe in [
+            "nope.js",
+            "utils.js.map",
+            "UTILS.JS",
+            "..%2F..%2FCargo.toml",
+            "%2Fetc%2Fpasswd",
+        ] {
+            let response = app
+                .clone()
+                .oneshot(get(&format!("/static/intl-tel-input/{probe}")))
+                .await
+                .unwrap();
+            assert_ne!(
+                response.status(),
+                200,
+                "{probe} must not resolve to a served file"
+            );
+        }
+    }
+
+    #[test]
+    fn vendored_utils_js_keeps_its_apache_notice() {
+        // utils.js is Google's libphonenumber under Apache-2.0, not the MIT
+        // licence covering the rest of the bundle. The notice has to survive
+        // any version bump, so assert on it rather than trusting the README.
+        let utils = include_str!("../../assets/intl-tel-input/utils.js");
+        let head = &utils[..utils.len().min(400)];
+        assert!(
+            head.contains("Apache-2.0"),
+            "utils.js must keep its Apache-2.0 SPDX header"
+        );
+        assert!(
+            head.contains("Copyright The Closure Library Authors"),
+            "utils.js must keep its copyright notice"
+        );
+        // Lazy loading uses a dynamic import(), which needs an ES module.
+        assert!(
+            utils.trim_end().ends_with("export default utils;"),
+            "utils.js must stay an ES module for loadUtils to work"
+        );
+    }
+
+    #[test]
+    fn book_template_phone_field_degrades_without_javascript() {
+        let mut env = minijinja::Environment::new();
+        env.set_undefined_behavior(minijinja::UndefinedBehavior::Lenient);
+        env.set_loader(minijinja::path_loader("templates"));
+        crate::i18n::register(&mut env);
+        let tmpl = env
+            .get_template("book.html")
+            .expect("book.html should load");
+
+        let render = |mode: &str| {
+            tmpl.render(context! {
+                event_type => context! { slug => "intro", title => "Intro Call", duration_min => 30 },
+                sms_phone_mode => mode,
+                phone_default_country => "+33",
+                form_phone => "",
+                host_name => "Alice",
+                username => "alice",
+            })
+            .expect("book.html should render")
+        };
+
+        let on = render("optional");
+        // The visible input keeps name="phone", so a browser that never runs
+        // the widget still posts the number and the server still normalises it.
+        assert!(
+            on.contains(r#"id="phone" name="phone""#),
+            "the phone input must keep its own name for the no-JS path"
+        );
+        assert!(
+            on.contains("/static/intl-tel-input/intlTelInput.min.js"),
+            "the widget script should be referenced"
+        );
+        assert!(
+            on.contains("loadUtils"),
+            "utils.js should be lazy-loaded, not linked eagerly"
+        );
+        assert!(
+            !on.contains(r#"<script src="/static/intl-tel-input/utils.js">"#),
+            "utils.js must not be fetched eagerly on every booking page"
+        );
+        // The dial code the operator configured is what seeds the country when
+        // the browser declines to name one.
+        assert!(
+            on.contains(r#"DEFAULT_DIAL_CODE = "+33""#),
+            "the configured dial code should reach the seed logic"
+        );
+        // Shared dial codes (+1, +7, +44) resolve by priority. Without this the
+        // name-sorted list makes +1 American Samoa.
+        assert!(
+            on.contains("c.priority") && on.contains("best.priority"),
+            "dial-code lookup must prefer the primary country"
+        );
+        // getNumber() returns "" until utils.js lands, so sync() has to build
+        // the number from the selected country in the meantime. Without this a
+        // guest who submits inside that window posts an empty phone.
+        assert!(
+            on.contains("getSelectedCountryData"),
+            "sync() must fall back to the picker's country before utils.js loads"
+        );
+        assert!(
+            on.contains("iti.promise"),
+            "a re-sync must replace the stopgap once libphonenumber is in"
+        );
+
+        // Off means the field, the widget and its stylesheet are all absent.
+        let off = render("off");
+        assert!(!off.contains(r#"id="phone""#), "no phone field when off");
+        // The theme block for .iti lives in base.html and is always present,
+        // exactly like the cap-widget one. What must not happen is fetching
+        // the bundle on a page with no phone field.
+        assert!(
+            !off.contains("/static/intl-tel-input/"),
+            "no widget asset should be fetched when phone collection is off"
         );
     }
 
