@@ -7,9 +7,17 @@
 
 ## Current known production release
 
-On August 18, 2026, calrs commit `4dae801` completed the Cascade design pass across the remaining legacy templates and was deployed as image `1.15.1-cascade.5`. Cloud Build built the image, the operations repository pinned it by digest, and the VM service was restarted over IAP. Health checks and live visual checks covered sign-in and Arthur's real booking page in both light and dark themes.
+On August 19, 2026, Cascade release `1.15.1-cascade.13` was built from clean `cascade-main` revision `aaacddf` and pinned to immutable digest `sha256:d130baba6bb3d8c0bd65fc74a639d11cc31fd7ff23ae716688113a9669916bd0`. It includes collective team availability troubleshooting (`d2fecc3`) and member-scoped conflict-calendar selection (`8784b0a`). The VM update completed through the operations repository, and the running container, deployed settings template, public sign-in page, and protected-route redirects were verified healthy.
+
+The preceding branded UI release was `1.15.1-cascade.5`, built from `4dae801` on August 18. That release completed the remaining legacy-template design pass and was verified on sign-in and Arthur's real booking page in light and dark themes.
 
 The production database stores a custom palette that exactly equals the built-in Cascade palette. The branded renderer recognizes that equality and suppresses a redundant custom-theme override, so the built-in design tokens remain authoritative. Do not run a branding migration merely to remove that matching stored palette.
+
+## SMTP delivery and sender identity
+
+Production SMTP uses `smtp.gmail.com:587` with STARTTLS, authenticates as `arthur@cascade.tax`, and is configured to send as `Cascade Calendar <calendar@cascade.tax>`. Gmail initially rewrote the From and Reply-To identity to `arthur@cascade.tax` because `calendar@cascade.tax` was not authorized. Adding `calendar@cascade.tax` to Arthur's Gmail Send As identities corrected the actual sender, and subsequent end-to-end delivery was confirmed from `calendar@cascade.tax`.
+
+The effective SMTP configuration is database-backed. The `smtp-password` Secret Manager secret had no active version when last checked; do not infer that the working app password is stored in Secret Manager.
 
 ## Design-pass verification and fixes
 

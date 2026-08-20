@@ -620,4 +620,5 @@ When adding a new subcommand:
 
 | Area | Reference |
 |---|---|
-| Cascade-branded production branch, design pass, deployment, and error-response follow-up | `memory/topics/cascade-production.md` |
+| Cascade-branded production branch, releases, SMTP sender identity, and error-response follow-up | `memory/topics/cascade-production.md` |
+| Collective troubleshooting and per-member team conflict-calendar behavior | `memory/topics/team-availability.md` |
