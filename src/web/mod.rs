@@ -27700,6 +27700,17 @@ mod tests {
             on.contains("c.priority") && on.contains("best.priority"),
             "dial-code lookup must prefer the primary country"
         );
+        // getNumber() returns "" until utils.js lands, so sync() has to build
+        // the number from the selected country in the meantime. Without this a
+        // guest who submits inside that window posts an empty phone.
+        assert!(
+            on.contains("getSelectedCountryData"),
+            "sync() must fall back to the picker's country before utils.js loads"
+        );
+        assert!(
+            on.contains("iti.promise"),
+            "a re-sync must replace the stopgap once libphonenumber is in"
+        );
 
         // Off means the field, the widget and its stylesheet are all absent.
         let off = render("off");

@@ -160,12 +160,42 @@
       (input.form || document.body).appendChild(hidden);
 
       function sync() {
+        var raw = input.value.trim();
+        if (raw === '') {
+          hidden.value = '';
+          return;
+        }
         var full = (typeof iti.getNumber === 'function' ? iti.getNumber() : '') || '';
-        hidden.value = input.value.trim() === '' ? '' : full;
+        if (!full) {
+          // utils.js has not landed yet, so getNumber() is still empty. A guest
+          // who types a number and submits inside that window must not be
+          // silently dropped, so build E.164 from the country the picker is
+          // actually on. Overwritten with the canonical value the moment the
+          // promise resolves, and the server normalises whatever arrives.
+          var cleaned = raw.replace(/[\s\-().\/]/g, '');
+          if (cleaned.charAt(0) === '+' || cleaned.slice(0, 2) === '00') {
+            full = cleaned;
+          } else {
+            var cd = typeof iti.getSelectedCountryData === 'function'
+              ? iti.getSelectedCountryData()
+              : null;
+            var national = cleaned.replace(/\D/g, '').replace(/^0/, '');
+            full = (cd && cd.dialCode && national)
+              ? '+' + cd.dialCode + national
+              : cleaned;
+          }
+        }
+        hidden.value = full;
       }
       input.addEventListener('input', sync);
       input.addEventListener('countrychange', sync);
       sync();
+
+      // Once libphonenumber is in, re-sync so the canonical parse replaces the
+      // stopgap above. A rejected load keeps the stopgap rather than nothing.
+      if (iti.promise && typeof iti.promise.then === 'function') {
+        iti.promise.then(sync, function() {});
+      }
 
       if (input.form) {
         input.form.addEventListener('submit', function(e) {
