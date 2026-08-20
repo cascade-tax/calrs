@@ -27647,6 +27647,72 @@ mod tests {
         );
     }
 
+    #[test]
+    fn book_template_phone_field_degrades_without_javascript() {
+        let mut env = minijinja::Environment::new();
+        env.set_undefined_behavior(minijinja::UndefinedBehavior::Lenient);
+        env.set_loader(minijinja::path_loader("templates"));
+        crate::i18n::register(&mut env);
+        let tmpl = env
+            .get_template("book.html")
+            .expect("book.html should load");
+
+        let render = |mode: &str| {
+            tmpl.render(context! {
+                event_type => context! { slug => "intro", title => "Intro Call", duration_min => 30 },
+                sms_phone_mode => mode,
+                phone_default_country => "+33",
+                form_phone => "",
+                host_name => "Alice",
+                username => "alice",
+            })
+            .expect("book.html should render")
+        };
+
+        let on = render("optional");
+        // The visible input keeps name="phone", so a browser that never runs
+        // the widget still posts the number and the server still normalises it.
+        assert!(
+            on.contains(r#"id="phone" name="phone""#),
+            "the phone input must keep its own name for the no-JS path"
+        );
+        assert!(
+            on.contains("/static/intl-tel-input/intlTelInput.min.js"),
+            "the widget script should be referenced"
+        );
+        assert!(
+            on.contains("loadUtils"),
+            "utils.js should be lazy-loaded, not linked eagerly"
+        );
+        assert!(
+            !on.contains(r#"<script src="/static/intl-tel-input/utils.js">"#),
+            "utils.js must not be fetched eagerly on every booking page"
+        );
+        // The dial code the operator configured is what seeds the country when
+        // the browser declines to name one.
+        assert!(
+            on.contains(r#"DEFAULT_DIAL_CODE = "+33""#),
+            "the configured dial code should reach the seed logic"
+        );
+        // Shared dial codes (+1, +7, +44) resolve by priority. Without this the
+        // name-sorted list makes +1 American Samoa.
+        assert!(
+            on.contains("c.priority") && on.contains("best.priority"),
+            "dial-code lookup must prefer the primary country"
+        );
+
+        // Off means the field, the widget and its stylesheet are all absent.
+        let off = render("off");
+        assert!(!off.contains(r#"id="phone""#), "no phone field when off");
+        // The theme block for .iti lives in base.html and is always present,
+        // exactly like the cap-widget one. What must not happen is fetching
+        // the bundle on a page with no phone field.
+        assert!(
+            !off.contains("/static/intl-tel-input/"),
+            "no widget asset should be fetched when phone collection is off"
+        );
+    }
+
     #[tokio::test]
     async fn login_page_returns_200() {
         let (app, _, _, _) = setup_test_app().await;
