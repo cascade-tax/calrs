@@ -13360,7 +13360,7 @@ async fn get_booking_horizon(pool: &SqlitePool, et_id: &str) -> Option<i32> {
 /// `None` horizon means unlimited, so no date is ever past it. A horizon that
 /// runs off the end of the representable calendar is unlimited for the same
 /// reason, so `checked_add_signed` degrades to `None` rather than panicking
-/// (`NaiveDate + TimeDelta` panics on overflow) — the day loop in
+/// (`NaiveDate + TimeDelta` panics on overflow). The day loop in
 /// `compute_slots_from_rules` treats such a horizon as unreachable too.
 fn horizon_last_date(now_host: NaiveDateTime, horizon: Option<i32>) -> Option<NaiveDate> {
     horizon.and_then(|days| {
@@ -27026,6 +27026,90 @@ mod tests {
         assert!(
             body_start < slots_outer_start,
             "Reschedule banner div must appear before slots-outer div to avoid flex layout breakage"
+        );
+    }
+
+    /// Render slots.html on the first bookable month, where the handler passes
+    /// `prev_month` as `None`, and verify the calendar payload carries an empty
+    /// string rather than the literal "none".
+    ///
+    /// Regression test for the same class as the `default(value='')` bug above:
+    /// minijinja renders a Rust `None` as "none", and `default()` does not
+    /// catch it because the value is defined, just none. The JS guard then saw
+    /// a truthy "none" and drew a back arrow pointing at ?month=none.
+    #[test]
+    fn slots_template_renders_absent_prev_month_as_empty() {
+        let mut env = minijinja::Environment::new();
+        env.set_undefined_behavior(minijinja::UndefinedBehavior::Lenient);
+        env.set_loader(minijinja::path_loader("templates"));
+        crate::i18n::register(&mut env);
+        let tmpl = env
+            .get_template("slots.html")
+            .expect("slots.html should load");
+
+        // Exactly what build_month_params hands the template.
+        let render = |prev: Option<String>| {
+            tmpl.render(context! {
+                event_type => context! { slug => "intro", title => "Intro Call", duration_min => 30 },
+                host_name => "Alice",
+                username => "alice",
+                days => Vec::<minijinja::Value>::new(),
+                available_dates => Vec::<String>::new(),
+                month_label => "March 2026",
+                month_year => "2026-03",
+                prev_month => prev,
+                next_month => Some("2026-04".to_string()),
+                first_weekday => 0,
+                days_in_month => 31,
+                today_date => "2026-03-14",
+                guest_tz => "UTC",
+            })
+            .expect("slots.html should render")
+        };
+        let payload_line = |rendered: &str, key: &str| {
+            rendered
+                .lines()
+                .find(|l| l.contains(&format!("\"{key}\"")))
+                .unwrap_or_else(|| panic!("the calendar payload must carry {key}"))
+                .trim()
+                .to_string()
+        };
+
+        let first_month = render(None);
+        assert_eq!(
+            payload_line(&first_month, "prevMonth"),
+            "\"prevMonth\": \"\",",
+            "an absent previous month must serialise as an empty string, not \"none\""
+        );
+        assert!(
+            first_month.contains("\"hasPrevMonth\": false"),
+            "hasPrevMonth must be false when there is no previous month"
+        );
+
+        // Control: a previous month that does exist must still come through,
+        // so this cannot pass by blanking prevMonth unconditionally.
+        let later_month = render(Some("2026-02".to_string()));
+        assert_eq!(
+            payload_line(&later_month, "prevMonth"),
+            "\"prevMonth\": \"2026-02\","
+        );
+        assert!(
+            later_month.contains("\"hasPrevMonth\": true"),
+            "hasPrevMonth must be true when a previous month exists"
+        );
+
+        // The forward arrow is the already-correct sibling: same construct,
+        // unchanged by this fix, asserted so the two stay in step.
+        assert_eq!(
+            payload_line(&first_month, "nextMonth"),
+            "\"nextMonth\": \"2026-04\","
+        );
+
+        // The AJAX path must gate on the flag, matching the forward arrow,
+        // so a future regression in the payload cannot resurrect the arrow.
+        assert!(
+            first_month.contains("if (data.hasPrevMonth && data.prevMonth)"),
+            "the AJAX back arrow must gate on hasPrevMonth, as the forward arrow does"
         );
     }
 
