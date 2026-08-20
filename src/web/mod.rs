@@ -13362,11 +13362,19 @@ async fn get_booking_horizon(pool: &SqlitePool, et_id: &str) -> Option<i32> {
 /// reason, so `checked_add_signed` degrades to `None` rather than panicking
 /// (`NaiveDate + TimeDelta` panics on overflow). The day loop in
 /// `compute_slots_from_rules` treats such a horizon as unreachable too.
+///
+/// A negative horizon is only reachable by writing the column directly, since
+/// `parse_optional_day_count` rejects one. It has to mean "nothing bookable",
+/// so it is clamped to yesterday. Left to the arithmetic, a large negative
+/// overflows to `None` and reads as unlimited, which is the wrong direction
+/// to fail in.
 fn horizon_last_date(now_host: NaiveDateTime, horizon: Option<i32>) -> Option<NaiveDate> {
     horizon.and_then(|days| {
-        now_host
-            .date()
-            .checked_add_signed(Duration::days(days as i64))
+        let date = now_host.date();
+        if days < 0 {
+            return date.pred_opt();
+        }
+        date.checked_add_signed(Duration::days(days as i64))
     })
 }
 
@@ -32329,6 +32337,34 @@ mod tests {
         let (_, _, _, _, unbounded, _, _, _, _) =
             build_month_params(today.year(), today.month(), Tz::UTC, Tz::UTC, "en", None);
         assert!(unbounded.is_some(), "NULL horizon keeps the link");
+    }
+
+    #[test]
+    fn horizon_last_date_fails_closed_on_a_negative_horizon() {
+        // parse_optional_day_count rejects negatives, so the column can only
+        // hold one if it is written directly. However it gets there, it must
+        // block every date rather than read as unlimited.
+        //
+        // Small negatives always did, because the arithmetic lands in the past
+        // on its own. A large one overflowed the representable calendar and
+        // returned None, which every caller treats as "no limit": the wrong
+        // direction to fail in, and the case this pins.
+        let now = host_today().and_hms_opt(9, 0, 0).unwrap();
+        let today = now.date();
+
+        assert_eq!(
+            parse_optional_day_count("-5"),
+            None,
+            "the form must never store a negative horizon in the first place"
+        );
+
+        for days in [-1, -400, -95_000_000, i32::MIN + 1, i32::MIN] {
+            let last = horizon_last_date(now, Some(days));
+            assert!(
+                last.is_some_and(|last| today > last),
+                "a negative horizon ({days}) must leave today itself unbookable, got {last:?}"
+            );
+        }
     }
 
     #[test]
