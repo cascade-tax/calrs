@@ -1505,6 +1505,10 @@ pub async fn create_router(pool: SqlitePool, data_dir: PathBuf, secret_key: [u8;
             "/fonts/inter-latin-ext.woff2",
             get(serve_font_inter_latin_ext),
         )
+        .route(
+            "/static/intl-tel-input/{file}",
+            get(serve_intl_tel_input_asset),
+        )
         // Group public routes
         .route("/team/{team_slug}", get(team_profile_page))
         .route("/team/{team_slug}/{slug}", get(show_group_slots))
@@ -17830,6 +17834,56 @@ async fn serve_font_inter_latin_ext() -> impl IntoResponse {
         .into_response()
 }
 
+/// Vendored intl-tel-input bundle, baked into the binary and served
+/// same-origin so a booking page never reaches a CDN. See
+/// `assets/intl-tel-input/README.md` for the two licences that apply.
+///
+/// One handler with an exact-match allowlist rather than a file server: the
+/// bundle is seven known files, and matching them by name means no request
+/// path can address anything else. The stylesheet references the images by
+/// flat relative URL, which is why they all share this one prefix.
+async fn serve_intl_tel_input_asset(Path(file): Path<String>) -> impl IntoResponse {
+    let (bytes, content_type): (&'static [u8], &str) = match file.as_str() {
+        "intlTelInput.min.js" => (
+            include_bytes!("../../assets/intl-tel-input/intlTelInput.min.js"),
+            "application/javascript; charset=utf-8",
+        ),
+        "intlTelInput.min.css" => (
+            include_bytes!("../../assets/intl-tel-input/intlTelInput.min.css"),
+            "text/css; charset=utf-8",
+        ),
+        "utils.js" => (
+            include_bytes!("../../assets/intl-tel-input/utils.js"),
+            "application/javascript; charset=utf-8",
+        ),
+        "flags.webp" => (
+            include_bytes!("../../assets/intl-tel-input/flags.webp"),
+            "image/webp",
+        ),
+        "flags@2x.webp" => (
+            include_bytes!("../../assets/intl-tel-input/flags@2x.webp"),
+            "image/webp",
+        ),
+        "globe.webp" => (
+            include_bytes!("../../assets/intl-tel-input/globe.webp"),
+            "image/webp",
+        ),
+        "globe@2x.webp" => (
+            include_bytes!("../../assets/intl-tel-input/globe@2x.webp"),
+            "image/webp",
+        ),
+        _ => return axum::http::StatusCode::NOT_FOUND.into_response(),
+    };
+
+    axum::response::Response::builder()
+        .status(200)
+        .header("Content-Type", content_type)
+        .header("Cache-Control", "public, max-age=31536000, immutable")
+        .body(axum::body::Body::from(bytes))
+        .unwrap_or_else(|_| axum::response::Response::new(axum::body::Body::empty()))
+        .into_response()
+}
+
 async fn admin_upload_logo(
     State(state): State<Arc<AppState>>,
     _admin: crate::auth::AdminUser,
@@ -27507,6 +27561,89 @@ mod tests {
                 .to_str()
                 .unwrap(),
             "/auth/login"
+        );
+    }
+
+    // --- Vendored intl-tel-input bundle ---
+
+    #[tokio::test]
+    async fn intl_tel_input_assets_are_served_with_their_content_types() {
+        let (app, _, _, _) = setup_test_app().await;
+        let expected = [
+            ("intlTelInput.min.js", "application/javascript"),
+            ("intlTelInput.min.css", "text/css"),
+            ("utils.js", "application/javascript"),
+            ("flags.webp", "image/webp"),
+            ("flags@2x.webp", "image/webp"),
+            ("globe.webp", "image/webp"),
+            ("globe@2x.webp", "image/webp"),
+        ];
+        for (file, content_type) in expected {
+            let response = app
+                .clone()
+                .oneshot(get(&format!("/static/intl-tel-input/{file}")))
+                .await
+                .unwrap();
+            assert_eq!(response.status(), 200, "{file} should be served");
+            let served = response
+                .headers()
+                .get("Content-Type")
+                .and_then(|v| v.to_str().ok())
+                .unwrap_or_default()
+                .to_string();
+            assert!(
+                served.starts_with(content_type),
+                "{file} should be served as {content_type}, got {served}"
+            );
+            let bytes = response.into_body().collect().await.unwrap().to_bytes();
+            assert!(!bytes.is_empty(), "{file} should not be empty");
+        }
+    }
+
+    #[tokio::test]
+    async fn intl_tel_input_route_serves_only_the_vendored_files() {
+        // The handler matches names exactly rather than reading from a
+        // directory, so nothing outside the bundle is addressable.
+        let (app, _, _, _) = setup_test_app().await;
+        for probe in [
+            "nope.js",
+            "utils.js.map",
+            "UTILS.JS",
+            "..%2F..%2FCargo.toml",
+            "%2Fetc%2Fpasswd",
+        ] {
+            let response = app
+                .clone()
+                .oneshot(get(&format!("/static/intl-tel-input/{probe}")))
+                .await
+                .unwrap();
+            assert_ne!(
+                response.status(),
+                200,
+                "{probe} must not resolve to a served file"
+            );
+        }
+    }
+
+    #[test]
+    fn vendored_utils_js_keeps_its_apache_notice() {
+        // utils.js is Google's libphonenumber under Apache-2.0, not the MIT
+        // licence covering the rest of the bundle. The notice has to survive
+        // any version bump, so assert on it rather than trusting the README.
+        let utils = include_str!("../../assets/intl-tel-input/utils.js");
+        let head = &utils[..utils.len().min(400)];
+        assert!(
+            head.contains("Apache-2.0"),
+            "utils.js must keep its Apache-2.0 SPDX header"
+        );
+        assert!(
+            head.contains("Copyright The Closure Library Authors"),
+            "utils.js must keep its copyright notice"
+        );
+        // Lazy loading uses a dynamic import(), which needs an ES module.
+        assert!(
+            utils.trim_end().ends_with("export default utils;"),
+            "utils.js must stay an ES module for loadUtils to work"
         );
     }
 
