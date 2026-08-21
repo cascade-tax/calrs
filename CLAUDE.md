@@ -606,15 +606,17 @@ calrs ships with translations for English, French, Spanish, and Polish. Source f
 
 The site (landing page + mdbook docs) lives on the `gh-pages` branch. To update it:
 
-1. **Build the docs on `main`:** `mdbook build docs` (output goes to `docs/book/`)
-2. **Switch branch:** `git checkout gh-pages`
-3. **Copy docs source and rebuild:** `git checkout main -- docs/src docs/book.toml` then `mdbook build docs`
-4. **Replace published docs:** `cp -r docs/book/* docs/` then `rm -rf docs/src docs/book.toml docs/book`
-5. **Update `index.html`** if the landing page needs changes (feature cards, version, etc.)
-6. **Stage only `docs/` and `index.html`** — do not stage untracked files from main (worktrees, build artifacts)
-7. **Commit with `--no-verify`** — the pre-commit hook expects `Cargo.toml` which doesn't exist on `gh-pages`
-8. **Push:** `git push origin gh-pages`
-9. **Switch back:** `git checkout main`
+1. **Sync the branch first:** `git fetch origin gh-pages` and work from `origin/gh-pages`, not the local ref. **The local `gh-pages` is almost always many releases stale** — nothing on `main` ever advances it, so it sits wherever it was left the last time the site was touched on this machine. Editing the stale copy produces a page that re-adds features the published site already documents, and the push is rejected as non-fast-forward. `git worktree add <dir> gh-pages` inherits the same staleness; reset to `origin/gh-pages` inside it before touching anything.
+2. **Build the docs on `main`:** `mdbook build docs` (output goes to `docs/book/`)
+3. **Switch branch:** `git checkout gh-pages`
+4. **Copy docs source and rebuild:** `git checkout main -- docs/src docs/book.toml` then `mdbook build docs`
+5. **Replace published docs:** `cp -r docs/book/* docs/` then `rm -rf docs/src docs/book.toml docs/book`
+6. **Drop orphaned build artefacts:** mdbook writes content-hashed `searchindex-*.js` / `toc-*.js`, and the copy in step 5 never removes the previous hash. They accumulate silently. Delete any hashed file no HTML/JS/CSS under `docs/` still references.
+7. **Update `index.html`** if the landing page needs changes (feature cards, version badge in the hero, test count)
+8. **Stage only `docs/` and `index.html`** — do not stage untracked files from main (worktrees, build artifacts)
+9. **Commit with `--no-verify`** — the pre-commit hook expects `Cargo.toml` which doesn't exist on `gh-pages`
+10. **Push:** `git push origin gh-pages`
+11. **Switch back:** `git checkout main`
 
 When adding a new subcommand:
 1. Create `src/commands/yourcmd.rs` with a `YourCommands` enum and `pub async fn run(db, cmd)`.
