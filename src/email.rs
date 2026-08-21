@@ -316,6 +316,34 @@ fn sanitize_ics(value: &str) -> String {
         .replace(',', "\\,")
 }
 
+/// Sanitize a value for use in an ICS *parameter*, such as `CN=`.
+///
+/// A parameter value is not a TEXT value and takes no backslash escapes.
+/// RFC 5545 §3.1 defines it as either `paramtext`, which excludes `;`, `:`,
+/// `,` and DQUOTE, or a quoted-string. Escaping a semicolon as `\;` the way
+/// `sanitize_ics` does leaves the raw `;` in place, a strict parser reads it
+/// as the end of the parameter, and the whole VEVENT is rejected: Yandex 360
+/// answers 400 Bad Request to a booking whose guest name contains one, and
+/// the event never reaches the calendar (#163).
+///
+/// So quote the value when it carries a delimiter, and spell the characters a
+/// quoted-string cannot hold with the RFC 6868 caret escapes. The carets only
+/// appear for input containing `"`, `^` or a newline; a parser predating
+/// RFC 6868 renders those literally, which is a cosmetic loss in a display
+/// name rather than the parse failure this replaces.
+fn sanitize_ics_param(value: &str) -> String {
+    let escaped = value
+        .replace('^', "^^")
+        .replace('"', "^'")
+        .replace("\r\n", "^n")
+        .replace(['\r', '\n'], "^n");
+    if escaped.contains([';', ':', ',']) {
+        format!("\"{escaped}\"")
+    } else {
+        escaped
+    }
+}
+
 /// Convert date + start/end times from a guest timezone to UTC ICS format (YYYYMMDDTHHMMSSZ).
 /// Falls back to floating time (no Z) if timezone parsing fails.
 fn convert_to_utc(
@@ -482,8 +510,9 @@ fn generate_ics_impl(
         "{} \u{2014} {} & {}",
         details.event_title, guest_first, host_first
     ));
-    let host_name = sanitize_ics(&details.host_name);
-    let guest_name = sanitize_ics(&details.guest_name);
+    // CN= is a parameter, not a TEXT value: it needs quoting, not backslashes.
+    let host_name = sanitize_ics_param(&details.host_name);
+    let guest_name = sanitize_ics_param(&details.guest_name);
     let host_email = sanitize_ics(&details.host_email);
     let guest_email = sanitize_ics(&details.guest_email);
     let location_line = details
@@ -576,8 +605,9 @@ fn generate_cancel_ics(details: &CancellationDetails) -> String {
         "{} \u{2014} {} & {}",
         details.event_title, guest_first, host_first
     ));
-    let host_name = sanitize_ics(&details.host_name);
-    let guest_name = sanitize_ics(&details.guest_name);
+    // CN= is a parameter, not a TEXT value: it needs quoting, not backslashes.
+    let host_name = sanitize_ics_param(&details.host_name);
+    let guest_name = sanitize_ics_param(&details.guest_name);
     let host_email = sanitize_ics(&details.host_email);
     let guest_email = sanitize_ics(&details.guest_email);
     let dtstamp = chrono::Utc::now().format("%Y%m%dT%H%M%SZ").to_string();
@@ -3816,6 +3846,109 @@ mod tests {
     // --- generate_ics edge cases ---
 
     #[test]
+    fn sanitize_ics_param_quotes_delimiters() {
+        // A plain name is left exactly as it was: no quotes, no escapes.
+        assert_eq!(sanitize_ics_param("Jane Doe"), "Jane Doe");
+        // Non-ASCII is a legal parameter value and must survive untouched.
+        assert_eq!(
+            sanitize_ics_param("Test Guest \u{ab}quotes\u{bb}"),
+            "Test Guest \u{ab}quotes\u{bb}"
+        );
+        // The three delimiters that end a paramtext force a quoted-string.
+        assert_eq!(sanitize_ics_param("Jane; Doe"), "\"Jane; Doe\"");
+        assert_eq!(sanitize_ics_param("Doe, Jane"), "\"Doe, Jane\"");
+        assert_eq!(sanitize_ics_param("Jane: Doe"), "\"Jane: Doe\"");
+        // Never a backslash escape — that is TEXT syntax and is what #163 was.
+        assert!(!sanitize_ics_param("Jane; Doe").contains('\\'));
+    }
+
+    #[test]
+    fn sanitize_ics_param_uses_caret_escapes() {
+        // A quoted-string cannot hold a DQUOTE, so RFC 6868 spells it `^'`.
+        assert_eq!(sanitize_ics_param("Jane \"JD\" Doe"), "Jane ^'JD^' Doe");
+        // The caret itself doubles, and it must be escaped first so an input
+        // caret cannot be mistaken for one this function introduced.
+        assert_eq!(sanitize_ics_param("a^b"), "a^^b");
+        assert_eq!(sanitize_ics_param("a^'b"), "a^^'b");
+        // CR/LF becomes `^n` rather than being dropped, which also keeps the
+        // header-injection guard: no raw newline survives.
+        assert_eq!(sanitize_ics_param("a\r\nb"), "a^nb");
+        assert_eq!(sanitize_ics_param("a\nb"), "a^nb");
+        assert_eq!(sanitize_ics_param("a\rb"), "a^nb");
+    }
+
+    #[test]
+    fn caldav_ics_quotes_a_guest_name_with_a_semicolon() {
+        // #163: Yandex 360 answers 400 Bad Request to `CN=Test Guest \; and`,
+        // because a parameter takes no backslash escapes and the raw `;` ends
+        // the parameter. The booking was reported confirmed and never reached
+        // the calendar. Quoting is the RFC 5545 §3.1 spelling.
+        let details = BookingDetails {
+            event_title: "Call".to_string(),
+            date: "2026-04-01".to_string(),
+            start_time: "10:00".to_string(),
+            end_time: "10:30".to_string(),
+            guest_name: "Test Guest \u{ab}quotes\u{bb} ; and a semicolon".to_string(),
+            guest_email: "guest@test.com".to_string(),
+            guest_timezone: "UTC".to_string(),
+            host_name: "H\u{e9}lo\u{ef}se; Host".to_string(),
+            host_email: "host@test.com".to_string(),
+            uid: "uid-163".to_string(),
+            notes: None,
+            location: None,
+            reminder_minutes: None,
+            additional_attendees: vec![],
+            ..Default::default()
+        };
+        let ics = generate_ics_caldav(&details);
+
+        assert!(
+            ics.contains(
+                "ATTENDEE;SCHEDULE-AGENT=CLIENT;CN=\"Test Guest \u{ab}quotes\u{bb} ; and a semicolon\";RSVP=TRUE:mailto:guest@test.com"
+            ),
+            "{ics}"
+        );
+        assert!(
+            ics.contains("ORGANIZER;CN=\"H\u{e9}lo\u{ef}se; Host\":mailto:host@test.com"),
+            "{ics}"
+        );
+        // The SUMMARY is a TEXT value and keeps backslash escaping.
+        assert!(
+            ics.contains("SUMMARY:Call \u{2014} Test & H\u{e9}lo\u{ef}se\u{5c};"),
+            "{ics}"
+        );
+        // No `CN=` value may carry a backslash escape.
+        for line in ics.lines().filter(|l| l.contains("CN=")) {
+            assert!(!line.contains("\\;"), "backslash-escaped CN: {line}");
+            assert!(!line.contains("\\,"), "backslash-escaped CN: {line}");
+        }
+    }
+
+    #[test]
+    fn cancel_ics_quotes_a_guest_name_with_a_semicolon() {
+        // The cancellation ICS builds its own VEVENT and had the same bug, so
+        // a guest with a semicolon could book but never be un-booked either.
+        let details = CancellationDetails {
+            event_title: "Call".to_string(),
+            date: "2026-04-01".to_string(),
+            start_time: "10:00".to_string(),
+            end_time: "10:30".to_string(),
+            guest_name: "Doe, Jane; Ms".to_string(),
+            guest_email: "guest@test.com".to_string(),
+            guest_timezone: "UTC".to_string(),
+            host_name: "Host".to_string(),
+            host_email: "host@test.com".to_string(),
+            uid: "uid-163-cancel".to_string(),
+            ..Default::default()
+        };
+        let ics = generate_cancel_ics(&details);
+        assert!(
+            ics.contains("ATTENDEE;CN=\"Doe, Jane; Ms\":mailto:guest@test.com"),
+            "{ics}"
+        );
+    }
+
+    #[test]
     fn generate_ics_sanitizes_malicious_guest_name() {
         let details = BookingDetails {
             event_title: "Call".to_string(),
@@ -3837,7 +3970,13 @@ mod tests {
         let ics = generate_ics(&details, "REQUEST");
         // The injected ATTENDEE line must not appear as a separate field
         assert!(!ics.contains("\r\nATTENDEE:hacker@evil.com"));
-        assert!(ics.contains("Evil ATTENDEE:hacker@evil.com")); // newline replaced with space
+        // The newline becomes an RFC 6868 `^n`, and the `:` it was carrying
+        // forces the whole CN into a quoted-string, so the payload stays one
+        // parameter value instead of breaking out into a property.
+        assert!(
+            ics.contains("CN=\"Evil^nATTENDEE:hacker@evil.com\""),
+            "{ics}"
+        );
     }
 
     #[test]
