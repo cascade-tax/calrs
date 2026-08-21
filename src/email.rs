@@ -61,6 +61,12 @@ impl std::fmt::Debug for SmtpConfig {
 pub enum SmtpTlsMode {
     StartTls,
     Tls,
+    /// No encryption at all. Only sane for a relay reached over the loopback
+    /// (or a trusted private link): a local MTA that offers no STARTTLS, or one
+    /// whose certificate is self-signed. lettre validates certificates against
+    /// the compiled-in Mozilla root bundle, not the system trust store, so a
+    /// private CA cannot be trusted and this is the only way through.
+    Plaintext,
 }
 
 impl SmtpTlsMode {
@@ -68,8 +74,9 @@ impl SmtpTlsMode {
         match value.trim().to_ascii_lowercase().as_str() {
             "starttls" => Ok(Self::StartTls),
             "tls" => Ok(Self::Tls),
+            "none" | "plaintext" => Ok(Self::Plaintext),
             other => bail!(
-                "CALRS_SMTP_TLS_MODE must be 'starttls' or 'tls' (got '{}')",
+                "CALRS_SMTP_TLS_MODE must be 'starttls', 'tls' or 'none' (got '{}')",
                 other
             ),
         }
@@ -93,11 +100,30 @@ impl SmtpTlsMode {
         match self {
             Self::StartTls => "starttls",
             Self::Tls => "tls",
+            Self::Plaintext => "none",
         }
     }
 }
 
+/// Whether a host names the local machine, and so whether an unencrypted
+/// connection to it stays inside the box. Bare `localhost` and any address
+/// that parses as a loopback IP count; anything else is a network hop.
+fn is_loopback_host(host: &str) -> bool {
+    let host = host.trim().trim_start_matches('[').trim_end_matches(']');
+    host.eq_ignore_ascii_case("localhost")
+        || host
+            .parse::<std::net::IpAddr>()
+            .is_ok_and(|ip| ip.is_loopback())
+}
+
 impl SmtpConfig {
+    /// Whether to authenticate. An empty username means "no SMTP AUTH": lettre
+    /// only skips authentication when the transport carries no credentials at
+    /// all, so empty ones must not be attached. See `send_email`.
+    fn uses_auth(&self) -> bool {
+        !self.username.trim().is_empty()
+    }
+
     /// Get "from" Mailbox, compliant with RFC 5322
     fn mailbox_from(&self) -> Result<Mailbox> {
         Ok(Mailbox::new(
@@ -1865,13 +1891,16 @@ fn optional_smtp_env(name: &str) -> Option<String> {
 
 /// Load the SMTP config from the `CALRS_SMTP_*` environment block.
 ///
-/// Priority is "full block override": when the required block (host, username,
-/// password, from_email) is complete, the env wins over the database entirely.
-/// When no SMTP var is set, or the required block is only partially set, this
-/// returns `Ok(None)` so the caller falls back to the database config — a stray
-/// or incomplete env var no longer breaks SMTP. A required block that *is*
+/// Priority is "full block override": when the required block (host,
+/// from_email) is complete, the env wins over the database entirely. When no
+/// SMTP var is set, or the required block is only partially set, this returns
+/// `Ok(None)` so the caller falls back to the database config — a stray or
+/// incomplete env var no longer breaks SMTP. A required block that *is*
 /// complete but carries an invalid `PORT`/`TLS_MODE` still surfaces an error,
 /// since that is a genuine misconfiguration to fix rather than silently ignore.
+///
+/// `USERNAME`/`PASSWORD` are optional: omitting them configures an
+/// unauthenticated relay, which is how a container talks to a sidecar MTA.
 fn load_smtp_config_from_env() -> Result<Option<SmtpConfig>> {
     if !SMTP_ENV_VARS
         .iter()
@@ -1880,22 +1909,25 @@ fn load_smtp_config_from_env() -> Result<Option<SmtpConfig>> {
         return Ok(None);
     }
 
-    let (host, username, password, from_email) = match (
+    let (host, from_email) = match (
         optional_smtp_env("CALRS_SMTP_HOST"),
-        optional_smtp_env("CALRS_SMTP_USERNAME"),
-        optional_smtp_env("CALRS_SMTP_PASSWORD"),
         optional_smtp_env("CALRS_SMTP_FROM_EMAIL"),
     ) {
-        (Some(host), Some(username), Some(password), Some(from_email)) => {
-            (host, username, password, from_email)
-        }
+        (Some(host), Some(from_email)) => (host, from_email),
         _ => {
             tracing::warn!(
-                "partial CALRS_SMTP_* environment block (missing one of HOST/USERNAME/PASSWORD/FROM_EMAIL); falling back to database SMTP config"
+                "partial CALRS_SMTP_* environment block (missing HOST or FROM_EMAIL); falling back to database SMTP config"
             );
             return Ok(None);
         }
     };
+    // Both empty means "no SMTP AUTH", as in `send_email`. A username with no
+    // password is still authenticated, since some relays accept an empty one.
+    let username = optional_smtp_env("CALRS_SMTP_USERNAME").unwrap_or_default();
+    let password = optional_smtp_env("CALRS_SMTP_PASSWORD").unwrap_or_default();
+    if username.is_empty() && !password.is_empty() {
+        bail!("CALRS_SMTP_PASSWORD is set without CALRS_SMTP_USERNAME");
+    }
     let port = match std::env::var("CALRS_SMTP_PORT") {
         Ok(value) if value.trim().is_empty() => bail!("CALRS_SMTP_PORT must not be empty"),
         Ok(value) => value.trim().parse::<u16>().map_err(|_| {
@@ -2127,19 +2159,45 @@ pub async fn send_invite_email(
 }
 
 async fn send_email(config: &SmtpConfig, email: Message) -> Result<()> {
-    let creds = Credentials::new(config.username.clone(), config.password.clone());
-
-    let mailer = match config.tls_mode {
-        SmtpTlsMode::Tls => AsyncSmtpTransport::<Tokio1Executor>::relay(&config.host)?
-            .port(config.port)
-            .credentials(creds)
-            .build(),
+    let builder = match config.tls_mode {
+        SmtpTlsMode::Tls => AsyncSmtpTransport::<Tokio1Executor>::relay(&config.host)?,
         SmtpTlsMode::StartTls => {
             AsyncSmtpTransport::<Tokio1Executor>::starttls_relay(&config.host)?
-                .port(config.port)
-                .credentials(creds)
-                .build()
         }
+        // `builder_dangerous` is lettre's name for "no TLS", and the name is
+        // fair: the message, and any credentials, cross the wire in the clear.
+        SmtpTlsMode::Plaintext => {
+            if config.uses_auth() {
+                tracing::warn!(
+                    host = %config.host,
+                    "sending SMTP credentials over an unencrypted connection (tls_mode = none)"
+                );
+            } else if !is_loopback_host(&config.host) {
+                tracing::warn!(
+                    host = %config.host,
+                    "sending email over an unencrypted connection to a non-loopback host (tls_mode = none)"
+                );
+            }
+            AsyncSmtpTransport::<Tokio1Executor>::builder_dangerous(&config.host)
+        }
+    }
+    .port(config.port);
+
+    // An empty username means "no SMTP AUTH". lettre only skips authentication
+    // when the transport carries no credentials at all: given empty ones it
+    // still looks for a mechanism, and a local MTA relaying anonymously from
+    // the loopback (Postfix, OpenSMTPD, Stalwart, Mailpit) advertises none, so
+    // every send aborts client-side with "No compatible authentication
+    // mechanism was found" before the message ever reaches the server.
+    let mailer = if !config.uses_auth() {
+        builder.build()
+    } else {
+        builder
+            .credentials(Credentials::new(
+                config.username.clone(),
+                config.password.clone(),
+            ))
+            .build()
     };
 
     let to_addrs: Vec<String> = email
@@ -2813,6 +2871,36 @@ mod tests {
             SmtpTlsMode::StartTls
         );
         assert_eq!(SmtpTlsMode::parse(" TLS ").unwrap(), SmtpTlsMode::Tls);
+        assert_eq!(SmtpTlsMode::parse("none").unwrap(), SmtpTlsMode::Plaintext);
+        assert_eq!(
+            SmtpTlsMode::parse("Plaintext").unwrap(),
+            SmtpTlsMode::Plaintext
+        );
+        // Round-trips through the string stored in the DB and the env.
+        for mode in [
+            SmtpTlsMode::StartTls,
+            SmtpTlsMode::Tls,
+            SmtpTlsMode::Plaintext,
+        ] {
+            assert_eq!(SmtpTlsMode::parse(mode.as_str()).unwrap(), mode);
+        }
+    }
+
+    #[test]
+    fn loopback_hosts_are_recognised() {
+        for host in [
+            "localhost",
+            "LOCALHOST",
+            " 127.0.0.1 ",
+            "127.1.2.3",
+            "::1",
+            "[::1]",
+        ] {
+            assert!(is_loopback_host(host), "{host} should be loopback");
+        }
+        for host in ["smtp.example.com", "10.0.0.1", "192.168.1.10", "", "::2"] {
+            assert!(!is_loopback_host(host), "{host} should not be loopback");
+        }
     }
 
     #[test]
@@ -2840,6 +2928,72 @@ mod tests {
         assert_eq!(config.host, "smtp.example.com");
         assert_eq!(config.port, 587);
         assert_eq!(config.tls_mode, SmtpTlsMode::StartTls);
+    }
+
+    #[test]
+    fn smtp_config_without_username_skips_auth() {
+        // An unauthenticated local relay: attaching empty credentials makes
+        // lettre hunt for a mechanism the server never advertises, and every
+        // send aborts client-side before DATA.
+        let mut config = SmtpConfig {
+            host: "localhost".to_string(),
+            port: 25,
+            username: String::new(),
+            password: String::new(),
+            from_name: None,
+            from_email: "noreply@example.com".to_string(),
+            tls_mode: SmtpTlsMode::StartTls,
+        };
+        assert!(!config.uses_auth());
+
+        config.username = "   ".to_string();
+        assert!(!config.uses_auth());
+
+        config.username = "user".to_string();
+        assert!(config.uses_auth());
+    }
+
+    #[test]
+    fn smtp_env_without_credentials_is_unauthenticated() {
+        let _env = SmtpEnvGuard::new();
+        // A container pointed at a sidecar MTA: host and sender are enough.
+        std::env::set_var("CALRS_SMTP_HOST", "localhost");
+        std::env::set_var("CALRS_SMTP_FROM_EMAIL", "noreply@example.com");
+
+        let config = load_smtp_config_from_env().unwrap().unwrap();
+
+        assert_eq!(config.host, "localhost");
+        assert!(config.username.is_empty());
+        assert!(config.password.is_empty());
+        assert!(!config.uses_auth());
+    }
+
+    #[test]
+    fn smtp_env_accepts_plaintext_tls_mode() {
+        let _env = SmtpEnvGuard::new();
+        // The whole unauthenticated-loopback-MTA setup, from the environment.
+        std::env::set_var("CALRS_SMTP_HOST", "localhost");
+        std::env::set_var("CALRS_SMTP_PORT", "25");
+        std::env::set_var("CALRS_SMTP_TLS_MODE", "none");
+        std::env::set_var("CALRS_SMTP_FROM_EMAIL", "noreply@example.com");
+
+        let config = load_smtp_config_from_env().unwrap().unwrap();
+
+        assert_eq!(config.port, 25);
+        assert_eq!(config.tls_mode, SmtpTlsMode::Plaintext);
+        assert!(!config.uses_auth());
+    }
+
+    #[test]
+    fn smtp_env_password_without_username_errors() {
+        let _env = SmtpEnvGuard::new();
+        std::env::set_var("CALRS_SMTP_HOST", "smtp.example.com");
+        std::env::set_var("CALRS_SMTP_FROM_EMAIL", "noreply@example.com");
+        std::env::set_var("CALRS_SMTP_PASSWORD", "secret");
+
+        let err = smtp_env_error();
+
+        assert!(err.contains("CALRS_SMTP_USERNAME"));
     }
 
     #[test]

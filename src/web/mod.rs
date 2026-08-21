@@ -17093,8 +17093,9 @@ async fn admin_update_smtp(
 
     let tls_mode = match form.tls_mode.as_deref().map(str::trim) {
         Some("tls") => "tls",
+        Some("none") => "none",
         Some("starttls") | Some("") | None => "starttls",
-        Some(_) => return redirect_err("TLS mode must be 'starttls' or 'tls'."),
+        Some(_) => return redirect_err("TLS mode must be 'starttls', 'tls' or 'none'."),
     };
 
     let username = form.username.unwrap_or_default().trim().to_string();
