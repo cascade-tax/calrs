@@ -16,7 +16,7 @@ pub enum ConfigCommands {
         /// SMTP port (default: 587)
         #[arg(long)]
         port: Option<u16>,
-        /// SMTP username
+        /// SMTP username (omit for an unauthenticated relay)
         #[arg(long)]
         username: Option<String>,
         /// From email address
@@ -25,6 +25,9 @@ pub enum ConfigCommands {
         /// From display name
         #[arg(long)]
         from_name: Option<String>,
+        /// Transport security: starttls (default), tls, or none
+        #[arg(long)]
+        tls_mode: Option<String>,
     },
     /// Show current configuration
     Show,
@@ -535,6 +538,7 @@ pub async fn run(pool: &SqlitePool, key: &[u8; 32], cmd: ConfigCommands) -> Resu
             username,
             from_email,
             from_name,
+            tls_mode,
         } => {
             let host = host.unwrap_or_else(|| prompt("SMTP host"));
             let port = port.unwrap_or_else(|| {
@@ -563,7 +567,10 @@ pub async fn run(pool: &SqlitePool, key: &[u8; 32], cmd: ConfigCommands) -> Resu
                 }
             });
             let tls_mode = {
-                let raw = prompt("TLS mode (starttls/tls/none, default starttls)");
+                let raw = match tls_mode {
+                    Some(value) => value,
+                    None => prompt("TLS mode (starttls/tls/none, default starttls)"),
+                };
                 let normalized = raw.trim().to_ascii_lowercase();
                 match normalized.as_str() {
                     "" | "starttls" => "starttls",

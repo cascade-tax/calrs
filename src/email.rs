@@ -1966,9 +1966,43 @@ pub fn smtp_env_active() -> bool {
     !matches!(load_smtp_config_from_env(), Ok(None))
 }
 
+/// The env block governs as soon as `HOST` and `FROM_EMAIL` are set, and
+/// `USERNAME`/`PASSWORD` are optional. That combination can take over from a
+/// database row that *does* carry credentials, turning working authenticated
+/// SMTP into unauthenticated sends that the relay then rejects. The operator
+/// has no other signal: the admin form locks itself when the env governs, and
+/// mail simply stops. Warn once per process, and only when there is something
+/// to lose.
+async fn warn_if_env_shadows_db_credentials(pool: &SqlitePool) {
+    static WARNED: std::sync::Once = std::sync::Once::new();
+    if WARNED.is_completed() {
+        return;
+    }
+    let shadowed: Option<(String,)> = sqlx::query_as(
+        "SELECT username FROM smtp_config WHERE enabled = 1 AND TRIM(username) <> '' LIMIT 1",
+    )
+    .fetch_optional(pool)
+    .await
+    .ok()
+    .flatten();
+    if shadowed.is_some() {
+        WARNED.call_once(|| {
+            tracing::warn!(
+                "CALRS_SMTP_* sets no USERNAME, so calrs is relaying without authentication, but \
+                 the database holds SMTP credentials that the environment block now shadows. Set \
+                 CALRS_SMTP_USERNAME and CALRS_SMTP_PASSWORD, or unset the CALRS_SMTP_* block to \
+                 go back to the database config."
+            );
+        });
+    }
+}
+
 /// Load SMTP config from environment or database.
 pub async fn load_smtp_config(pool: &SqlitePool, key: &[u8; 32]) -> Result<Option<SmtpConfig>> {
     if let Some(config) = load_smtp_config_from_env()? {
+        if !config.uses_auth() {
+            warn_if_env_shadows_db_credentials(pool).await;
+        }
         return Ok(Some(config));
     }
 
@@ -2928,6 +2962,147 @@ mod tests {
         assert_eq!(config.host, "smtp.example.com");
         assert_eq!(config.port, 587);
         assert_eq!(config.tls_mode, SmtpTlsMode::StartTls);
+    }
+
+    /// A local MTA relaying anonymously from the loopback: it advertises no
+    /// AUTH and no STARTTLS, like the servers in issue #190. Handles exactly
+    /// one connection and returns the commands it saw, so a test can tell
+    /// "the message arrived" from "the client hung up after EHLO".
+    async fn fake_no_auth_mta(listener: tokio::net::TcpListener) -> Vec<String> {
+        use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+
+        let (stream, _) = listener.accept().await.expect("accept");
+        let (read_half, mut write) = stream.into_split();
+        let mut reader = BufReader::new(read_half);
+        let mut seen = Vec::new();
+
+        macro_rules! say {
+            ($($arg:tt)*) => {{
+                let line = format!($($arg)*);
+                write.write_all(line.as_bytes()).await.expect("write");
+                write.write_all(b"\r\n").await.expect("write");
+            }};
+        }
+
+        say!("220 fake.local ESMTP");
+        loop {
+            let mut line = String::new();
+            match reader.read_line(&mut line).await {
+                Ok(0) | Err(_) => break, // client hung up
+                Ok(_) => {}
+            }
+            let line = line.trim_end().to_string();
+            let upper = line.to_ascii_uppercase();
+            seen.push(line);
+
+            if upper.starts_with("EHLO") {
+                say!("250-fake.local");
+                say!("250 8BITMIME"); // deliberately no AUTH, no STARTTLS
+            } else if upper.starts_with("MAIL FROM") || upper.starts_with("RCPT TO") {
+                say!("250 2.1.0 OK");
+            } else if upper == "DATA" {
+                say!("354 End data with <CR><LF>.<CR><LF>");
+                loop {
+                    let mut body = String::new();
+                    match reader.read_line(&mut body).await {
+                        Ok(0) | Err(_) => break,
+                        Ok(_) => {}
+                    }
+                    if body.trim_end() == "." {
+                        break;
+                    }
+                }
+                say!("250 2.0.0 OK: queued");
+            } else if upper.starts_with("AUTH") {
+                say!("502 5.5.1 AUTH not supported");
+            } else if upper == "QUIT" {
+                say!("221 2.0.0 Bye");
+                break;
+            } else {
+                say!("250 OK");
+            }
+        }
+        seen
+    }
+
+    fn plaintext_config(port: u16, username: &str) -> SmtpConfig {
+        SmtpConfig {
+            host: "127.0.0.1".to_string(),
+            port,
+            username: username.to_string(),
+            password: if username.is_empty() {
+                String::new()
+            } else {
+                "secret".to_string()
+            },
+            from_name: None,
+            from_email: "noreply@example.com".to_string(),
+            tls_mode: SmtpTlsMode::Plaintext,
+        }
+    }
+
+    fn test_message() -> Message {
+        Message::builder()
+            .from("noreply@example.com".parse().unwrap())
+            .to("guest@example.com".parse().unwrap())
+            .subject("test")
+            .body("hello".to_string())
+            .unwrap()
+    }
+
+    /// Regression test for #190: with no username configured, the message must
+    /// actually reach a relay that advertises no AUTH mechanism.
+    #[tokio::test]
+    async fn unauthenticated_relay_receives_the_message() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = tokio::spawn(fake_no_auth_mta(listener));
+
+        let result = tokio::time::timeout(
+            std::time::Duration::from_secs(10),
+            send_email(&plaintext_config(port, ""), test_message()),
+        )
+        .await
+        .expect("send timed out");
+        result.expect("send should succeed against a no-auth relay");
+
+        let seen = tokio::time::timeout(std::time::Duration::from_secs(10), server)
+            .await
+            .expect("server timed out")
+            .unwrap();
+        assert!(seen.iter().any(|c| c.starts_with("MAIL FROM")), "{seen:?}");
+        assert!(seen.iter().any(|c| c.starts_with("RCPT TO")), "{seen:?}");
+        assert!(seen.iter().any(|c| c == "DATA"), "{seen:?}");
+        assert!(!seen.iter().any(|c| c.starts_with("AUTH")), "{seen:?}");
+    }
+
+    /// The other half of #190: a username must still mean authentication, so
+    /// the same relay fails the way it always did. Without this, "skip auth
+    /// when the username is empty" could regress into "never authenticate".
+    #[tokio::test]
+    async fn credentials_against_a_no_auth_relay_still_fail() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = tokio::spawn(fake_no_auth_mta(listener));
+
+        let err = tokio::time::timeout(
+            std::time::Duration::from_secs(10),
+            send_email(&plaintext_config(port, "alice"), test_message()),
+        )
+        .await
+        .expect("send timed out")
+        .expect_err("a no-auth relay cannot satisfy configured credentials");
+        assert!(
+            err.to_string().contains("authentication mechanism"),
+            "unexpected error: {err}"
+        );
+
+        // The client aborts before the envelope: nothing reaches the MTA.
+        let seen = tokio::time::timeout(std::time::Duration::from_secs(10), server)
+            .await
+            .expect("server timed out")
+            .unwrap();
+        assert!(!seen.iter().any(|c| c.starts_with("MAIL FROM")), "{seen:?}");
     }
 
     #[test]

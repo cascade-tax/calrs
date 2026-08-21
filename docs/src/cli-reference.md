@@ -100,6 +100,7 @@ calrs config smtp [OPTIONS]
     --username <USERNAME>   SMTP username (omit for an unauthenticated relay)
     --from-email <EMAIL>    Sender email address
     --from-name <NAME>      Sender display name
+    --tls-mode <MODE>       starttls (default), tls, or none
 
 calrs config show           Display current configuration
 
@@ -149,6 +150,18 @@ CALRS_SMTP_HOST=localhost
 CALRS_SMTP_PORT=25
 CALRS_SMTP_TLS_MODE=none
 CALRS_SMTP_FROM_EMAIL=noreply@example.com
+```
+
+If the environment block sets no `CALRS_SMTP_USERNAME` while the database holds
+SMTP credentials, the environment still wins and calrs relays unauthenticated.
+It logs a warning once at startup when that happens, because the admin form
+locks itself whenever the environment governs.
+
+The equivalent from the CLI, with no prompts:
+
+```
+calrs config smtp --host localhost --port 25 --tls-mode none \
+  --username '' --from-email noreply@example.com --from-name calrs
 ```
 
 ### `calrs resource`

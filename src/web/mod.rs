@@ -27941,6 +27941,54 @@ mod tests {
         }
     }
 
+    /// The TLS mode `<select>` marks exactly one option `selected`. Two would
+    /// be worse than none: a browser honours the last one, so an operator on
+    /// STARTTLS would be shown "None, unencrypted" and silently downgrade the
+    /// transport by saving the form untouched.
+    #[tokio::test]
+    async fn admin_smtp_tls_mode_select_marks_one_option() {
+        for (stored, expected_label) in [
+            ("starttls", "STARTTLS (port 587)"),
+            ("tls", "Implicit TLS (port 465)"),
+            ("none", "None, unencrypted (local MTA only)"),
+        ] {
+            let (app, pool, session, _) = setup_test_app().await;
+            sqlx::query(
+                "INSERT INTO smtp_config (id, host, port, username, password_enc, from_email, tls_mode, enabled) \
+                 VALUES (?, 'smtp.test', 587, '', '', 'noreply@test.com', ?, 1)",
+            )
+            .bind(uuid::Uuid::new_v4().to_string())
+            .bind(stored)
+            .execute(&pool)
+            .await
+            .unwrap();
+
+            let response = app
+                .oneshot(get_authed("/dashboard/admin", &session))
+                .await
+                .unwrap();
+            assert_eq!(response.status(), 200);
+            let body = body_string(response).await;
+
+            let selected: Vec<&str> = [
+                "STARTTLS (port 587)",
+                "Implicit TLS (port 465)",
+                "None, unencrypted (local MTA only)",
+            ]
+            .into_iter()
+            .filter(|label| {
+                body.split("<option")
+                    .any(|opt| opt.contains(label) && opt.contains("selected"))
+            })
+            .collect();
+            assert_eq!(
+                selected,
+                vec![expected_label],
+                "tls_mode {stored} should select exactly {expected_label}"
+            );
+        }
+    }
+
     #[tokio::test]
     async fn overrides_page_returns_200() {
         let (app, _, session, _) = setup_test_app().await;
