@@ -38,7 +38,12 @@
         </div>
       </div>
       <div class="et-actions">
-        <button type="button" class="slot-btn copy-link-btn" style="font-size: 0.8rem; cursor: pointer;" title="{{ t('dashboard-event-types-copy-title') }}" data-copy-label="{{ t('dashboard-event-types-copy') }}" data-copied-label="{{ t('dashboard-event-types-copied') }}" data-copy-failed-label="{{ t('dashboard-event-types-copy-failed') }}" data-path="/{% if et.is_team %}team/{{ et.team_slug }}{% else %}u/{{ username }}{% endif %}/{{ et.slug }}">{{ t('dashboard-event-types-copy') }}</button>
+        {# Only where a public URL actually resolves. A private event type is
+           reached through a tokenised invite, so copying its path would hand
+           out a link that 404s; the row offers "Send invites" instead. #}
+        {% if et.view_url %}
+        <button type="button" class="slot-btn copy-link-btn" style="font-size: 0.8rem; cursor: pointer;" title="{{ t('dashboard-event-types-copy-title') }}" data-copy-label="{{ t('dashboard-event-types-copy') }}" data-copied-label="{{ t('dashboard-event-types-copied') }}" data-copy-failed-label="{{ t('dashboard-event-types-copy-failed') }}" data-path="{{ et.view_url }}">{{ t('dashboard-event-types-copy') }}</button>
+        {% endif %}
         {% if et.can_manage %}
         <a href="{{ et.edit_url }}" class="slot-btn" style="text-decoration: none; font-size: 0.8rem;">Edit</a>
         <form method="post" action="{{ et.toggle_url }}" style="margin: 0;">
