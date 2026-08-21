@@ -503,8 +503,9 @@ The country is **seeded, not guessed**. Only an explicit BCP-47 region subtag co
 - ~~**Passwords echoed to terminal**~~ — **Fixed in v0.10.0**: `prompt_password()` now uses `rpassword` for hidden input.
 
 ### Features not yet implemented
-- Full delta sync using CalDAV `sync-token` and `ctag` (time-range filtering is implemented for on-demand sync)
-- REST API for third-party integrations
+- REST API for third-party integrations (tracked in #169)
+
+**Note:** delta sync is implemented. `commands/sync.rs` stores a per-calendar `sync-token` (migration 027) and `ctag`, issues an RFC 6578 `sync-collection` REPORT when it has one, and falls back to a full fetch when the server rejects it or reports an empty delta against a changed ctag. `--full` clears both. EWS sources keep their own flow.
 
 ### Test coverage roadmap
 - **Web handler integration tests** — use `axum::test` with in-memory SQLite to test the full booking flow (create event type → fetch slots → book → confirm/cancel), dashboard renders, admin panel, token-based actions. Requires building a shared test harness (DB seed, AppState setup). This is the biggest coverage opportunity (~49% of codebase is `web/mod.rs`).
