@@ -16,7 +16,7 @@ pub enum ConfigCommands {
         /// SMTP port (default: 587)
         #[arg(long)]
         port: Option<u16>,
-        /// SMTP username
+        /// SMTP username (omit for an unauthenticated relay)
         #[arg(long)]
         username: Option<String>,
         /// From email address
@@ -25,6 +25,9 @@ pub enum ConfigCommands {
         /// From display name
         #[arg(long)]
         from_name: Option<String>,
+        /// Transport security: starttls (default), tls, or none
+        #[arg(long)]
+        tls_mode: Option<String>,
     },
     /// Show current configuration
     Show,
@@ -535,6 +538,7 @@ pub async fn run(pool: &SqlitePool, key: &[u8; 32], cmd: ConfigCommands) -> Resu
             username,
             from_email,
             from_name,
+            tls_mode,
         } => {
             let host = host.unwrap_or_else(|| prompt("SMTP host"));
             let port = port.unwrap_or_else(|| {
@@ -545,8 +549,14 @@ pub async fn run(pool: &SqlitePool, key: &[u8; 32], cmd: ConfigCommands) -> Resu
                     p.parse().unwrap_or(587)
                 }
             });
-            let username = username.unwrap_or_else(|| prompt("SMTP username"));
-            let password = prompt("SMTP password");
+            let username = username.unwrap_or_else(|| {
+                prompt("SMTP username (leave empty for an unauthenticated relay)")
+            });
+            let password = if username.trim().is_empty() {
+                String::new()
+            } else {
+                prompt("SMTP password")
+            };
             let from_email = from_email.unwrap_or_else(|| prompt("From email"));
             let from_name = from_name.or_else(|| {
                 let name = prompt("From name (optional, press Enter to skip)");
@@ -557,19 +567,29 @@ pub async fn run(pool: &SqlitePool, key: &[u8; 32], cmd: ConfigCommands) -> Resu
                 }
             });
             let tls_mode = {
-                let raw = prompt("TLS mode (starttls/tls, default starttls)");
+                let raw = match tls_mode {
+                    Some(value) => value,
+                    None => prompt("TLS mode (starttls/tls/none, default starttls)"),
+                };
                 let normalized = raw.trim().to_ascii_lowercase();
                 match normalized.as_str() {
                     "" | "starttls" => "starttls",
                     "tls" => "tls",
+                    "none" | "plaintext" => "none",
                     other => {
                         anyhow::bail!(
-                            "Invalid TLS mode '{}'. Use 'starttls' (default, port 587) or 'tls' (implicit TLS, port 465).",
+                            "Invalid TLS mode '{}'. Use 'starttls' (default, port 587), 'tls' (implicit TLS, port 465), or 'none' (no encryption, for a local MTA).",
                             other
                         );
                     }
                 }
             };
+            if tls_mode == "none" {
+                println!(
+                    "{} TLS mode 'none' sends mail unencrypted. Only use it for a relay on this machine.",
+                    "!".yellow()
+                );
+            }
 
             let password_enc = crate::crypto::encrypt_password(key, &password)?;
             let id = Uuid::new_v4().to_string();
