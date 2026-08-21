@@ -1997,12 +1997,40 @@ async fn warn_if_env_shadows_db_credentials(pool: &SqlitePool) {
     }
 }
 
+/// Warn once about a username configured with no password.
+///
+/// This is deliberately not the hard error that a password with no username
+/// gets. There, the config is provably self-contradictory: the password can
+/// never be transmitted, so the intent to authenticate cannot be honoured under
+/// any server behaviour. Here it is only suspicious. It is almost always a
+/// secret that never reached the process (an unmounted Docker secret, a
+/// misspelled variable), but AUTH PLAIN with an empty password is well-formed
+/// and some allowlist-style internal relays accept it, so refusing to send
+/// would be a guess.
+///
+/// Checked on the loaded config rather than per source, so the environment and
+/// the database, both of which can express this, behave the same way.
+fn warn_if_auth_without_password(config: &SmtpConfig) {
+    static WARNED: std::sync::Once = std::sync::Once::new();
+    if config.uses_auth() && config.password.is_empty() {
+        WARNED.call_once(|| {
+            tracing::warn!(
+                host = %config.host,
+                "SMTP username is set with an empty password, so calrs will authenticate with an \
+                 empty password and most relays will reject that. Set the password, or clear the \
+                 username to relay without authentication."
+            );
+        });
+    }
+}
+
 /// Load SMTP config from environment or database.
 pub async fn load_smtp_config(pool: &SqlitePool, key: &[u8; 32]) -> Result<Option<SmtpConfig>> {
     if let Some(config) = load_smtp_config_from_env()? {
         if !config.uses_auth() {
             warn_if_env_shadows_db_credentials(pool).await;
         }
+        warn_if_auth_without_password(&config);
         return Ok(Some(config));
     }
 
@@ -2018,7 +2046,7 @@ pub async fn load_smtp_config(pool: &SqlitePool, key: &[u8; 32]) -> Result<Optio
         Some((host, port, username, password_enc, from_email, from_name, tls_mode)) => {
             let password = crate::crypto::decrypt_password(key, &password_enc)?;
             let tls_mode = SmtpTlsMode::parse(&tls_mode).unwrap_or(SmtpTlsMode::StartTls);
-            Ok(Some(SmtpConfig {
+            let config = SmtpConfig {
                 host,
                 port: port as u16,
                 username,
@@ -2026,7 +2054,9 @@ pub async fn load_smtp_config(pool: &SqlitePool, key: &[u8; 32]) -> Result<Optio
                 from_email,
                 from_name,
                 tls_mode,
-            }))
+            };
+            warn_if_auth_without_password(&config);
+            Ok(Some(config))
         }
         None => Ok(None),
     }
@@ -3157,6 +3187,26 @@ mod tests {
         assert_eq!(config.port, 25);
         assert_eq!(config.tls_mode, SmtpTlsMode::Plaintext);
         assert!(!config.uses_auth());
+    }
+
+    /// The deliberate asymmetry with `smtp_env_password_without_username_errors`.
+    /// A password with no username is provably unusable, so it is fatal. A
+    /// username with no password might still authenticate against a permissive
+    /// relay, so it loads and only warns.
+    #[test]
+    fn smtp_env_username_without_password_is_allowed() {
+        let _env = SmtpEnvGuard::new();
+        std::env::set_var("CALRS_SMTP_HOST", "smtp.example.com");
+        std::env::set_var("CALRS_SMTP_FROM_EMAIL", "noreply@example.com");
+        std::env::set_var("CALRS_SMTP_USERNAME", "alice");
+
+        let config = load_smtp_config_from_env()
+            .expect("a username with no password must not be fatal")
+            .expect("the block is complete");
+
+        assert_eq!(config.username, "alice");
+        assert!(config.password.is_empty());
+        assert!(config.uses_auth(), "credentials must still be attached");
     }
 
     #[test]

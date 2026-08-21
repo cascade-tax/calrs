@@ -157,6 +157,13 @@ SMTP credentials, the environment still wins and calrs relays unauthenticated.
 It logs a warning once at startup when that happens, because the admin form
 locks itself whenever the environment governs.
 
+The two credential variables are not interchangeable when only one is present.
+`CALRS_SMTP_PASSWORD` without `CALRS_SMTP_USERNAME` is an error: the password
+can never be sent, so the configuration contradicts itself. A username without a
+password is accepted and only warns, since a permissive relay may still
+authenticate on the username alone, though in practice it usually means the
+password never reached the process.
+
 The equivalent from the CLI, with no prompts:
 
 ```
