@@ -37,3 +37,46 @@ If you actively use one of the providers above (or want to add a new one) and ar
 ## What happens if a provider has no maintainer
 
 We don't promise that integrations without a dedicated maintainer keep working across releases. If a refactor breaks an unmaintained provider and no test catches it, the breakage may ship and only get fixed when someone who uses that provider files a bug. Provider maintainers exist to give those integrations a faster feedback loop.
+
+## Development workflows
+
+Run `cargo fmt --check`, `cargo check`, `cargo test`, and
+`cargo clippy -- -D warnings` as appropriate for the changed Rust surface. The
+pre-commit hook enforces canonical `rustfmt` output.
+
+When adding a migration, create `migrations/NNN_description.sql` and register it
+in the migration array inside `src/db.rs::migrate()`. Verify both paths together;
+an unregistered migration does not run on existing deployments.
+
+### Localization and Weblate
+
+The `i18n` branch is permanent. Hosted Weblate pushes translations there; merge
+`i18n` into the release branch periodically, and do not delete or recreate the
+branch. Do not merge the release branch back into `i18n` merely to synchronize
+it.
+
+For new or changed translatable text:
+
+1. Branch from `i18n` and add the English source key to
+   `i18n/en/main.ftl`; missing locale keys fall back to English.
+2. Use the existing Minijinja `t()` helper in localized templates and provide
+   the appropriate guest or authenticated language context.
+3. Push to `i18n` so Weblate can translate the key before the next release
+   merge.
+
+For a new locale, create `i18n/{code}/main.ftl`, register it in
+`SUPPORTED_LANGS`, add its label to `supported_with_labels()`, and push it to
+`i18n` for Weblate discovery.
+
+### Publishing the documentation site
+
+The landing page and mdBook output live on `gh-pages`:
+
+1. On the release branch, run `mdbook build docs`.
+2. Switch to `gh-pages`, restore `docs/src` and `docs/book.toml` from the
+   release branch, and rebuild.
+3. Replace the published files under `docs/` with `docs/book/`; update
+   `index.html` when the landing page changed.
+4. Stage only `docs/` and `index.html`, commit with `--no-verify` because the
+   branch does not contain `Cargo.toml`, push, and switch back to the release
+   branch.
