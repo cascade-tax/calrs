@@ -572,6 +572,7 @@ pub async fn run_reminder_loop(pool: SqlitePool, secret_key: [u8; 32]) {
                 location,
                 reminder_minutes: None,
                 additional_attendees: vec![],
+                host_attendees: vec![],
                 guest_language: guest_language.clone(),
                 host_language: host_language.clone(),
                 host_timezone: stored_tz_str.to_string(),
@@ -4712,6 +4713,8 @@ async fn confirm_booking(
                     .unwrap_or_else(|| user.email.clone()),
             )
         });
+    let attendee_groups =
+        booking_attendee_groups(&state.pool, &bid, &uid, &host_email, &guest_email).await;
 
     let details = crate::email::BookingDetails {
         event_title,
@@ -4727,7 +4730,8 @@ async fn confirm_booking(
         notes: None,
         location: location_display,
         reminder_minutes: None,
-        additional_attendees: vec![],
+        additional_attendees: attendee_groups.guest_added,
+        host_attendees: attendee_groups.collective_hosts,
         host_timezone: stored_tz.name().to_string(),
         resource_name: booking_resource_label(&state.pool, &uid).await,
         ..Default::default()
@@ -11250,6 +11254,8 @@ async fn handle_group_booking(
         !needs_approval,
     )
     .await;
+    let attendee_groups =
+        booking_attendee_groups(&state.pool, &id, &uid, &host_email, &form.email).await;
     let details = crate::email::BookingDetails {
         event_title: et_title.clone(),
         date: form.date.clone(),
@@ -11264,7 +11270,8 @@ async fn handle_group_booking(
         notes: form.notes.clone(),
         location: location_display.clone(),
         reminder_minutes: reminder_min,
-        additional_attendees: additional_attendees.clone(),
+        additional_attendees: attendee_groups.guest_added,
+        host_attendees: attendee_groups.collective_hosts,
         guest_language: Some(lang.to_string()),
         host_timezone: host_tz.name().to_string(),
         resource_name: booking_resource_label(&state.pool, &uid).await,
@@ -20691,6 +20698,8 @@ async fn approve_booking_by_token(
         true,
     )
     .await;
+    let attendee_groups =
+        booking_attendee_groups(&state.pool, &bid, &uid, &host_email, &guest_email).await;
 
     let guest_language: Option<String> =
         sqlx::query_scalar("SELECT language FROM bookings WHERE id = ?")
@@ -20714,7 +20723,8 @@ async fn approve_booking_by_token(
         notes: None,
         location: location_display,
         reminder_minutes: None,
-        additional_attendees: vec![],
+        additional_attendees: attendee_groups.guest_added,
+        host_attendees: attendee_groups.collective_hosts,
         // The guest booked in their own language; the host approving here may
         // well be browsing in another one, so this comes from the booking row
         // rather than from the approver's Accept-Language.
@@ -22163,6 +22173,8 @@ async fn guest_reschedule_booking(
             )
         }
     };
+    let attendee_groups =
+        booking_attendee_groups(&state.pool, &booking_id, &uid, &host_email, &guest_email).await;
 
     // old_start_at/old_end_at are stored in the event-type tz. Convert into the
     // guest's tz so `RescheduleDetails` carries guest-local wall-clock for
@@ -22286,7 +22298,8 @@ async fn guest_reschedule_booking(
             notes: None,
             location: loc_value.clone(),
             reminder_minutes: None,
-            additional_attendees: vec![],
+            additional_attendees: attendee_groups.guest_added.clone(),
+            host_attendees: attendee_groups.collective_hosts.clone(),
             host_timezone: host_tz.name().to_string(),
             ..Default::default()
         };
@@ -22339,6 +22352,7 @@ async fn guest_reschedule_booking(
                     location: loc_value,
                     host_timezone: host_tz.name().to_string(),
                 },
+                &push_details,
                 guest_cancel_url.as_deref(),
                 guest_reschedule_url.as_deref(),
             )
@@ -22595,6 +22609,74 @@ async fn host_reschedule_booking(
 }
 
 // --- CalDAV write-back ---
+
+#[derive(Debug, Default, PartialEq, Eq)]
+struct BookingAttendeeGroups {
+    guest_added: Vec<String>,
+    collective_hosts: Vec<String>,
+}
+
+/// Rebuild the two non-primary-attendee groups for an existing booking.
+///
+/// Guest-added attendees are persisted in `booking_attendees`. Collective
+/// hosts come from the booking's current eligible team roster, with the
+/// organizer omitted because an iCalendar organizer must not also be emitted
+/// as an attendee. Both groups exclude the primary guest and are deduplicated
+/// case-insensitively.
+async fn booking_attendee_groups(
+    pool: &SqlitePool,
+    booking_id: &str,
+    booking_uid: &str,
+    organizer_email: &str,
+    guest_email: &str,
+) -> BookingAttendeeGroups {
+    let saved: Vec<(String,)> = sqlx::query_as(
+        "SELECT email FROM booking_attendees WHERE booking_id = ? ORDER BY lower(email), id",
+    )
+    .bind(booking_id)
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default();
+
+    let collective: Vec<(String,)> = sqlx::query_as(
+        "SELECT COALESCE(u.booking_email, u.email)
+         FROM bookings b
+         JOIN event_types et ON et.id = b.event_type_id
+         JOIN team_members tm ON tm.team_id = et.team_id
+         JOIN users u ON u.id = tm.user_id
+         LEFT JOIN event_type_member_weights etw
+           ON etw.user_id = u.id AND etw.event_type_id = et.id
+         WHERE b.uid = ? AND b.assigned_user_id IS NULL
+           AND et.scheduling_mode = 'collective'
+           AND u.enabled = 1 AND COALESCE(etw.weight, 1) > 0
+         ORDER BY u.name",
+    )
+    .bind(booking_uid)
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default();
+
+    let mut seen = std::collections::HashSet::from([
+        organizer_email.trim().to_lowercase(),
+        guest_email.trim().to_lowercase(),
+    ]);
+    let mut groups = BookingAttendeeGroups::default();
+
+    for (email,) in saved {
+        let normalized = email.trim().to_lowercase();
+        if !normalized.is_empty() && seen.insert(normalized) {
+            groups.guest_added.push(email);
+        }
+    }
+    for (email,) in collective {
+        let normalized = email.trim().to_lowercase();
+        if !normalized.is_empty() && seen.insert(normalized) {
+            groups.collective_hosts.push(email);
+        }
+    }
+
+    groups
+}
 
 /// The `(name, email)` the booking's calendar event was created with: the
 /// assigned member for round-robin, every eligible member joined (first one's
@@ -30261,6 +30343,14 @@ mod tests {
         String::from_utf8(bytes.to_vec()).unwrap()
     }
 
+    async fn capture_calendar_put(
+        State(captured): State<std::sync::Arc<std::sync::Mutex<Vec<String>>>>,
+        body: String,
+    ) -> axum::http::StatusCode {
+        captured.lock().unwrap().push(body);
+        axum::http::StatusCode::CREATED
+    }
+
     #[tokio::test]
     async fn root_redirects_to_login() {
         let (app, _, _, _) = setup_test_app().await;
@@ -31614,6 +31704,143 @@ mod tests {
             "confirmed",
             "Booking should be confirmed via POST token"
         );
+    }
+
+    #[tokio::test]
+    async fn approve_collective_booking_preserves_guest_added_and_cohost_attendees() {
+        let (app, pool, _, et_id) = setup_test_app().await;
+
+        let captured = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+        let capture_app = Router::new()
+            .route("/{*path}", axum::routing::put(capture_calendar_put))
+            .with_state(captured.clone());
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base_url = format!("http://{}", listener.local_addr().unwrap());
+        let server = tokio::spawn(async move {
+            axum::serve(listener, capture_app).await.unwrap();
+        });
+
+        let organizer_id: String = sqlx::query_scalar(
+            "SELECT a.user_id FROM event_types et JOIN accounts a ON a.id = et.account_id WHERE et.id = ?",
+        )
+        .bind(&et_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        let organizer_account_id: String =
+            sqlx::query_scalar("SELECT account_id FROM event_types WHERE id = ?")
+                .bind(&et_id)
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+
+        let cohost_id = uuid::Uuid::new_v4().to_string();
+        sqlx::query("INSERT INTO users (id, email, name, role, auth_provider, username, enabled) VALUES (?, 'cohost@test.com', 'Zed Co-host', 'user', 'local', 'cohost', 1)")
+            .bind(&cohost_id)
+            .execute(&pool)
+            .await
+            .unwrap();
+        let cohost_account_id = uuid::Uuid::new_v4().to_string();
+        sqlx::query("INSERT INTO accounts (id, name, email, timezone, user_id) VALUES (?, 'Zed Co-host', 'cohost@test.com', 'UTC', ?)")
+            .bind(&cohost_account_id)
+            .bind(&cohost_id)
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        let team_id = uuid::Uuid::new_v4().to_string();
+        sqlx::query("INSERT INTO teams (id, name, slug, visibility) VALUES (?, 'Collective', 'collective', 'public')")
+            .bind(&team_id)
+            .execute(&pool)
+            .await
+            .unwrap();
+        for user_id in [&organizer_id, &cohost_id] {
+            sqlx::query("INSERT INTO team_members (team_id, user_id, role, source) VALUES (?, ?, 'member', 'direct')")
+                .bind(&team_id)
+                .bind(user_id)
+                .execute(&pool)
+                .await
+                .unwrap();
+        }
+        sqlx::query("UPDATE event_types SET team_id = ?, scheduling_mode = 'collective', requires_confirmation = 1 WHERE id = ?")
+            .bind(&team_id)
+            .bind(&et_id)
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        let encrypted_password = crate::crypto::encrypt_password(&[0u8; 32], "test").unwrap();
+        for (account_id, calendar_href) in [
+            (&organizer_account_id, "/organizer"),
+            (&cohost_account_id, "/cohost"),
+        ] {
+            sqlx::query("INSERT INTO caldav_sources (id, account_id, name, url, username, password_enc, write_calendar_href, enabled) VALUES (?, ?, 'capture', ?, 'test', ?, ?, 1)")
+                .bind(uuid::Uuid::new_v4().to_string())
+                .bind(account_id)
+                .bind(&base_url)
+                .bind(&encrypted_password)
+                .bind(calendar_href)
+                .execute(&pool)
+                .await
+                .unwrap();
+        }
+
+        let booking_id = uuid::Uuid::new_v4().to_string();
+        let confirm_token = uuid::Uuid::new_v4().to_string();
+        sqlx::query("INSERT INTO bookings (id, event_type_id, uid, guest_name, guest_email, guest_timezone, start_at, end_at, status, cancel_token, reschedule_token, confirm_token) VALUES (?, ?, 'uid-collective-approval', 'Primary Guest', 'guest@test.com', 'UTC', '2030-06-20T10:00:00', '2030-06-20T10:30:00', 'pending', ?, ?, ?)")
+            .bind(&booking_id)
+            .bind(&et_id)
+            .bind(uuid::Uuid::new_v4().to_string())
+            .bind(uuid::Uuid::new_v4().to_string())
+            .bind(&confirm_token)
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query(
+            "INSERT INTO booking_attendees (id, booking_id, email) VALUES (?, ?, 'added@test.com')",
+        )
+        .bind(uuid::Uuid::new_v4().to_string())
+        .bind(&booking_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        let groups = booking_attendee_groups(
+            &pool,
+            &booking_id,
+            "uid-collective-approval",
+            "test@example.com",
+            "guest@test.com",
+        )
+        .await;
+        assert_eq!(groups.guest_added, vec!["added@test.com"]);
+        assert_eq!(groups.collective_hosts, vec!["cohost@test.com"]);
+
+        let response = app
+            .oneshot(post_bare(&format!("/booking/approve/{}", confirm_token)))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), 200);
+
+        let bodies = captured.lock().unwrap();
+        assert_eq!(
+            bodies.len(),
+            2,
+            "collective booking should reach both calendars"
+        );
+        for ics in bodies.iter() {
+            assert!(ics.contains(
+                "ATTENDEE;SCHEDULE-AGENT=CLIENT;CN=Primary Guest;RSVP=TRUE:mailto:guest@test.com"
+            ));
+            assert!(ics.contains("ATTENDEE;SCHEDULE-AGENT=CLIENT;RSVP=TRUE:mailto:added@test.com"));
+            assert!(ics.contains("ATTENDEE;SCHEDULE-AGENT=CLIENT;RSVP=TRUE:mailto:cohost@test.com"));
+            assert_eq!(ics.matches("ATTENDEE;").count(), 3);
+            assert!(
+                !ics.contains("ATTENDEE;SCHEDULE-AGENT=CLIENT;RSVP=TRUE:mailto:test@example.com")
+            );
+        }
+        drop(bodies);
+        server.abort();
     }
 
     /// Regression test for #101: when the event type's timezone differs from

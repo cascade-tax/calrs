@@ -148,7 +148,13 @@ pub struct BookingDetails {
     pub notes: Option<String>,
     pub location: Option<String>,
     pub reminder_minutes: Option<i32>,
+    /// Guest-added attendees. These receive their own attendee confirmation
+    /// email in addition to appearing on the calendar invitation.
     pub additional_attendees: Vec<String>,
+    /// Collective hosts other than the organizer. They appear on the calendar
+    /// invitation but already receive host notifications, so they must not be
+    /// sent the guest-style additional-attendee email.
+    pub host_attendees: Vec<String>,
     /// Guest's preferred language at booking time (from `bookings.language`).
     /// `None` falls back to English at send time.
     pub guest_language: Option<String>,
@@ -740,6 +746,7 @@ fn generate_ics_impl(
     let additional_attendee_lines: String = details
         .additional_attendees
         .iter()
+        .chain(details.host_attendees.iter())
         .map(|email| format!("ATTENDEE{sa};RSVP=TRUE:mailto:{}\r\n", sanitize_ics(email)))
         .collect();
     let dtstamp = chrono::Utc::now().format("%Y%m%dT%H%M%SZ").to_string();
@@ -2628,6 +2635,7 @@ pub async fn send_guest_pick_new_time(
 pub async fn send_guest_reschedule_notification(
     config: &SmtpConfig,
     details: &RescheduleDetails,
+    booking_details: &BookingDetails,
     cancel_url: Option<&str>,
     reschedule_url: Option<&str>,
 ) -> Result<()> {
@@ -2642,24 +2650,7 @@ pub async fn send_guest_reschedule_notification(
         &details.guest_timezone,
     );
 
-    let booking_details = BookingDetails {
-        event_title: details.event_title.clone(),
-        date: details.new_date.clone(),
-        start_time: details.new_start_time.clone(),
-        end_time: details.new_end_time.clone(),
-        guest_name: details.guest_name.clone(),
-        guest_email: details.guest_email.clone(),
-        guest_timezone: details.guest_timezone.clone(),
-        host_name: details.host_name.clone(),
-        host_email: details.host_email.clone(),
-        uid: details.uid.clone(),
-        notes: None,
-        location: details.location.clone(),
-        reminder_minutes: None,
-        additional_attendees: vec![],
-        ..Default::default()
-    };
-    let ics = generate_ics(&booking_details, "REQUEST");
+    let ics = generate_ics(booking_details, "REQUEST");
 
     let to = format!("{} <{}>", details.guest_name, details.guest_email).parse()?;
 
