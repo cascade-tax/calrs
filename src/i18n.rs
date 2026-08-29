@@ -564,4 +564,42 @@ mod tests {
             );
         }
     }
+
+    /// French is a fully-translated locale (issue #195 shipped EN and FR at
+    /// 100%). A key added to English without a French value silently renders
+    /// English inside an otherwise French page, so catch it here rather than
+    /// on a live dashboard.
+    #[test]
+    fn french_covers_every_english_key() {
+        let missing: Vec<&str> = message_ids("en")
+            .into_iter()
+            .filter(|id| !message_ids("fr").contains(id))
+            .collect();
+        assert!(
+            missing.is_empty(),
+            "keys present in English but missing from French:\n{}",
+            missing.join("\n")
+        );
+    }
+
+    /// Message ids declared in a locale's bundle, read from the .ftl source
+    /// (FluentBundle exposes no iterator over its messages).
+    fn message_ids(lang: &str) -> Vec<&'static str> {
+        let src = SUPPORTED_LANGS
+            .iter()
+            .find(|(code, _, _)| *code == lang)
+            .map(|(_, _, src)| *src)
+            .unwrap_or("");
+        src.lines()
+            .filter_map(|line| {
+                let id = line.split(" =").next()?;
+                let valid = !id.is_empty()
+                    && id.starts_with(|c: char| c.is_ascii_lowercase())
+                    && id
+                        .chars()
+                        .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-');
+                (valid && line.starts_with(id) && line[id.len()..].starts_with(" =")).then_some(id)
+            })
+            .collect()
+    }
 }

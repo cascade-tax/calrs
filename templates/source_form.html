@@ -20,7 +20,7 @@
         <option value="ews" {% if form_provider_type == "ews" %}selected{% endif %}>Microsoft Exchange (EWS)</option>
       </select>
       <small style="display:block; margin-top: 0.25rem; color: var(--text-muted); font-size: 0.825rem;">
-        Pick the protocol your server speaks. EWS targets on-prem Exchange 2019/2016/2013.
+        {{ t("source-form-backend-help") }}
       </small>
     </div>
 

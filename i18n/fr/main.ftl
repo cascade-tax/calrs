@@ -905,3 +905,272 @@ etf-preset-team = Création d'un type d'événement <strong>d'équipe</strong> &
 etf-pattern-hint = Motif personnalisé facultatif. Jetons : <code>{"{"}username{"}"}</code>, <code>{"{"}event{"}"}</code>, <code>{"{"}date{"}"}</code>, <code>{"{"}random{"}"}</code>. Laissez vide pour utiliser le motif par défaut configuré par un administrateur.
 etf-pattern-random-warning = Ce motif ne contient pas de jeton <code>{"{"}random{"}"}</code>. Deux réservations de ce type d'événement le même jour partageront le même salon, et le second invité pourra entrer dans la réunion du premier. N'utilisez des salons fixes que si c'est bien l'effet recherché.
 etf-webhook-hint = L'URL de réunion propre à chaque réservation est récupérée depuis le webhook configuré par un administrateur sous Administration &rarr; Webhook de réunion. Aucune URL n'est nécessaire ici.
+
+# Admin panel (templates/admin.html)
+
+admin-page-title = Administration
+admin-heading = Tableau de bord d'administration
+admin-action-refused = Action refusée :
+admin-logo = Logo de l'entreprise
+admin-logo-help = Affiché sur les pages de réservation publiques. Recommandé : PNG ou SVG, 2 Mo maximum.
+admin-company-link = Lien de l'entreprise
+admin-company-link-help = Le logo pointe vers cette URL sur les pages de réservation publiques. Laissez vide pour ne pas créer de lien.
+admin-theme = Thème
+admin-theme-help = Choisissez un thème de couleurs pour toutes les pages. Le basculement clair/sombre est indépendant : les thèmes s'adaptent aux deux modes.
+admin-theme-default = Par défaut
+admin-theme-default-desc = Bleu épuré
+admin-theme-nord-desc = Givre arctique
+admin-theme-dracula-desc = Violet sombre
+admin-theme-gruvbox-desc = Rétro chaleureux
+admin-theme-solarized-desc = Le classique d'Ethan
+admin-theme-tokyo-desc = Ville au néon
+admin-theme-custom = Personnalisé
+admin-theme-custom-desc = Vos couleurs
+admin-custom-colors = Couleurs personnalisées
+admin-color-accent = Accent
+admin-color-accent-hover = Accent au survol
+admin-color-bg = Arrière-plan
+admin-color-surface = Surface
+admin-color-text = Texte
+admin-save-theme = Enregistrer le thème
+admin-users = Utilisateurs ({ $count })
+admin-user-filter = Filtrer par nom ou e-mail…
+admin-badge-admin = admin
+admin-badge-disabled = désactivé
+admin-impersonate = Prendre l'identité
+admin-demote = Rétrograder
+admin-promote = Promouvoir
+admin-disable = Désactiver
+admin-enable = Activer
+admin-delete = Supprimer
+admin-no-users-match = Aucun utilisateur ne correspond au filtre.
+admin-no-users = Aucun utilisateur pour le moment.
+admin-groups = Groupes ({ $count })
+admin-group-filter = Filtrer par nom de groupe…
+admin-group-name = Nom du groupe
+admin-weight = poids :
+admin-no-groups-match = Aucun groupe ne correspond au filtre.
+admin-no-groups = Aucun groupe synchronisé pour le moment. Les groupes sont synchronisés automatiquement depuis votre fournisseur OIDC.
+admin-auth-settings = Paramètres d'authentification
+admin-registration-enabled = Inscriptions activées
+admin-allowed-domains = Domaines d'e-mail autorisés
+admin-allowed-domains-hint = (séparés par des virgules, vide pour tous)
+admin-save-auth = Enregistrer les paramètres d'authentification
+admin-system-settings = Paramètres système
+admin-base-url = URL de base
+admin-base-url-help = URL publique de cette instance. Utilisée pour les redirections OIDC et les liens dans les e-mails (approbation/refus, annulation, rappels).
+admin-private-hosts = Liste d'hôtes privés autorisés
+admin-private-hosts-help = Noms d'hôtes, séparés par des virgules, autorisés à résoudre vers des IP privées ou réservées pour les sources CalDAV/EWS (dérogation à la protection SSRF). N'ajoutez que des hôtes que vous contrôlez (par exemple un serveur d'agenda sur le même réseau Docker). Laissez vide pour conserver la protection sur tous les hôtes.
+admin-unset-env = Supprimez la variable d'environnement pour modifier ce réglage ici.
+admin-save-system = Enregistrer les paramètres système
+admin-status = État :
+admin-status-enabled = activé
+admin-status-disabled = désactivé
+admin-status-disabled-paren = (désactivé)
+admin-status-configured = configuré
+admin-status-not-configured = non configuré
+admin-via-environment = (via l'environnement)
+admin-issuer = Émetteur :
+admin-client-id = ID client :
+admin-instance = Instance :
+admin-oidc-settings = Paramètres OIDC
+admin-oidc-enabled = OIDC activé
+admin-issuer-url = URL de l'émetteur
+admin-client-id-label = ID client
+admin-client-secret = Secret client
+admin-keep-current-hint = (laissez vide pour conserver l'actuel)
+admin-keep-current-set-hint = (laissez vide pour conserver l'actuel — actuellement défini)
+admin-keep-unchanged = Laissez vide pour ne rien changer
+admin-oidc-auto-register = Inscrire automatiquement les nouveaux utilisateurs OIDC
+admin-save-oidc = Enregistrer les paramètres OIDC
+admin-google = Google Agenda (OAuth2)
+admin-save-google = Enregistrer les paramètres OAuth2 Google
+admin-captcha = Captcha
+admin-instance-url = URL de l'instance
+admin-site-key = Clé de site
+admin-secret = Secret
+admin-widget-url = URL du script du widget
+admin-widget-url-help = À remplacer si le CDN est bloqué. Les modifications prennent effet dès l'enregistrement.
+admin-captcha-disable-help = Laissez l'URL de l'instance, la clé de site et le secret vides pour désactiver le captcha sur les pages de réservation.
+admin-save-captcha = Enregistrer les paramètres du captcha
+admin-resources = Ressources
+admin-resources-help = Ressources partagées réservables (laboratoire de démo, salles de réunion) alimentées par un flux d'agenda. Rattachée à des types d'événement, une ressource occupée bloque les réservations.
+admin-resource-stats = Événements en cache : { $events } &middot; Rattachée à { $attached } type(s) d'événement
+admin-never = jamais
+admin-resource-sync-failed = (échec de la dernière tentative : { $error })
+admin-writeback-enabled = Écriture : activée ({ $via })
+admin-writeback-readonly = Écriture : lecture seule
+admin-teams-allowed = Équipes autorisées :
+admin-teams-allowed-none = aucune (administrateurs globaux uniquement)
+admin-sync-now = Synchroniser maintenant
+admin-test-write = Tester l'écriture
+admin-delete-resource-confirm = Supprimer cette ressource ? Les types d'événement qui l'utilisent cesseront de la vérifier.
+admin-name = Nom
+admin-name-help = Laissez vide pour récupérer le nom depuis le flux.
+admin-feed-url = URL du flux ICS (adresse de publication)
+admin-feed-url-help = BlueMind : l'adresse d'agenda publique ou privée de l'agenda de la ressource.
+admin-caldav-url = URL de la collection CalDAV (pour l'écriture)
+admin-caldav-url-help = Facultatif. Pour BlueMind, elle est déduite automatiquement de l'URL du flux.
+admin-caldav-username = Nom d'utilisateur CalDAV
+admin-caldav-password = Mot de passe CalDAV
+admin-resource-teams = Équipes autorisées à utiliser cette ressource
+admin-resource-teams-help = Les administrateurs de ces équipes peuvent rattacher cette ressource à leurs types d'événement d'équipe. Vide : administrateurs globaux uniquement.
+admin-no-teams = Aucune équipe pour le moment.
+admin-save-resource = Enregistrer la ressource
+admin-add-resource = Ajouter une ressource
+admin-jitsi = Jitsi (liens de réunion générés automatiquement)
+admin-jitsi-help = Lorsque le lieu d'un type d'événement est « Jitsi (salon généré automatiquement) », calrs construit une URL de salon pour chaque réservation en ajoutant le motif ci-dessous à votre URL de base Jitsi. Aucun appel d'API externe n'est nécessaire.
+admin-display-name = Nom affiché
+admin-jitsi-display-name-placeholder = ex. Meet DYB
+admin-jitsi-display-name-help = Affiché aux invités sur le sélecteur de créneaux et le formulaire de réservation. « Visioconférence » par défaut si vide.
+admin-room-pattern = Motif de nom de salon
+admin-jitsi-disable-help = Laissez l'URL de base vide pour désactiver la génération automatique Jitsi.
+admin-save-jitsi = Enregistrer les paramètres Jitsi
+admin-meeting-webhook = Webhook de réunion (fournisseur de votre choix)
+admin-webhook-url = URL du webhook
+admin-webhook-display-name-placeholder = ex. Zoom, Whereby, Custom Meet
+admin-webhook-display-name-help = Affiché aux invités à la place du badge générique « Visioconférence ».
+admin-authentication = Authentification
+admin-auth-none = Aucune
+admin-auth-hmac = HMAC-SHA256 (en-tête X-Calrs-Signature)
+admin-shared-secret = Secret partagé
+admin-webhook-disable-help = Laissez l'URL vide pour désactiver le webhook de réunion.
+admin-save-webhook = Enregistrer les paramètres du webhook
+admin-smtp = Paramètres SMTP
+admin-smtp-test-sent = E-mail de test envoyé.
+admin-smtp-test-failed = L'e-mail de test n'a pas pu être envoyé. Vérifiez les journaux du serveur et vos paramètres SMTP.
+admin-smtp-env-error = Erreur de configuration SMTP par l'environnement :
+admin-smtp-host = Hôte :
+admin-smtp-from = Expéditeur :
+admin-smtp-enabled = SMTP activé
+admin-host = Hôte
+admin-port = Port
+admin-tls-mode = Mode TLS
+admin-tls-starttls = STARTTLS (port 587)
+admin-tls-implicit = TLS implicite (port 465)
+admin-tls-none = Aucun, non chiffré (MTA local uniquement)
+admin-smtp-username-hint = (laissez vide pour un relais sans authentification)
+admin-from-email = Adresse d'expédition
+admin-from-name = Nom d'expéditeur
+admin-save-smtp = Enregistrer les paramètres SMTP
+admin-send-test-email = Envoyer un e-mail de test à
+admin-send-test-email-hint = (par défaut, l'adresse de votre compte)
+admin-send-test-email-btn = Envoyer l'e-mail de test
+admin-smtp-clear-confirm = Supprimer la configuration SMTP enregistrée en base ?
+admin-smtp-clear = Effacer la configuration en base
+admin-sms = Paramètres SMS
+admin-sms-help = Facultatif. Les SMS ne sont envoyés que pour les réservations sur les types d'événement où les « Notifications SMS » sont activées, et uniquement si l'invité a laissé un numéro.
+admin-sms-test-sent = Message de test envoyé.
+admin-sms-test-checked = Identifiants acceptés.
+admin-sms-test-error = La passerelle SMS a refusé la requête.
+admin-sms-captcha-warning = Le formulaire de réservation est public et le numéro du destinataire vient de l'invité : sans captcha, les SMS forment un relais ouvert que quelqu'un peut vous facturer. Configurez le captcha ci-dessus et restreignez les pays de destination dans les réglages de votre passerelle.
+admin-sms-sent-today = Envoyés aujourd'hui :
+admin-sms-of-cap = sur { $cap }
+admin-sms-config-error = Erreur de configuration SMS :
+admin-sms-gateway = Passerelle :
+admin-sms-account = Compte :
+admin-sms-sender = Expéditeur :
+admin-sms-enabled = SMS activés
+admin-sms-gateway-label = Passerelle
+admin-required-on-switch = Obligatoire lors du changement de passerelle
+admin-sms-docs = Documentation de l'API { $provider }
+admin-sms-country = Indicatif pays par défaut
+admin-sms-country-hint = (utilisé quand un invité saisit un numéro local)
+admin-sms-daily-cap = Limite quotidienne
+admin-sms-daily-cap-hint = (messages par jour pour toute l'instance, 0 pour aucune limite)
+admin-sms-daily-cap-help = Au-delà de la limite, calrs cesse d'envoyer des SMS et continue les e-mails : une réservation n'échoue jamais parce que le budget SMS est épuisé.
+admin-save-sms = Enregistrer les paramètres SMS
+admin-send-test-sms = Envoyer un message de test à
+admin-send-test-sms-hint-check = (laissez vide pour vérifier seulement les identifiants)
+admin-send-test-sms-hint-e164 = (format E.164)
+admin-test-gateway = Tester la passerelle
+admin-sms-clear-confirm = Supprimer la configuration SMS enregistrée en base ?
+admin-sms-allow-all = Autoriser tout utilisateur à activer les SMS sur ses types d'événement
+admin-sms-allow-all-help = Désactivé par défaut : les SMS consomment le crédit du compte configuré ici, donc seuls les administrateurs peuvent basculer un type d'événement en mode SMS.
+admin-save-policy = Enregistrer la politique
+admin-page-of = Page %1 sur %2
+admin-show-more-js = Afficher %1 de plus
+admin-show-fewer = Afficher moins
+
+# Admin panel: strings carrying markup or literal braces (templates/admin.html)
+
+admin-delete-user-confirm = Supprimer définitivement l'utilisateur { $email } ?\n\nCela efface son compte, son profil de planification, ses sources d'agenda, ses types d'événement et toutes les données dont il est le seul propriétaire. Les réservations passées seront supprimées avec leurs types d'événement.\n\nPour les utilisateurs OIDC/SSO : si l'inscription automatique est activée, la personne sera recréée à sa prochaine connexion.\n\nCette action est irréversible.
+admin-system-settings-help = URL publique et paramètres de sécurité réseau. Ils peuvent aussi être définis par les variables d'environnement <code>CALRS_BASE_URL</code> et <code>CALRS_ALLOW_PRIVATE_HOSTS</code>. Lorsqu'une variable d'environnement est définie, elle <strong>prime</strong> sur la valeur ci-dessous.
+admin-set-by-env = — défini par l'environnement ({ $var }), prioritaire sur la valeur enregistrée
+admin-google-help = Pour activer l'intégration Google Agenda, créez des identifiants OAuth2 sur la <a href="https://console.cloud.google.com/apis/credentials" target="_blank" style="color: var(--accent);">Google Cloud Console</a>. Activez l'<strong>API Google Calendar</strong>, puis ajoutez { $redirect_uri } comme URI de redirection autorisée.
+admin-room-pattern-help = Jetons disponibles : <code>{"{"}username{"}"}</code> (hôte), <code>{"{"}event{"}"}</code> (identifiant du type d'événement), <code>{"{"}date{"}"}</code> (AAAAMMJJ), <code>{"{"}random{"}"}</code> (8 caractères). Par défaut : { $default }.
+admin-room-pattern-warning = Sans <code>{"{"}random{"}"}</code>, le nom du salon est prévisible : deux invités réservant le même type d'événement le même jour se retrouvent dans le même salon et peuvent voir la réunion de l'autre. Les salons fixes restent possibles (par exemple un salon personnel par hôte), mais n'activez cela qu'en connaissance de cause.
+admin-meeting-webhook-help = Lorsque le lieu d'un type d'événement est « Webhook (fournisseur personnalisé) », calrs envoie la réservation en POST à cette URL à la confirmation et attend en retour un corps JSON <code>{"{"}"url": "https://..."{"}"}</code>.
+admin-auth-hmac-help = Avec HMAC, calrs envoie <code>X-Calrs-Signature: sha256=&lt;hex&gt;</code> calculé sur le corps brut de la requête.
+admin-tls-none-warning = Ne choisissez <strong>Aucun</strong> que pour un relais sur cette machine qui ne propose pas STARTTLS, ou dont le certificat est auto-signé. Le courrier, et les éventuels identifiants, circulent alors en clair.
+admin-smtp-env-error-help = Corrigez les variables d'environnement <code>CALRS_SMTP_*</code>, ou supprimez-les pour gérer le SMTP depuis la base ici.
+admin-smtp-env-managed = Géré par <strong>variables d'environnement</strong> (prioritaires sur la base). Modifiez les variables <code>CALRS_SMTP_*</code> pour changer ce réglage, ou supprimez-les pour gérer le SMTP ici.
+admin-smtp-env-help = Vous pouvez aussi configurer par variables d'environnement (prioritaires sur ceci) : <code>CALRS_SMTP_HOST</code>, <code>CALRS_SMTP_PORT</code>, <code>CALRS_SMTP_TLS_MODE</code> (<code>starttls</code>, <code>tls</code> ou <code>none</code>), <code>CALRS_SMTP_USERNAME</code>, <code>CALRS_SMTP_PASSWORD</code>, <code>CALRS_SMTP_FROM_EMAIL</code>, <code>CALRS_SMTP_FROM_NAME</code>. Seules <code>CALRS_SMTP_HOST</code> et <code>CALRS_SMTP_FROM_EMAIL</code> sont obligatoires ; omettez le nom d'utilisateur et le mot de passe pour relayer via un MTA local sans authentification.
+admin-sms-env-error-help = Corrigez les variables d'environnement <code>CALRS_SMS_*</code>, ou supprimez-les pour gérer les SMS depuis la base ici.
+admin-sms-env-managed = Géré par <strong>variables d'environnement</strong> (prioritaires sur la base). Modifiez les variables <code>CALRS_SMS_*</code> pour changer ce réglage, ou supprimez-les pour gérer les SMS ici.
+admin-sms-env-help = Vous pouvez aussi configurer par variables d'environnement (prioritaires sur ceci) : <code>CALRS_SMS_PROVIDER</code>, <code>CALRS_SMS_API_KEY</code>, <code>CALRS_SMS_API_SECRET</code>, <code>CALRS_SMS_SENDER</code>, <code>CALRS_SMS_BASE_URL</code>, <code>CALRS_SMS_DAILY_CAP</code>, <code>CALRS_SMS_DEFAULT_COUNTRY_CODE</code>.
+admin-sms-trial-warning = <strong>Le mode d'essai Twilio est actif</strong> (<code>CALRS_SMS_TWILIO_TRIAL</code>). Les invités reçoivent le modèle prédéfini <code>sms_appointment_reminders</code> de Twilio, pas le vrai message, et seuls les numéros vérifiés dans votre console Twilio sont joignables. C'est une aide au test pour les comptes d'essai. Supprimez la variable avant d'accepter des réservations.
+
+admin-show-more =
+    { $count ->
+        [one] Afficher { $count } de plus
+       *[other] Afficher { $count } de plus
+    }
+
+# Calendar source form: backend picker (templates/source_form.html)
+
+source-form-backend-help = Choisissez le protocole parlé par votre serveur. EWS vise Exchange 2019/2016/2013 auto-hébergé.
+
+admin-sms-going-live = <strong>Avant la mise en production :</strong> restreignez les pays de destination dans votre passerelle (Twilio parle de Geo Permissions), gardez le compte prépayé sans rechargement automatique, et laissez le captcha actif. Ces trois mesures bornent ensemble le coût d'une tentative de SMS pumping.
+
+troubleshoot-heading = Diagnostic des disponibilités
+
+# Backfill: guest-side and event-type-form keys that had no French value
+# before the dashboard localization pass.
+
+confirmed-add-to-calendar = Ajouter à l'agenda
+
+book-phone-label = Numéro de téléphone
+book-phone-placeholder = 06 12 34 56 78
+book-phone-help = Les numéros locaux fonctionnent ; { $country } est supposé sauf si vous commencez par +.
+book-phone-optional-consequence = Laissez vide si vous préférez ne pas recevoir de SMS au sujet de cette réservation.
+book-phone-required = Un numéro de téléphone est obligatoire pour cette réservation.
+book-phone-invalid-title = Numéro de téléphone invalide
+book-phone-invalid = Saisissez un numéro joignable par SMS, ou laissez le champ vide.
+book-phone-country-search = Rechercher
+book-phone-country-label = Choisir le pays
+book-phone-country-none = Aucun pays sélectionné
+book-phone-country-no-results = Aucun pays ne correspond à cette recherche
+
+sms-confirmed = Réservation confirmée : { $event }, le { $date } à { $time } ({ $tz }).
+sms-cancelled = Réservation annulée : { $event }, le { $date } à { $time } ({ $tz }).
+sms-rescheduled = Réservation déplacée : { $event } aura lieu le { $date } à { $time } ({ $tz }).
+sms-reminder = Rappel : { $event } commence le { $date } à { $time } ({ $tz }).
+
+email-confirm-cancel-notice = Note : l'annulation exige un préavis d'au moins { $minutes } minutes.
+email-confirm-reschedule-notice = Note : la reprogrammation exige un préavis d'au moins { $minutes } minutes.
+
+event-type-form-cancel-notice-label = Préavis minimum pour annuler
+event-type-form-reschedule-notice-label = Préavis minimum pour reprogrammer
+event-type-form-notice-help = Laissez vide pour ne pas imposer de restriction.
+event-type-form-resources-label = Ressources requises
+event-type-form-resources-hint = Les créneaux ne sont proposés que si les ressources sélectionnées sont disponibles, selon le mode ci-dessous.
+event-type-form-resources-mode-all = Toutes les ressources sélectionnées doivent être libres
+event-type-form-resources-mode-round-robin = Une seule ressource libre suffit (elle est attribuée à la réservation)
+event-type-form-notice-unit-minutes = minutes
+event-type-form-notice-unit-hours = heures
+event-type-form-notice-unit-days = jours
+event-type-form-booking-horizon-label = Horizon de réservation
+event-type-form-booking-horizon-help = Nombre de jours à l'avance pendant lesquels les invités peuvent réserver. Laissez vide pour aucune limite, 0 pour aujourd'hui seulement.
+
+confirmed-cancel-notice-info = L'annulation exige un préavis d'au moins { $minutes } minutes avant la réunion.
+confirmed-reschedule-notice-info = La reprogrammation exige un préavis d'au moins { $minutes } minutes avant la réunion.
+
+booking-blocked-title-cancel = Cette réservation ne peut plus être annulée en ligne
+booking-blocked-title-reschedule = Cette réservation ne peut plus être reprogrammée en ligne
+booking-blocked-body = L'hôte exige un préavis d'au moins { $minutes } minutes. Si vous ne pouvez pas être présent, écrivez directement à <a href="mailto:{ $host_email }">{ $host_email }</a>.
+
+dashboard-event-types-copy = Copier
+dashboard-event-types-copied = Copié !
+dashboard-event-types-copy-title = Copier le lien de réservation
+dashboard-event-types-copy-failed = Échec de la copie
