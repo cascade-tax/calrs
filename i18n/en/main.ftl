@@ -755,3 +755,57 @@ source-form-help-radicale = <strong>Radicale</strong> — Use the server root UR
 source-form-help-exchange = <strong>Microsoft Exchange (EWS)</strong>. Use the SOAP endpoint:<br> <code>https://mail.example.com/EWS/Exchange.asmx</code><br> Username is the mailbox email; password must accept HTTP Basic over TLS (enable on a service mailbox if your tenant disabled Basic).<br> Make sure to also pick <strong>Microsoft Exchange (EWS)</strong> in the Backend dropdown above.
 source-form-help-google = <strong>Google Calendar</strong>: Connect via OAuth2. No password needed.<br>
 source-form-help-other = Enter your CalDAV server's <strong>DAV root URL</strong> — not a specific calendar or public link.<br> calrs will auto-discover your calendars via PROPFIND (RFC 4791).
+
+# Markdown editor toolbar, short labels (templates/team_form.html, templates/team_settings.html)
+
+editor-bold-short = Bold
+editor-italic-short = Italic
+editor-link-short = Insert link
+
+# Team creation (templates/team_form.html)
+
+team-form-heading = New team
+team-form-name = Team name
+team-form-name-placeholder = Engineering
+team-form-slug = Slug
+team-form-slug-hint = (URL-friendly identifier)
+team-form-slug-pattern-title = Lowercase letters, numbers, and dashes only
+team-form-description = Description
+team-form-optional = (optional)
+team-form-description-placeholder = What this team is about...
+team-form-description-help = Shown on the team page. Supports **bold**, *italic*, and [links](url).
+team-form-visibility = Visibility
+team-form-public = Public
+team-form-private = Private
+team-form-visibility-help = Private teams get an invite token for sharing. Public teams are visible on the team profile page.
+team-form-members = Members
+team-form-members-help = You will be added as team admin automatically. Add individual users or link OIDC groups.
+team-form-search-placeholder = Search users or groups...
+team-form-search-users = Users
+team-form-search-groups = OIDC Groups
+team-form-you = (you)
+team-form-submit = Create team
+
+# Team settings (templates/team_settings.html)
+
+team-settings-page-title = Settings
+team-settings-subtitle = Team settings — team admins can edit these.
+team-settings-public-url = Public URL
+team-settings-public-url-help = Anyone can book via this link.
+team-settings-invite-link = Invite link
+team-settings-invite-link-help = Share this link to give people access to this private team's booking page.
+team-settings-avatar = Team avatar
+team-settings-profile = Profile
+team-settings-description-placeholder = Tell people about this team...
+team-settings-description-help = Shown on the team's public booking page. Supports **bold**, *italic*, and [links](url).
+team-settings-visibility-help = Public teams are listed on the team profile page. Private teams require an invite link to access.
+team-settings-members-help = Manage who belongs to this team. Add individual users or link OIDC groups for automatic sync.
+team-settings-role-member = Member
+team-settings-role-admin = Admin
+team-settings-oidc-group = OIDC group
+team-settings-remove = Remove
+team-settings-save = Save changes
+team-settings-danger-zone = Danger zone
+team-settings-danger-help = Permanently delete this team. Event types will be unlinked (not deleted). This cannot be undone.
+team-settings-delete = Delete this team
+team-settings-delete-confirm = Delete team '{ $name }'? This cannot be undone.

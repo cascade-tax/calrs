@@ -686,3 +686,57 @@ source-form-help-radicale = <strong>Radicale</strong> — Utilisez l'URL racine 
 source-form-help-exchange = <strong>Microsoft Exchange (EWS)</strong>. Utilisez le point de terminaison SOAP :<br> <code>https://mail.example.com/EWS/Exchange.asmx</code><br> Le nom d'utilisateur est l'adresse de la boîte aux lettres ; le mot de passe doit accepter l'authentification HTTP Basic sur TLS (à activer sur une boîte de service si votre tenant l'a désactivée).<br> Pensez également à choisir <strong>Microsoft Exchange (EWS)</strong> dans la liste Backend ci-dessus.
 source-form-help-google = <strong>Google Agenda</strong> : connexion via OAuth2. Aucun mot de passe requis.<br>
 source-form-help-other = Saisissez l'<strong>URL racine DAV</strong> de votre serveur CalDAV, pas celle d'un agenda précis ni un lien public.<br> calrs découvrira automatiquement vos agendas via PROPFIND (RFC 4791).
+
+# Markdown editor toolbar, short labels (templates/team_form.html, templates/team_settings.html)
+
+editor-bold-short = Gras
+editor-italic-short = Italique
+editor-link-short = Insérer un lien
+
+# Team creation (templates/team_form.html)
+
+team-form-heading = Nouvelle équipe
+team-form-name = Nom de l'équipe
+team-form-name-placeholder = Ingénierie
+team-form-slug = Identifiant
+team-form-slug-hint = (identifiant compatible URL)
+team-form-slug-pattern-title = Minuscules, chiffres et tirets uniquement
+team-form-description = Description
+team-form-optional = (facultatif)
+team-form-description-placeholder = En quelques mots, le rôle de cette équipe...
+team-form-description-help = Affichée sur la page de l'équipe. Prend en charge **gras**, *italique* et [liens](url).
+team-form-visibility = Visibilité
+team-form-public = Publique
+team-form-private = Privée
+team-form-visibility-help = Les équipes privées reçoivent un jeton d'invitation à partager. Les équipes publiques apparaissent sur la page de profil d'équipe.
+team-form-members = Membres
+team-form-members-help = Vous serez ajouté comme administrateur de l'équipe automatiquement. Ajoutez des utilisateurs ou liez des groupes OIDC.
+team-form-search-placeholder = Rechercher des utilisateurs ou des groupes...
+team-form-search-users = Utilisateurs
+team-form-search-groups = Groupes OIDC
+team-form-you = (vous)
+team-form-submit = Créer l'équipe
+
+# Team settings (templates/team_settings.html)
+
+team-settings-page-title = Paramètres
+team-settings-subtitle = Paramètres de l'équipe — les administrateurs de l'équipe peuvent les modifier.
+team-settings-public-url = URL publique
+team-settings-public-url-help = N'importe qui peut réserver via ce lien.
+team-settings-invite-link = Lien d'invitation
+team-settings-invite-link-help = Partagez ce lien pour donner accès à la page de réservation de cette équipe privée.
+team-settings-avatar = Avatar de l'équipe
+team-settings-profile = Profil
+team-settings-description-placeholder = Présentez cette équipe...
+team-settings-description-help = Affichée sur la page de réservation publique de l'équipe. Prend en charge **gras**, *italique* et [liens](url).
+team-settings-visibility-help = Les équipes publiques sont listées sur la page de profil d'équipe. Les équipes privées nécessitent un lien d'invitation.
+team-settings-members-help = Gérez les membres de cette équipe. Ajoutez des utilisateurs ou liez des groupes OIDC pour une synchronisation automatique.
+team-settings-role-member = Membre
+team-settings-role-admin = Administrateur
+team-settings-oidc-group = Groupe OIDC
+team-settings-remove = Retirer
+team-settings-save = Enregistrer les modifications
+team-settings-danger-zone = Zone sensible
+team-settings-danger-help = Supprimer définitivement cette équipe. Les types d'événement seront dissociés (pas supprimés). Cette action est irréversible.
+team-settings-delete = Supprimer cette équipe
+team-settings-delete-confirm = Supprimer l'équipe « { $name } » ? Cette action est irréversible.

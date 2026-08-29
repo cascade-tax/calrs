@@ -32414,7 +32414,9 @@ mod tests {
             "onclick must be the static safe form — no interpolation allowed",
         );
         assert!(
-            rendered.contains(r#"data-confirm="Delete team '\\&#x27;));alert(1);&#x2f;&#x2f;'"#),
+            rendered.contains(
+                r#"data-confirm="Delete team &#x27;\\&#x27;));alert(1);&#x2f;&#x2f;&#x27;"#
+            ),
             "payload should be inside data-confirm only"
         );
     }
