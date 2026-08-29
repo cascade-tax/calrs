@@ -453,7 +453,7 @@ Because `--surface`, `--border`, etc. are already overridden by `html.dark { ...
 
 **Visibility:** host-facing emails (new booking, approval request, confirmed, host reminder) show a "Resource" row via `BookingDetails.resource_name` (`booking_resource_label()`: assigned resource in round_robin, attached names in 'all'); guests never see resource names. The event-types listing shows a "resources" badge, and the bookings dashboard shows the assigned resource per booking.
 
-**Admin UI:** `/dashboard/admin` Resources card: add (feed validated and synced on create, name auto-filled from `X-WR-CALNAME`), edit (keep-current password pattern; feed re-validated and re-synced), delete, "Sync now", "Test write" (PUT/verify/DELETE cycle with a temp event 24h out). Members opt in to credential lending in Profile & Settings. The event type form gains a "Required resources" checkbox section + mode radio, visible to admins only. Dashboard resource UI is English for now, like the rest of the dashboard surface (localize with that surface, not piecemeal).
+**Admin UI:** `/dashboard/admin` Resources card: add (feed validated and synced on create, name auto-filled from `X-WR-CALNAME`), edit (keep-current password pattern; feed re-validated and re-synced), delete, "Sync now", "Test write" (PUT/verify/DELETE cycle with a temp event 24h out). Members opt in to credential lending in Profile & Settings. The event type form gains a "Required resources" checkbox section + mode radio, visible to admins only.
 
 **CLI:** `calrs resource probe --url <URL> [--username U] [--write-test]` probes a feed or CalDAV collection (full RFC 4791 discovery fallback, write test with a temporary event). Known gap: `calrs event-type slots` and `calrs booking create` do not consult resources yet; the web paths do.
 
@@ -583,14 +583,27 @@ When adding a new migration:
 
 ### Localization (Fluent + Weblate)
 
-calrs ships with translations for English, French, Spanish, and Polish. Source files live under `i18n/{lang}/main.ftl` and are embedded in the binary via `include_str!` (no runtime files). The loader, language detection, and minijinja `t()` global are in `src/i18n.rs`. Templates use `{{ t("message-id", arg=value) }}` and the active language is injected into the rendering context as `lang` by the calling handler.
+calrs ships with translations for English, French, Spanish, Polish, German, Italian, Estonian and Brazilian Portuguese. Source files live under `i18n/{lang}/main.ftl` and are embedded in the binary via `include_str!` (no runtime files). The loader, language detection, and minijinja `t()` global are in `src/i18n.rs`. Templates use `{{ t("message-id", arg=value) }}` and the active language is injected into the rendering context as `lang` by the calling handler.
+
+Both the guest side and the host side (dashboard, settings, forms, admin panel, auth pages) render through Fluent. English and French are complete; the other locales fall back to English per missing key.
+
+**Where `lang` comes from on host pages.** The `AuthUser`, `AdminUser` and `OptionalAuthUser` extractors resolve it once, in `src/auth.rs`, from the user's saved preference then `Accept-Language`. A dashboard handler passes `lang => auth_user.lang` and nothing else. Pre-login pages (login, register) have no user row, so they call `i18n::detect_from_headers` directly.
+
+**Three guard tests** in `src/i18n.rs`: every `t()` key referenced from a template exists in the English bundle; every template still loads; and French covers every English key. The last one is what keeps a French dashboard from sprouting an English sentence when someone adds a key.
+
+**Numbers passed to `t()`** reach Fluent as numbers, not strings, so `{ $count -> [one] ... }` plural selectors work. Grouping is switched off, so an integer renders as it always did ("1440", not "1,440").
+
+**Strings a page composes at runtime** (JS building a summary hint or a search result) cannot use Fluent arguments, because the values only exist after the visitor acts. Those keys use `%1`/`%2` placeholders substituted client-side, collected in one object per page (`ETF_I18N`, `ADMIN_I18N`) built with `{{ t('key') | tojson }}`. Prefer real Fluent arguments everywhere else.
+
+**Literal braces in a Fluent value** must be escaped as `{"{"}`: a bare `{` starts a placeable. This bites the meeting-pattern help, which documents `{username}` and `{random}` tokens.
 
 **Branch workflow (long-lived `i18n` branch).** The `i18n` branch is permanent. **Do not delete it after merging.** Translators commit through Hosted Weblate, which pushes to `i18n` via the Weblate GitHub App. Periodically (e.g. before each release) merge `i18n` into `main`, then continue using the same branch for the next round of translations. The branch never gets recreated.
 
 **When you add or change a translatable string:**
 1. Land it on the `i18n` branch first, not `main`. This avoids half-translated UI on `main` and gives Weblate translators time to catch up before the next merge.
 2. Add the new key to `i18n/en/main.ftl` (the source of truth). Stub languages don't need entries: missing keys fall back to English at runtime.
-3. If the change touches a template that wasn't translated yet, convert its hard-coded strings to `{{ t("...") }}` calls in the same commit, and add render-site context entries (`lang => crate::i18n::detect_from_headers(&headers)` for guest pages, or `crate::i18n::resolve(user.language.as_deref(), &headers)` for authenticated dashboard pages).
+3. If the change touches a template that wasn't translated yet, convert its hard-coded strings to `{{ t("...") }}` calls in the same commit, and add render-site context entries (`lang => crate::i18n::detect_from_headers(&headers)` for guest pages, `lang => auth_user.lang` for authenticated dashboard pages).
+4. Add the French value too, or the parity test fails. Every other locale may lag.
 
 **When you add a new locale:**
 1. Create `i18n/{code}/main.ftl` (start empty, runtime falls back to English).
