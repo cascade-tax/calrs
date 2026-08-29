@@ -1795,6 +1795,7 @@ async fn dashboard(
     Html(
         tmpl.render(context! {
             sidebar => sidebar_context(&auth_user, "overview"),
+            lang => auth_user.lang,
             user_name => user.name,
             user_email => user.email,
             user_role => user.role,
@@ -1980,6 +1981,7 @@ async fn dashboard_event_types(
     Html(
         tmpl.render(context! {
             sidebar => sidebar_context(&auth_user, "event-types"),
+            lang => auth_user.lang,
             username => user.username,
             all_event_types => all_et_ctx,
             has_any => !event_types.is_empty() || !team_event_types.is_empty(),
@@ -2165,6 +2167,7 @@ async fn dashboard_bookings(
     Html(
         tmpl.render(context! {
             sidebar => sidebar_context(&auth_user, "bookings"),
+            lang => auth_user.lang,
             error_message => error_message,
             pending_bookings => pending_ctx,
             claimable_bookings => claimable_ctx,
@@ -2270,6 +2273,7 @@ async fn dashboard_teams(
     Html(
         tmpl.render(context! {
             sidebar => sidebar_context(&auth_user, "teams"),
+            lang => auth_user.lang,
             teams => teams_ctx,
             is_admin => is_admin,
             impersonating => impersonating,
@@ -2438,7 +2442,7 @@ async fn show_team_form(
     State(state): State<Arc<AppState>>,
     admin: crate::auth::AdminUser,
 ) -> impl IntoResponse {
-    let user = &admin.0;
+    let user = &admin.user;
 
     // Fetch all enabled users
     let all_users: Vec<(String, String, String, Option<String>)> = sqlx::query_as(
@@ -2503,7 +2507,7 @@ async fn create_team(
     if let Err(resp) = verify_csrf_token(&headers, &form._csrf) {
         return resp;
     }
-    let user = &admin.0;
+    let user = &admin.user;
 
     let name = form.name.trim().to_string();
     let slug = form.slug.trim().to_lowercase();
@@ -2783,6 +2787,7 @@ async fn dashboard_organization(
     Html(
         tmpl.render(context! {
             sidebar => sidebar_context(&auth_user, "organization"),
+            lang => auth_user.lang,
             event_types => ets_ctx,
             impersonating => impersonating,
             impersonating_name => impersonating_name,
@@ -2890,6 +2895,7 @@ async fn dashboard_sources(
     Html(
         tmpl.render(context! {
             sidebar => sidebar_context(&auth_user, "sources"),
+            lang => auth_user.lang,
             sources => sources_ctx,
             impersonating => impersonating,
             impersonating_name => impersonating_name,
@@ -3821,6 +3827,7 @@ async fn team_settings_page(
     Html(
         tmpl.render(context! {
             sidebar => sidebar_context(&auth_user, "teams"),
+            lang => auth_user.lang,
             team_id => tid,
             team_name => team_name,
             team_slug => team_slug,
@@ -4941,6 +4948,7 @@ async fn new_event_type_form(
     Html(
         tmpl.render(context! {
             sidebar => sidebar_context(&auth_user, "event-types"),
+            lang => auth_user.lang,
             impersonating => impersonating,
             impersonating_name => impersonating_name,
             editing => false,
@@ -5639,6 +5647,7 @@ async fn edit_event_type_form(
             dg_eligible_users => dg_eligible_ctx,
             error => "",
             sidebar => sidebar_context(&auth_user, "event-types"),
+            lang => auth_user.lang,
             impersonating => impersonating,
             impersonating_name => impersonating_name,
         })
@@ -6215,6 +6224,7 @@ async fn new_source_form(
             error => "",
             google_oauth2_configured => google_configured,
             sidebar => sidebar_context(&auth_user, "sources"),
+            lang => auth_user.lang,
             impersonating => impersonating,
             impersonating_name => impersonating_name,
         })
@@ -6370,6 +6380,7 @@ fn render_source_form_error(
             form_username => form.username.as_str(),
             error => error,
             sidebar => sidebar_context(auth_user, "sources"),
+            lang => auth_user.lang,
             impersonating => impersonating,
             impersonating_name => impersonating_name,
         })
@@ -6409,6 +6420,7 @@ fn render_source_edit_form(
             form_username => username,
             error => error,
             sidebar => sidebar_context(auth_user, "sources"),
+            lang => auth_user.lang,
             impersonating => impersonating,
             impersonating_name => impersonating_name,
         })
@@ -6729,6 +6741,7 @@ async fn test_source(
         tmpl.render(context! {
             result => result,
             sidebar => sidebar_context(&auth_user, "sources"),
+            lang => auth_user.lang,
             impersonating => impersonating,
             impersonating_name => impersonating_name,
         })
@@ -7037,6 +7050,7 @@ fn render_sync_result(
             result => messages.join("\n"),
             source_name => source_name,
             sidebar => sidebar_context(auth_user, "sources"),
+            lang => auth_user.lang,
             impersonating => impersonating,
             impersonating_name => impersonating_name,
         })
@@ -7248,6 +7262,7 @@ async fn render_event_type_form_error(
                 .collect::<Vec<_>>(),
             error => error,
             sidebar => sidebar_context(auth_user, "event-types"),
+            lang => auth_user.lang,
             impersonating => impersonating,
             impersonating_name => impersonating_name,
         })
@@ -7469,6 +7484,7 @@ async fn render_invite_management(
     Html(
         tmpl.render(context! {
             sidebar => sidebar_context(auth_user, "event-types"),
+            lang => auth_user.lang,
             impersonating => impersonating,
             impersonating_name => impersonating_name,
             event_type_id => et_id,
@@ -7840,6 +7856,7 @@ async fn overrides_page(
     Html(
         tmpl.render(context! {
             sidebar => sidebar_context(&auth_user, "event-types"),
+            lang => auth_user.lang,
             event_type_title => et_title,
             event_type_slug => slug,
             overrides => overrides_ctx,
@@ -8024,6 +8041,7 @@ async fn embed_page(
     Html(
         tmpl.render(context! {
             sidebar => sidebar_context(&auth_user, "event-types"),
+            lang => auth_user.lang,
             event_type_title => et_title,
             event_type_slug => et_slug,
             cal_path => cal_path,
@@ -8119,6 +8137,7 @@ async fn group_embed_page(
     Html(
         tmpl.render(context! {
             sidebar => sidebar_context(&auth_user, "event-types"),
+            lang => auth_user.lang,
             event_type_title => et_title,
             event_type_slug => et_slug,
             cal_path => cal_path,
@@ -8233,6 +8252,7 @@ async fn new_group_event_type_form(
             selected_watcher_team_ids => "",
             error => "",
             sidebar => sidebar_context(&auth_user, "event-types"),
+            lang => auth_user.lang,
             impersonating => impersonating,
             impersonating_name => impersonating_name,
         })
@@ -8799,6 +8819,7 @@ async fn edit_group_event_type_form(
             selected_watcher_team_ids => selected_watcher_team_ids,
             error => "",
             sidebar => sidebar_context(&auth_user, "event-types"),
+            lang => auth_user.lang,
             impersonating => impersonating,
             impersonating_name => impersonating_name,
         })
@@ -14839,6 +14860,7 @@ async fn troubleshoot(
                 user_name => &user.name,
                 no_event_types => true,
                 sidebar => sidebar_context(&auth_user, "troubleshoot"),
+                lang => auth_user.lang,
                 impersonating => impersonating,
                 impersonating_name => impersonating_name,
             })
@@ -15424,6 +15446,7 @@ async fn troubleshoot(
             buf_after => buf_after,
             min_notice => min_notice,
             sidebar => sidebar_context(&auth_user, "troubleshoot"),
+            lang => auth_user.lang,
             impersonating => impersonating,
             impersonating_name => impersonating_name,
         })
@@ -15438,7 +15461,7 @@ async fn admin_dashboard(
     admin: crate::auth::AdminUser,
     Query(query): Query<std::collections::HashMap<String, String>>,
 ) -> impl IntoResponse {
-    let current_user = &admin.0;
+    let current_user = &admin.user;
     let error_message = query.get("error").cloned().unwrap_or_default();
     let resource_notice = query.get("resource_notice").cloned().unwrap_or_default();
     let resource_error = query.get("resource_error").cloned().unwrap_or_default();
@@ -15886,6 +15909,7 @@ async fn admin_dashboard(
 
     Html(
         tmpl.render(context! {
+            lang => admin.lang,
             current_user_id => current_user.id,
             users => users_ctx,
             user_count => user_count,
@@ -16102,7 +16126,7 @@ async fn admin_create_resource(
     let cached = crate::resources::sync_resource(&state.pool, &id, &feed_url)
         .await
         .unwrap_or(0);
-    tracing::info!(resource_name = %name, admin = %_admin.0.email, "admin: resource created");
+    tracing::info!(resource_name = %name, admin = %_admin.user.email, "admin: resource created");
     admin_resources_redirect(&format!(
         "Resource \"{}\" added ({} event(s) cached).",
         name, cached
@@ -16204,7 +16228,7 @@ async fn admin_delete_resource(
         .bind(&resource_id)
         .execute(&state.pool)
         .await;
-    tracing::info!(resource_id = %resource_id, admin = %_admin.0.email, "admin: resource deleted");
+    tracing::info!(resource_id = %resource_id, admin = %_admin.user.email, "admin: resource deleted");
     admin_resources_redirect("Resource deleted.")
 }
 
@@ -16336,7 +16360,7 @@ async fn admin_toggle_role(
             .bind(&user_id)
             .execute(&state.pool)
             .await;
-        tracing::info!(target_user = %user_id, new_role = %new_role, admin = %_admin.0.email, "admin: role changed");
+        tracing::info!(target_user = %user_id, new_role = %new_role, admin = %_admin.user.email, "admin: role changed");
     }
 
     Redirect::to("/dashboard/admin").into_response()
@@ -16367,7 +16391,7 @@ async fn admin_toggle_enabled(
                 .bind(&user_id)
                 .execute(&state.pool)
                 .await;
-        tracing::info!(target_user = %user_id, enabled = %new_enabled, admin = %_admin.0.email, "admin: user toggled");
+        tracing::info!(target_user = %user_id, enabled = %new_enabled, admin = %_admin.user.email, "admin: user toggled");
     }
 
     Redirect::to("/dashboard/admin").into_response()
@@ -16383,7 +16407,7 @@ async fn admin_delete_user(
     if let Err(resp) = verify_csrf_token(&headers, &csrf._csrf) {
         return resp;
     }
-    let admin_user = &admin.0;
+    let admin_user = &admin.user;
     let avatars_dir = state.data_dir.join("avatars");
     match crate::auth::delete_user(
         &state.pool,
@@ -16432,7 +16456,7 @@ async fn admin_update_auth(
     .execute(&state.pool)
     .await;
 
-    tracing::info!(admin = %_admin.0.email, "admin: auth config updated");
+    tracing::info!(admin = %_admin.user.email, "admin: auth config updated");
 
     Redirect::to("/dashboard/admin").into_response()
 }
@@ -16504,7 +16528,7 @@ async fn admin_update_accent(
     let new_css = build_theme_css(&state.pool).await;
     *state.theme_css.write().await = new_css;
 
-    tracing::info!(admin = %_admin.0.email, theme = %theme, "admin: theme updated");
+    tracing::info!(admin = %_admin.user.email, theme = %theme, "admin: theme updated");
 
     Redirect::to("/dashboard/admin").into_response()
 }
@@ -16572,7 +16596,7 @@ async fn admin_update_oidc(
         .await;
     }
 
-    tracing::info!(admin = %_admin.0.email, "admin: OIDC config updated");
+    tracing::info!(admin = %_admin.user.email, "admin: OIDC config updated");
 
     Redirect::to("/dashboard/admin").into_response()
 }
@@ -16626,7 +16650,7 @@ async fn admin_update_google_oauth2(
         .await;
     }
 
-    tracing::info!(admin = %_admin.0.email, "admin: Google OAuth2 config updated");
+    tracing::info!(admin = %_admin.user.email, "admin: Google OAuth2 config updated");
     Redirect::to("/dashboard/admin").into_response()
 }
 
@@ -17009,7 +17033,7 @@ async fn admin_update_general(
     // Refresh the process-global cache so the change takes effect immediately.
     crate::settings::load_from_db(&state.pool).await;
 
-    tracing::info!(admin = %_admin.0.email, "admin: general settings updated");
+    tracing::info!(admin = %_admin.user.email, "admin: general settings updated");
     Redirect::to("/dashboard/admin").into_response()
 }
 
@@ -17070,7 +17094,7 @@ async fn admin_update_captcha(
     *state.captcha_config.write().await = new_config;
     *state.csp.write().await = new_csp;
 
-    tracing::info!(admin = %_admin.0.email, "admin: captcha config updated");
+    tracing::info!(admin = %_admin.user.email, "admin: captcha config updated");
 
     Redirect::to("/dashboard/admin").into_response()
 }
@@ -17235,7 +17259,7 @@ async fn admin_update_smtp(
         return internal_error_response("save smtp config", &e);
     }
 
-    tracing::info!(admin = %_admin.0.email, "admin: smtp config updated");
+    tracing::info!(admin = %_admin.user.email, "admin: smtp config updated");
     Redirect::to("/dashboard/admin").into_response()
 }
 
@@ -17265,7 +17289,7 @@ async fn admin_update_smtp_test(
                 Some(t)
             }
         })
-        .unwrap_or_else(|| admin.0.email.clone());
+        .unwrap_or_else(|| admin.user.email.clone());
 
     let config = match crate::email::load_smtp_config(&state.pool, &state.secret_key).await {
         Ok(Some(c)) => c,
@@ -17280,11 +17304,11 @@ async fn admin_update_smtp_test(
 
     match crate::email::send_test_email(&config, &to).await {
         Ok(()) => {
-            tracing::info!(admin = %admin.0.email, %to, "admin: smtp test email sent");
+            tracing::info!(admin = %admin.user.email, %to, "admin: smtp test email sent");
             Redirect::to("/dashboard/admin?smtp_test=sent").into_response()
         }
         Err(e) => {
-            tracing::warn!(admin = %admin.0.email, error = %e, "admin: smtp test email failed");
+            tracing::warn!(admin = %admin.user.email, error = %e, "admin: smtp test email failed");
             Redirect::to("/dashboard/admin?smtp_test=error").into_response()
         }
     }
@@ -17318,7 +17342,7 @@ async fn admin_update_smtp_clear(
         return internal_error_response("clear smtp config", &e);
     }
 
-    tracing::info!(admin = %_admin.0.email, "admin: smtp config cleared");
+    tracing::info!(admin = %_admin.user.email, "admin: smtp config cleared");
     Redirect::to("/dashboard/admin").into_response()
 }
 
@@ -17534,7 +17558,7 @@ async fn admin_update_sms(
         return internal_error_response("save sms config", &e);
     }
 
-    tracing::info!(admin = %_admin.0.email, provider = %provider, "admin: sms config updated");
+    tracing::info!(admin = %_admin.user.email, provider = %provider, "admin: sms config updated");
     Redirect::to("/dashboard/admin").into_response()
 }
 
@@ -17583,11 +17607,11 @@ async fn admin_update_sms_test(
         // No recipient: verify the credentials instead of sending.
         return match crate::sms::check(&config).await {
             Ok(()) => {
-                tracing::info!(admin = %admin.0.email, provider = %config.provider, "admin: SMS credentials verified");
+                tracing::info!(admin = %admin.user.email, provider = %config.provider, "admin: SMS credentials verified");
                 redirect("checked", "Credentials accepted by the gateway.")
             }
             Err(e) => {
-                tracing::warn!(admin = %admin.0.email, provider = %config.provider, error = %e, "admin: SMS credential check failed");
+                tracing::warn!(admin = %admin.user.email, provider = %config.provider, error = %e, "admin: SMS credential check failed");
                 redirect("error", &e.to_string())
             }
         };
@@ -17600,11 +17624,11 @@ async fn admin_update_sms_test(
 
     match crate::sms::send(&config, &to, "calrs test message. Your SMS gateway works.").await {
         Ok(_) => {
-            tracing::info!(admin = %admin.0.email, provider = %config.provider, %to, "admin: test SMS sent");
+            tracing::info!(admin = %admin.user.email, provider = %config.provider, %to, "admin: test SMS sent");
             redirect("sent", "Test message accepted by the gateway.")
         }
         Err(e) => {
-            tracing::warn!(admin = %admin.0.email, provider = %config.provider, error = %e, "admin: test SMS failed");
+            tracing::warn!(admin = %admin.user.email, provider = %config.provider, error = %e, "admin: test SMS failed");
             redirect("error", &e.to_string())
         }
     }
@@ -17643,7 +17667,7 @@ async fn admin_update_sms_policy(
         return internal_error_response("save sms policy", &e);
     }
 
-    tracing::info!(admin = %_admin.0.email, allow_all, "admin: sms event-type policy updated");
+    tracing::info!(admin = %_admin.user.email, allow_all, "admin: sms event-type policy updated");
     Redirect::to("/dashboard/admin").into_response()
 }
 
@@ -17675,7 +17699,7 @@ async fn admin_update_sms_clear(
         return internal_error_response("clear sms config", &e);
     }
 
-    tracing::info!(admin = %_admin.0.email, "admin: sms config cleared");
+    tracing::info!(admin = %_admin.user.email, "admin: sms config cleared");
     Redirect::to("/dashboard/admin").into_response()
 }
 
@@ -17718,7 +17742,7 @@ async fn admin_update_jitsi(
     *state.meeting_config.write().await =
         meeting::load_config(&state.pool, &state.secret_key).await;
 
-    tracing::info!(admin = %_admin.0.email, "admin: jitsi config updated");
+    tracing::info!(admin = %_admin.user.email, "admin: jitsi config updated");
     Redirect::to("/dashboard/admin").into_response()
 }
 
@@ -17793,7 +17817,7 @@ async fn admin_update_meeting_webhook(
     *state.meeting_config.write().await =
         meeting::load_config(&state.pool, &state.secret_key).await;
 
-    tracing::info!(admin = %_admin.0.email, "admin: meeting webhook config updated");
+    tracing::info!(admin = %_admin.user.email, "admin: meeting webhook config updated");
     Redirect::to("/dashboard/admin").into_response()
 }
 
@@ -18001,7 +18025,7 @@ async fn admin_update_company_link(
     // stored XSS.
     if !link.is_empty() && !is_safe_company_link(&link) {
         tracing::warn!(
-            admin = %_admin.0.email,
+            admin = %_admin.user.email,
             "admin: company_link rejected (only http/https schemes allowed)"
         );
         let msg =
@@ -18031,7 +18055,7 @@ async fn admin_impersonate(
     if let Err(resp) = verify_csrf_token(&headers, &csrf._csrf) {
         return resp;
     }
-    tracing::warn!(admin = %_admin.0.email, target = %user_id, "admin: impersonation started");
+    tracing::warn!(admin = %_admin.user.email, target = %user_id, "admin: impersonation started");
     let cookie = format!(
         "__Host-calrs_impersonate={}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age={}",
         user_id,
@@ -20060,6 +20084,7 @@ async fn host_reschedule_slots(
     let rendered = tmpl
         .render(context! {
             sidebar => sidebar_context(&auth_user, "bookings"),
+            lang => auth_user.lang,
             booking_id => bid,
             event_title => event_title,
             guest_name => guest_name,
@@ -32258,10 +32283,13 @@ mod tests {
         );
         // The payload should appear only inside the data-confirm attribute,
         // HTML-escaped. Backslashes pass through unchanged, apostrophes
-        // become &#x27;.
+        // become &#x27; — including the two the sentence itself puts around
+        // the title, since the whole string now comes back from Fluent and is
+        // escaped in one piece. The browser decodes them identically.
         assert!(
-            rendered
-                .contains(r#"data-confirm="Delete event type '\\&#x27;));alert(1);&#x2f;&#x2f;'"#),
+            rendered.contains(
+                r#"data-confirm="Delete event type &#x27;\\&#x27;));alert(1);&#x2f;&#x2f;&#x27;"#
+            ),
             "payload should be inside data-confirm only"
         );
     }
@@ -32304,7 +32332,9 @@ mod tests {
             "onclick must be the static safe form — no interpolation allowed",
         );
         assert!(
-            rendered.contains(r#"data-confirm="Remove source '\\&#x27;));alert(1);&#x2f;&#x2f;'"#),
+            rendered.contains(
+                r#"data-confirm="Remove source &#x27;\\&#x27;));alert(1);&#x2f;&#x2f;&#x27;"#
+            ),
             "payload should be inside data-confirm only"
         );
     }

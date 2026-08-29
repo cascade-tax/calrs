@@ -299,3 +299,179 @@ dashboard-event-types-copy = Copy
 dashboard-event-types-copied = Copied!
 dashboard-event-types-copy-title = Copy booking link
 dashboard-event-types-copy-failed = Copy failed
+
+# Dashboard sidebar and shared chrome (templates/dashboard_base.html)
+
+nav-section-scheduling = Scheduling
+nav-overview = Overview
+nav-event-types = Event Types
+nav-bookings = Bookings
+nav-teams = Teams
+nav-section-shared-links = Shared Links
+nav-invite-links = Invite Links
+nav-section-calendars = Calendars
+nav-sources = Sources
+nav-section-personal = Personal
+nav-settings = Profile & Settings
+nav-troubleshoot = Troubleshoot
+nav-section-admin = Admin
+nav-admin-panel = Admin Panel
+nav-sign-out = Sign out
+nav-release-notes = View release notes
+
+# Timezone mismatch banner (templates/dashboard_base.html)
+
+tz-banner-text = Your browser timezone is { $detected } but your booking timezone is set to { $current }.
+tz-banner-update = Update
+tz-banner-dismiss = Dismiss
+
+# Markdown editor toolbar (templates/dashboard_base.html)
+
+editor-link-prompt = Enter URL:
+editor-link-default-label = link text
+editor-placeholder-text = text
+editor-nothing-to-preview = Nothing to preview
+
+# Dashboard overview (templates/dashboard_overview.html)
+
+overview-page-title = Dashboard
+overview-welcome = Welcome, { $name }
+overview-public-page = Public page:
+overview-avail-banner-title = Default availability
+overview-avail-banner-body = Your default working hours have been set to Mon–Fri, 9:00–17:00. These are used when others include you in dynamic group meetings.
+overview-avail-banner-cta = Review your availability
+overview-dismiss = Dismiss
+overview-getting-started = Getting started
+overview-getting-started-help = Follow these steps to start accepting bookings.
+overview-step-connect-calendar = Connect a calendar
+overview-step-first-event-type = Create your first event type
+overview-step-share-link = Share your booking link
+overview-pending-approval = Pending approval
+overview-booking-with = { $title } with { $guest }
+overview-badge-pending = pending
+overview-guest-booked = Guest booked:
+overview-confirm = Confirm
+overview-decline = Decline
+overview-stat-event-types = Event Types
+overview-stat-upcoming = Upcoming Bookings
+overview-stat-pending = Pending Approval
+overview-stat-sources = Calendar Sources
+overview-quick-actions = Create a new event type
+overview-action-public-title = Public booking page
+overview-action-public-desc = Share a link — anyone can pick a slot and book time with you.
+overview-action-team-title = Team scheduling
+overview-action-team-desc = Distribute bookings across team members or find a time everyone's free.
+overview-action-team-desc-empty = Create a team first, then set up shared event types.
+overview-action-private-title = Private invite-only
+overview-action-private-desc = Generate single-use links for specific contacts. No one else can book.
+overview-action-shared-title = Shared invite links
+overview-action-shared-desc = Any colleague in the team can generate booking links to share externally.
+overview-action-reason-calendar = Connect a calendar first
+overview-action-reason-ask-admin = Ask an admin to create a team
+overview-action-reason-team-admin = Requires a team — create one first
+overview-action-reason-team-member = Requires a team — ask an admin
+
+# Dashboard bookings (templates/dashboard_bookings.html)
+
+bookings-page-title = Bookings
+bookings-pending-approval = Pending approval
+bookings-available-to-claim = Available to claim
+bookings-upcoming = Upcoming bookings
+bookings-with = { $title } with { $guest }
+bookings-guest-booked = Guest booked:
+bookings-resource = Resource:
+bookings-confirm = Confirm
+bookings-reschedule = Reschedule
+bookings-decline = Decline
+bookings-claim = Claim
+bookings-badge-awaiting-reschedule = awaiting reschedule
+bookings-cancel = Cancel
+bookings-reason-placeholder = Reason (optional)
+bookings-confirm-cancel = Confirm cancel
+bookings-back = Back
+bookings-empty = No upcoming bookings yet.<br>Share your { $link } so people can book time with you.
+bookings-empty-link-label = event type links
+
+# Dashboard teams listing (templates/dashboard_teams.html)
+
+teams-page-title = Teams
+teams-heading = Teams
+teams-new = New
+teams-badge-public = public
+teams-badge-private = private
+teams-settings = Settings
+teams-view = View
+teams-empty = No teams yet.
+teams-empty-admin = { $link } to collaborate with your team.
+teams-empty-admin-link-label = Create one
+teams-empty-member = Teams are created by administrators. Ask your admin to create one and add you as a member.
+
+# Dashboard invite links (templates/dashboard_internal.html)
+
+invite-links-page-title = Invite Links
+invite-links-heading = Invite Links
+invite-links-new = New internal event
+invite-links-help = Generate single-use booking links for internal event types. Any authenticated colleague can create and share links here.
+invite-links-duration = { $minutes }min
+invite-links-hosted-by = Hosted by { $host }
+invite-links-get-link = Get link
+invite-links-invites = Invites
+invite-links-empty = No internal event types yet.<br>{ $link } with "Internal" visibility to let any colleague generate booking links.
+invite-links-empty-link-label = Create an event type
+invite-links-js-generating = Generating...
+invite-links-js-copied = Copied!
+invite-links-js-error = Error
+
+teams-member-count =
+    { $count ->
+        [one] { $count } member
+       *[other] { $count } members
+    }
+
+# Dashboard calendar sources (templates/dashboard_sources.html)
+
+sources-page-title = Calendar Sources
+sources-heading = Calendar sources
+sources-add = Add
+sources-last-sync = Last sync:
+sources-sync = Sync
+sources-full-resync = Full resync
+sources-full-resync-title = Clear cache and re-fetch all events from server
+sources-test = Test
+sources-reconnect = Reconnect
+sources-reconnect-title = Re-run the Google consent flow
+sources-edit = Edit
+sources-remove = Remove
+sources-remove-confirm = Remove source '{ $name }'? This will delete all synced events from this source.
+sources-no-write-calendar = No write calendar selected. Confirmed bookings stay in calrs and are not pushed to this calendar. Pick one below to enable write-back.
+sources-write-bookings-to = Write bookings to:
+sources-write-none = None (don't write)
+sources-empty = No calendar sources connected. { $link } to check availability.
+sources-empty-link-label = Add one
+
+# Dashboard event types listing (templates/dashboard_event_types.html)
+
+event-types-page-title = Event Types
+event-types-heading = Event types
+event-types-new = New
+event-types-badge-disabled = disabled
+event-types-badge-internal = internal
+event-types-badge-private = private
+event-types-badge-resources = resources
+event-types-send-invites = Send invites
+event-types-duration = { $minutes }min
+event-types-mode-collective = collective
+event-types-mode-round-robin = round robin
+event-types-edit = Edit
+event-types-disable = Disable
+event-types-enable = Enable
+event-types-embed = Embed
+event-types-overrides = Overrides
+event-types-team-settings = Team settings
+event-types-invites = Invites
+event-types-view-public = View public page
+event-types-view-page = View page
+event-types-delete = Delete
+event-types-delete-confirm = Delete event type '{ $title }'? This cannot be undone.
+event-types-empty = No event types yet. { $link } to start accepting bookings.
+event-types-empty-link-label = Create one

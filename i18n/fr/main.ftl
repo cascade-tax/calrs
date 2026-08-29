@@ -230,3 +230,179 @@ email-cancel-headline-by-host = Votre réservation a été annulée par { $host 
 email-cancel-headline-by-guest = Votre réservation a été annulée.
 email-cancel-ics-attached-plain = Une annulation de calendrier est jointe.
 email-cancel-ics-attached-html = Une annulation de calendrier est jointe à cet e-mail.
+
+# Dashboard sidebar and shared chrome (templates/dashboard_base.html)
+
+nav-section-scheduling = Planification
+nav-overview = Vue d'ensemble
+nav-event-types = Types d'événement
+nav-bookings = Réservations
+nav-teams = Équipes
+nav-section-shared-links = Liens partagés
+nav-invite-links = Liens d'invitation
+nav-section-calendars = Agendas
+nav-sources = Sources
+nav-section-personal = Personnel
+nav-settings = Profil et paramètres
+nav-troubleshoot = Diagnostic
+nav-section-admin = Administration
+nav-admin-panel = Panneau d'administration
+nav-sign-out = Se déconnecter
+nav-release-notes = Voir les notes de version
+
+# Timezone mismatch banner (templates/dashboard_base.html)
+
+tz-banner-text = Le fuseau horaire de votre navigateur est { $detected } alors que votre fuseau de réservation est { $current }.
+tz-banner-update = Mettre à jour
+tz-banner-dismiss = Ignorer
+
+# Markdown editor toolbar (templates/dashboard_base.html)
+
+editor-link-prompt = Saisissez l'URL :
+editor-link-default-label = texte du lien
+editor-placeholder-text = texte
+editor-nothing-to-preview = Rien à prévisualiser
+
+# Dashboard overview (templates/dashboard_overview.html)
+
+overview-page-title = Tableau de bord
+overview-welcome = Bienvenue, { $name }
+overview-public-page = Page publique :
+overview-avail-banner-title = Disponibilité par défaut
+overview-avail-banner-body = Vos horaires de travail par défaut ont été fixés du lundi au vendredi, de 9h00 à 17h00. Ils sont utilisés lorsque d'autres personnes vous incluent dans une réunion de groupe dynamique.
+overview-avail-banner-cta = Vérifier vos disponibilités
+overview-dismiss = Ignorer
+overview-getting-started = Pour commencer
+overview-getting-started-help = Suivez ces étapes pour commencer à accepter des réservations.
+overview-step-connect-calendar = Connecter un agenda
+overview-step-first-event-type = Créer votre premier type d'événement
+overview-step-share-link = Partager votre lien de réservation
+overview-pending-approval = En attente d'approbation
+overview-booking-with = { $title } avec { $guest }
+overview-badge-pending = en attente
+overview-guest-booked = Réservé par l'invité :
+overview-confirm = Confirmer
+overview-decline = Refuser
+overview-stat-event-types = Types d'événement
+overview-stat-upcoming = Réservations à venir
+overview-stat-pending = En attente d'approbation
+overview-stat-sources = Sources d'agenda
+overview-quick-actions = Créer un type d'événement
+overview-action-public-title = Page de réservation publique
+overview-action-public-desc = Partagez un lien — n'importe qui peut choisir un créneau et réserver avec vous.
+overview-action-team-title = Planification d'équipe
+overview-action-team-desc = Répartissez les réservations entre les membres de l'équipe ou trouvez un créneau où tout le monde est libre.
+overview-action-team-desc-empty = Créez d'abord une équipe, puis configurez des types d'événement partagés.
+overview-action-private-title = Privé, sur invitation
+overview-action-private-desc = Générez des liens à usage unique pour des contacts précis. Personne d'autre ne peut réserver.
+overview-action-shared-title = Liens d'invitation partagés
+overview-action-shared-desc = Tout collègue de l'équipe peut générer des liens de réservation à partager à l'extérieur.
+overview-action-reason-calendar = Connectez d'abord un agenda
+overview-action-reason-ask-admin = Demandez à un administrateur de créer une équipe
+overview-action-reason-team-admin = Nécessite une équipe — créez-en une d'abord
+overview-action-reason-team-member = Nécessite une équipe — demandez à un administrateur
+
+# Dashboard bookings (templates/dashboard_bookings.html)
+
+bookings-page-title = Réservations
+bookings-pending-approval = En attente d'approbation
+bookings-available-to-claim = À prendre en charge
+bookings-upcoming = Réservations à venir
+bookings-with = { $title } avec { $guest }
+bookings-guest-booked = Réservé par l'invité :
+bookings-resource = Ressource :
+bookings-confirm = Confirmer
+bookings-reschedule = Reprogrammer
+bookings-decline = Refuser
+bookings-claim = Prendre en charge
+bookings-badge-awaiting-reschedule = reprogrammation en attente
+bookings-cancel = Annuler
+bookings-reason-placeholder = Motif (facultatif)
+bookings-confirm-cancel = Confirmer l'annulation
+bookings-back = Retour
+bookings-empty = Aucune réservation à venir pour le moment.<br>Partagez vos { $link } pour que l'on puisse réserver avec vous.
+bookings-empty-link-label = liens de types d'événement
+
+# Dashboard teams listing (templates/dashboard_teams.html)
+
+teams-page-title = Équipes
+teams-heading = Équipes
+teams-new = Nouvelle
+teams-badge-public = publique
+teams-badge-private = privée
+teams-settings = Paramètres
+teams-view = Voir
+teams-empty = Aucune équipe pour le moment.
+teams-empty-admin = { $link } pour collaborer avec votre équipe.
+teams-empty-admin-link-label = Créez-en une
+teams-empty-member = Les équipes sont créées par les administrateurs. Demandez au vôtre d'en créer une et de vous y ajouter.
+
+# Dashboard invite links (templates/dashboard_internal.html)
+
+invite-links-page-title = Liens d'invitation
+invite-links-heading = Liens d'invitation
+invite-links-new = Nouvel événement interne
+invite-links-help = Générez des liens de réservation à usage unique pour les types d'événement internes. Tout collègue authentifié peut créer et partager des liens ici.
+invite-links-duration = { $minutes } min
+invite-links-hosted-by = Organisé par { $host }
+invite-links-get-link = Obtenir un lien
+invite-links-invites = Invitations
+invite-links-empty = Aucun type d'événement interne pour le moment.<br>{ $link } avec la visibilité « Interne » pour permettre à tout collègue de générer des liens de réservation.
+invite-links-empty-link-label = Créez un type d'événement
+invite-links-js-generating = Génération...
+invite-links-js-copied = Copié !
+invite-links-js-error = Erreur
+
+teams-member-count =
+    { $count ->
+        [one] { $count } membre
+       *[other] { $count } membres
+    }
+
+# Dashboard calendar sources (templates/dashboard_sources.html)
+
+sources-page-title = Sources d'agenda
+sources-heading = Sources d'agenda
+sources-add = Ajouter
+sources-last-sync = Dernière synchronisation :
+sources-sync = Synchroniser
+sources-full-resync = Resynchronisation complète
+sources-full-resync-title = Vider le cache et récupérer tous les événements depuis le serveur
+sources-test = Tester
+sources-reconnect = Reconnecter
+sources-reconnect-title = Relancer le processus de consentement Google
+sources-edit = Modifier
+sources-remove = Supprimer
+sources-remove-confirm = Supprimer la source « { $name } » ? Tous les événements synchronisés depuis cette source seront effacés.
+sources-no-write-calendar = Aucun agenda d'écriture sélectionné. Les réservations confirmées restent dans calrs et ne sont pas envoyées vers cet agenda. Choisissez-en un ci-dessous pour activer l'écriture.
+sources-write-bookings-to = Écrire les réservations dans :
+sources-write-none = Aucun (ne pas écrire)
+sources-empty = Aucune source d'agenda connectée. { $link } pour vérifier les disponibilités.
+sources-empty-link-label = Ajoutez-en une
+
+# Dashboard event types listing (templates/dashboard_event_types.html)
+
+event-types-page-title = Types d'événement
+event-types-heading = Types d'événement
+event-types-new = Nouveau
+event-types-badge-disabled = désactivé
+event-types-badge-internal = interne
+event-types-badge-private = privé
+event-types-badge-resources = ressources
+event-types-send-invites = Envoyer des invitations
+event-types-duration = { $minutes } min
+event-types-mode-collective = collectif
+event-types-mode-round-robin = tour de rôle
+event-types-edit = Modifier
+event-types-disable = Désactiver
+event-types-enable = Activer
+event-types-embed = Intégrer
+event-types-overrides = Exceptions
+event-types-team-settings = Paramètres de l'équipe
+event-types-invites = Invitations
+event-types-view-public = Voir la page publique
+event-types-view-page = Voir la page
+event-types-delete = Supprimer
+event-types-delete-confirm = Supprimer le type d'événement « { $title } » ? Cette action est irréversible.
+event-types-empty = Aucun type d'événement pour le moment. { $link } pour commencer à accepter des réservations.
+event-types-empty-link-label = Créez-en un
