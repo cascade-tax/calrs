@@ -740,3 +740,168 @@ team-settings-danger-zone = Zone sensible
 team-settings-danger-help = Supprimer définitivement cette équipe. Les types d'événement seront dissociés (pas supprimés). Cette action est irréversible.
 team-settings-delete = Supprimer cette équipe
 team-settings-delete-confirm = Supprimer l'équipe « { $name } » ? Cette action est irréversible.
+
+# Event type form (templates/event_type_form.html)
+
+etf-heading-edit = Modifier le type d'événement
+etf-heading-new = Nouveau type d'événement
+etf-team = Équipe
+etf-team-hint = (facultatif — laissez vide pour un type d'événement personnel)
+etf-team-personal = Personnel
+etf-scheduling-mode = Mode de planification
+etf-mode-round-robin = Tour de rôle — attribuer à un membre disponible
+etf-mode-collective = Collectif — tous les membres doivent être disponibles
+etf-scheduling-mode-help = Le tour de rôle attribue la réservation à un membre disponible (le moins chargé d'abord). Le mode collectif exige que tous les membres soient libres en même temps.
+etf-title = Titre
+etf-title-placeholder = Appel de découverte de 30 min
+etf-slug = Identifiant
+etf-slug-placeholder = généré à partir du titre
+etf-description-placeholder = Un court appel de découverte pour parler de...
+etf-description-help = Affichée sur la page de réservation. Prend en charge **gras**, *italique* et [liens](url).
+etf-location = Lieu
+etf-location-link = Visioconférence (URL fixe)
+etf-location-jitsi = Jitsi (salon généré automatiquement)
+etf-location-webhook = Webhook (fournisseur personnalisé)
+etf-location-phone = Téléphone
+etf-location-in-person = En personne
+etf-location-custom = Personnalisé
+etf-location-details = Détails
+etf-location-details-placeholder = https://meet.example.com/ma-salle
+etf-pattern-placeholder = Laissez vide pour utiliser le motif par défaut de l'organisation
+etf-duration = Durée (minutes)
+etf-slot-interval = Intervalle entre créneaux (minutes)
+etf-slot-interval-placeholder = Identique à la durée
+etf-slot-interval-help = Fréquence de démarrage des créneaux. Laissez vide pour suivre la durée.
+etf-required-members = Membres requis
+etf-required-members-help = Tous les membres cochés doivent être libres pour qu'un créneau soit proposé. Décochez les membres à exclure (leur disponibilité sera ignorée).
+etf-member-priority = Priorité des membres
+etf-member-priority-help = Les membres les plus prioritaires reçoivent les réservations en premier lorsqu'ils sont disponibles. À priorité égale, la répartition suit le nombre de réservations récentes.
+etf-member-timezone-title = Fuseau horaire du membre. Ses horaires de travail personnels sont interprétés dans ce fuseau.
+etf-priority-high = Haute
+etf-priority-medium = Moyenne
+etf-priority-low = Basse
+etf-section-availability = Disponibilité
+etf-timezone-help = Les horaires ci-dessous sont interprétés dans ce fuseau. Pour un type d'événement d'équipe, choisissez le fuseau de travail de l'équipe (pas forcément celui du créateur).
+etf-reset-default = Rétablir mes horaires par défaut
+etf-reset-default-title = Remplacer ces horaires par la disponibilité par défaut de votre profil
+etf-availability-prefilled = Pré-rempli depuis votre { $link }. Vous pouvez le remplacer ici pour ce type d'événement.
+etf-availability-prefilled-link = disponibilité par défaut
+etf-section-buffers = Marges et préavis
+etf-buffer-before = Marge avant (min)
+etf-buffer-after = Marge après (min)
+etf-min-notice = Préavis minimum
+etf-min-notice-help = Délai minimum entre la réservation et la réunion.
+etf-section-limits = Limites de réservation
+etf-first-slot-only = Un seul créneau par jour
+etf-first-slot-only-help = N'afficher que le premier horaire disponible de chaque journée.
+etf-freq-limit = Limiter la fréquence des réservations
+etf-freq-limit-help = Limiter le nombre de réservations de cet événement par période.
+etf-add-limit = Ajouter une limite
+etf-section-options = Options de réservation
+etf-requires-confirmation = Confirmation requise
+etf-requires-confirmation-help = Les réservations resteront en attente jusqu'à votre validation depuis le tableau de bord.
+etf-sms = Notifications SMS
+etf-sms-off = Désactivé, aucun numéro demandé
+etf-sms-optional = Facultatif, les invités peuvent laisser un numéro
+etf-sms-required = Obligatoire, les invités doivent laisser un numéro
+etf-sms-help = Envoie un SMS à l'invité lorsque sa réservation est confirmée, déplacée, annulée ou sur le point de commencer, en plus de l'e-mail. Un invité qui laisse le champ vide ne reçoit tout simplement pas de SMS. Nécessite une passerelle SMS dans le { $link }.
+etf-admin-panel-link = panneau d'administration
+etf-additional-guests = Invités supplémentaires
+etf-guests-none = Les invités ne peuvent pas en ajouter d'autres
+etf-additional-guests-help = Permettre à la personne qui réserve d'inviter d'autres participants, qui recevront l'invitation d'agenda.
+etf-default-view = Vue d'agenda par défaut
+etf-view-month = Mois — grille d'agenda avec liste de créneaux
+etf-view-week = Semaine — colonnes sur 7 jours avec créneaux
+etf-view-column = Colonne — jours listés avec leurs créneaux
+etf-view-week-short = semaine
+etf-view-column-short = colonne
+etf-default-view-help = La vue affichée par défaut aux invités. Ils peuvent en changer à tout moment.
+etf-conflict-calendars = Agendas de conflits
+etf-conflict-calendars-help = Choisissez les agendas à consulter pour détecter les conflits. Si aucun n'est sélectionné, tous sont utilisés.
+etf-no-resources = Aucune ressource partagée configurée pour le moment. Ajoutez-en une (laboratoire de démo, salle de réunion) dans le { $link } pour l'exiger ici.
+etf-section-access = Accès et notifications
+etf-visibility-public = Public — visible sur votre profil
+etf-visibility-internal = Interne — tout collègue peut générer des liens d'invitation
+etf-visibility-private = Privé — uniquement sur lien d'invitation
+etf-visibility-help = Détermine qui peut voir et réserver ce type d'événement.
+etf-vis-internal = Interne
+etf-reminder = Rappel de réservation
+etf-reminder-none = Aucun rappel
+etf-reminder-help = Envoyer un e-mail de rappel à vous et à votre invité avant la réunion.
+etf-dynamic-group = Lien de groupe dynamique
+etf-dynamic-group-help = Créez un lien de réunion ponctuel qui vérifie vos disponibilités et celles d'autres utilisateurs.
+etf-dynamic-group-search = Rechercher un utilisateur à ajouter...
+etf-dynamic-group-note = Seuls les utilisateurs qui autorisent les liens de groupe dynamiques sont affichés.
+etf-dynamic-group-url = URL du lien de groupe
+etf-watcher-teams = Équipes observatrices
+etf-watcher-teams-help = Les équipes sélectionnées seront notifiées à chaque réservation. Leurs membres peuvent prendre en charge une réservation pour y participer.
+etf-save = Enregistrer les modifications
+etf-create = Créer le type d'événement
+etf-js-loading = Chargement...
+etf-js-no-default = Aucun défaut défini
+etf-js-reset-done = Rétabli !
+etf-js-error = Erreur
+etf-js-remove-limit = Supprimer la limite
+etf-period-day = Par jour
+etf-period-week = Par semaine
+etf-period-month = Par mois
+etf-period-year = Par an
+
+# Event type form: runtime summary hints (templates/event_type_form.html)
+
+
+# %1 and %2 are substituted client-side; the values are only known once a field is edited.
+
+etf-hint-no-days = Aucun jour défini
+etf-hint-every-day = Tous les jours
+etf-fmt-day-one = %1 jour
+etf-fmt-day-other = %1 jours
+etf-fmt-hours = %1 h
+etf-fmt-minutes = %1 min
+etf-hint-buffer-both = %1 min avant, %2 min après
+etf-hint-buffer-before = %1 min de marge avant
+etf-hint-buffer-after = %1 min de marge après
+etf-hint-notice = %1 de préavis
+etf-hint-no-buffers = Aucune marge, réservation à tout moment
+etf-hint-max = Max %1
+etf-hint-period-day = /jour
+etf-hint-period-week = /semaine
+etf-hint-period-month = /mois
+etf-hint-period-year = /an
+etf-hint-no-limits = Aucune limite
+etf-hint-confirmation-required = Confirmation requise
+etf-hint-auto-confirmed = Confirmation automatique
+etf-hint-extra-guests-one = jusqu'à %1 invité supplémentaire
+etf-hint-extra-guests-other = jusqu'à %1 invités supplémentaires
+etf-hint-view = vue %1
+etf-hint-reminder = rappel %1 avant
+etf-hint-no-reminder = aucun rappel
+
+etf-guests-up-to =
+    { $count ->
+        [one] Jusqu'à { $count } invité supplémentaire
+       *[other] Jusqu'à { $count } invités supplémentaires
+    }
+
+etf-reminder-hours =
+    { $count ->
+        [one] { $count } heure avant
+       *[other] { $count } heures avant
+    }
+
+etf-reminder-days =
+    { $count ->
+        [one] { $count } jour avant
+       *[other] { $count } jours avant
+    }
+
+# Event type form: preset banners and meeting-pattern help (templates/event_type_form.html)
+# Literal braces are escaped as {"{"} because Fluent reads a bare { as a placeable.
+
+etf-preset-public = Création d'un type d'événement <strong>public</strong> &mdash; toute personne disposant du lien peut réserver.
+etf-preset-private = Création d'un type d'événement <strong>privé</strong> &mdash; seules les personnes que vous invitez peuvent réserver.
+etf-preset-internal = Création d'un type d'événement <strong>interne</strong> &mdash; tout collègue peut partager le lien de réservation.
+etf-preset-team = Création d'un type d'événement <strong>d'équipe</strong> &mdash; les réservations sont réparties entre les membres.
+etf-pattern-hint = Motif personnalisé facultatif. Jetons : <code>{"{"}username{"}"}</code>, <code>{"{"}event{"}"}</code>, <code>{"{"}date{"}"}</code>, <code>{"{"}random{"}"}</code>. Laissez vide pour utiliser le motif par défaut configuré par un administrateur.
+etf-pattern-random-warning = Ce motif ne contient pas de jeton <code>{"{"}random{"}"}</code>. Deux réservations de ce type d'événement le même jour partageront le même salon, et le second invité pourra entrer dans la réunion du premier. N'utilisez des salons fixes que si c'est bien l'effet recherché.
+etf-webhook-hint = L'URL de réunion propre à chaque réservation est récupérée depuis le webhook configuré par un administrateur sous Administration &rarr; Webhook de réunion. Aucune URL n'est nécessaire ici.

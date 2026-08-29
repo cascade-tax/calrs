@@ -809,3 +809,168 @@ team-settings-danger-zone = Danger zone
 team-settings-danger-help = Permanently delete this team. Event types will be unlinked (not deleted). This cannot be undone.
 team-settings-delete = Delete this team
 team-settings-delete-confirm = Delete team '{ $name }'? This cannot be undone.
+
+# Event type form (templates/event_type_form.html)
+
+etf-heading-edit = Edit event type
+etf-heading-new = New event type
+etf-team = Team
+etf-team-hint = (optional — leave empty for personal event type)
+etf-team-personal = Personal
+etf-scheduling-mode = Scheduling mode
+etf-mode-round-robin = Round Robin — assign to one available member
+etf-mode-collective = Collective — all members must be available
+etf-scheduling-mode-help = Round Robin assigns to one available member (least busy first). Collective requires all members to be free at the same time.
+etf-title = Title
+etf-title-placeholder = 30min intro call
+etf-slug = Slug
+etf-slug-placeholder = auto-generated from title
+etf-description-placeholder = A quick introductory call to discuss...
+etf-description-help = Shown on the booking page. Supports **bold**, *italic*, and [links](url).
+etf-location = Location
+etf-location-link = Video call (static URL)
+etf-location-jitsi = Jitsi (auto-generated room)
+etf-location-webhook = Webhook (custom provider)
+etf-location-phone = Phone
+etf-location-in-person = In person
+etf-location-custom = Custom
+etf-location-details = Details
+etf-location-details-placeholder = https://meet.example.com/my-room
+etf-pattern-placeholder = Leave empty to use the org default pattern
+etf-duration = Duration (minutes)
+etf-slot-interval = Slot interval (minutes)
+etf-slot-interval-placeholder = Same as duration
+etf-slot-interval-help = How often slots start. Leave blank to match duration.
+etf-required-members = Required members
+etf-required-members-help = All checked members must be free for a slot to be offered. Uncheck members you want to exclude (their availability will be ignored).
+etf-member-priority = Member Priority
+etf-member-priority-help = Higher priority members are assigned bookings first when available. Same priority = balanced by recent booking count.
+etf-member-timezone-title = Member's timezone. Their personal working hours are interpreted in this TZ.
+etf-priority-high = High
+etf-priority-medium = Medium
+etf-priority-low = Low
+etf-section-availability = Availability
+etf-timezone-help = The hours below are interpreted in this timezone. For team event types, pick the team's working timezone (not necessarily the creator's).
+etf-reset-default = Reset to my default
+etf-reset-default-title = Replace these hours with your profile-default availability
+etf-availability-prefilled = Pre-filled from your { $link }. You can override it here for this event type.
+etf-availability-prefilled-link = default availability
+etf-section-buffers = Buffers & notice
+etf-buffer-before = Buffer before (min)
+etf-buffer-after = Buffer after (min)
+etf-min-notice = Minimum notice
+etf-min-notice-help = How far in advance someone must book.
+etf-section-limits = Booking limits
+etf-first-slot-only = One slot per day
+etf-first-slot-only-help = Only show the earliest available time each day.
+etf-freq-limit = Limit booking frequency
+etf-freq-limit-help = Limit how many times this event can be booked per period.
+etf-add-limit = Add limit
+etf-section-options = Booking options
+etf-requires-confirmation = Requires confirmation
+etf-requires-confirmation-help = Bookings will be pending until you approve them from the dashboard.
+etf-sms = SMS notifications
+etf-sms-off = Off, no phone number asked
+etf-sms-optional = Optional, guests may leave a number
+etf-sms-required = Required, guests must leave a number
+etf-sms-help = Texts the guest when their booking is confirmed, moved, cancelled, or about to start, in addition to email. Guests who leave the field empty simply get no SMS. Requires an SMS gateway in the { $link }.
+etf-admin-panel-link = admin panel
+etf-additional-guests = Additional guests
+etf-guests-none = Guests cannot add others
+etf-additional-guests-help = Allow the person booking to invite additional attendees who will receive the calendar invite.
+etf-default-view = Default calendar view
+etf-view-month = Month — calendar grid with slot list
+etf-view-week = Week — 7-day columns with time slots
+etf-view-column = Column — days listed with inline slots
+etf-view-week-short = week
+etf-view-column-short = column
+etf-default-view-help = The view guests see by default. They can switch views anytime.
+etf-conflict-calendars = Conflict calendars
+etf-conflict-calendars-help = Select which calendars to check for conflicts. If none selected, all calendars are used.
+etf-no-resources = No shared resources configured yet. Add one (demo lab, meeting room) in the { $link } to require it here.
+etf-section-access = Access & notifications
+etf-visibility-public = Public — visible on your profile
+etf-visibility-internal = Internal — any colleague can generate invite links
+etf-visibility-private = Private — invite link only
+etf-visibility-help = Controls who can see and book this event type.
+etf-vis-internal = Internal
+etf-reminder = Booking reminder
+etf-reminder-none = No reminder
+etf-reminder-help = Send a reminder email to both you and your guest before the meeting.
+etf-dynamic-group = Dynamic Group Link
+etf-dynamic-group-help = Create an ad-hoc meeting link that checks availability for you and other users.
+etf-dynamic-group-search = Search for a user to add...
+etf-dynamic-group-note = Only users who allow dynamic group links are shown.
+etf-dynamic-group-url = Group link URL
+etf-watcher-teams = Watcher teams
+etf-watcher-teams-help = Selected teams will be notified when bookings are made. Members can claim bookings to join as an attendee.
+etf-save = Save changes
+etf-create = Create event type
+etf-js-loading = Loading...
+etf-js-no-default = No default set
+etf-js-reset-done = Reset!
+etf-js-error = Error
+etf-js-remove-limit = Remove limit
+etf-period-day = Per day
+etf-period-week = Per week
+etf-period-month = Per month
+etf-period-year = Per year
+
+# Event type form: runtime summary hints (templates/event_type_form.html)
+
+
+# %1 and %2 are substituted client-side; the values are only known once a field is edited.
+
+etf-hint-no-days = No days set
+etf-hint-every-day = Every day
+etf-fmt-day-one = %1 day
+etf-fmt-day-other = %1 days
+etf-fmt-hours = %1h
+etf-fmt-minutes = %1min
+etf-hint-buffer-both = %1min before, %2min after
+etf-hint-buffer-before = %1min buffer before
+etf-hint-buffer-after = %1min buffer after
+etf-hint-notice = %1 notice
+etf-hint-no-buffers = No buffers, book anytime
+etf-hint-max = Max %1
+etf-hint-period-day = /day
+etf-hint-period-week = /week
+etf-hint-period-month = /month
+etf-hint-period-year = /year
+etf-hint-no-limits = No limits
+etf-hint-confirmation-required = Confirmation required
+etf-hint-auto-confirmed = Auto-confirmed
+etf-hint-extra-guests-one = up to %1 extra guest
+etf-hint-extra-guests-other = up to %1 extra guests
+etf-hint-view = %1 view
+etf-hint-reminder = reminder %1 before
+etf-hint-no-reminder = no reminder
+
+etf-guests-up-to =
+    { $count ->
+        [one] Up to { $count } additional guest
+       *[other] Up to { $count } additional guests
+    }
+
+etf-reminder-hours =
+    { $count ->
+        [one] { $count } hour before
+       *[other] { $count } hours before
+    }
+
+etf-reminder-days =
+    { $count ->
+        [one] { $count } day before
+       *[other] { $count } days before
+    }
+
+# Event type form: preset banners and meeting-pattern help (templates/event_type_form.html)
+# Literal braces are escaped as {"{"} because Fluent reads a bare { as a placeable.
+
+etf-preset-public = Creating a <strong>public</strong> event type &mdash; anyone with the link can book.
+etf-preset-private = Creating a <strong>private</strong> event type &mdash; only people you invite can book.
+etf-preset-internal = Creating an <strong>internal</strong> event type &mdash; any colleague can share the booking link.
+etf-preset-team = Creating a <strong>team</strong> event type &mdash; bookings are distributed across team members.
+etf-pattern-hint = Optional pattern override. Tokens: <code>{"{"}username{"}"}</code>, <code>{"{"}event{"}"}</code>, <code>{"{"}date{"}"}</code>, <code>{"{"}random{"}"}</code>. Leave empty to use the organisation default configured by an admin.
+etf-pattern-random-warning = This pattern has no <code>{"{"}random{"}"}</code> token. Two bookings of this event type on the same day will share the same room and the second guest can walk into the first guest's meeting. Use stable rooms only if that's what you want.
+etf-webhook-hint = Per-booking meeting URL is fetched from the webhook configured by an admin under Admin &rarr; Meeting webhook. No URL needed here.
