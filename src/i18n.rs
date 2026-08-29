@@ -7,6 +7,7 @@ use std::sync::OnceLock;
 use axum::http::HeaderMap;
 use chrono::{Datelike, NaiveDate, Weekday};
 use fluent_bundle::concurrent::FluentBundle;
+use fluent_bundle::types::{FluentNumber, FluentNumberOptions};
 use fluent_bundle::{FluentArgs, FluentResource, FluentValue};
 use minijinja::value::Kwargs;
 use minijinja::{Environment, State};
@@ -201,6 +202,40 @@ pub fn register(env: &mut Environment<'static>) {
     env.add_function("t", t_function);
 }
 
+/// A template argument on its way into Fluent.
+///
+/// Integers are kept as numbers so `{ $n -> [one] ... }` plural selectors
+/// actually select (a stringified "1" never matches the `one` variant, it
+/// silently falls through to `other`). Grouping is switched off so an integer
+/// still renders exactly as it did when every argument was a string: "1440",
+/// never "1,440".
+enum Arg {
+    Num(f64),
+    Text(String),
+}
+
+impl Arg {
+    fn from_value(v: &minijinja::Value) -> Self {
+        match i64::try_from(v.clone()) {
+            Ok(n) => Arg::Num(n as f64),
+            Err(_) => Arg::Text(v.to_string()),
+        }
+    }
+
+    fn to_fluent(&self) -> FluentValue<'_> {
+        match self {
+            Arg::Num(n) => FluentValue::Number(FluentNumber::new(
+                *n,
+                FluentNumberOptions {
+                    use_grouping: false,
+                    ..Default::default()
+                },
+            )),
+            Arg::Text(s) => FluentValue::from(s.as_str()),
+        }
+    }
+}
+
 fn t_function(state: &State, key: &str, kwargs: Kwargs) -> String {
     let lang_owned: String = state
         .lookup("lang")
@@ -209,13 +244,13 @@ fn t_function(state: &State, key: &str, kwargs: Kwargs) -> String {
 
     // Collect kwargs into FluentArgs. We hold the converted strings in a Vec
     // so FluentArgs (which borrows) stays valid for the format_pattern call.
-    let pairs: Vec<(String, String)> = kwargs
+    let pairs: Vec<(String, Arg)> = kwargs
         .args()
         .filter_map(|name| {
             kwargs
                 .get::<minijinja::Value>(name)
                 .ok()
-                .map(|v| (name.to_string(), v.to_string()))
+                .map(|v| (name.to_string(), Arg::from_value(&v)))
         })
         .collect();
 
@@ -225,7 +260,7 @@ fn t_function(state: &State, key: &str, kwargs: Kwargs) -> String {
 
     let mut args = FluentArgs::new();
     for (k, v) in &pairs {
-        args.set(k.as_str(), FluentValue::from(v.as_str()));
+        args.set(k.as_str(), v.to_fluent());
     }
     translate(&lang_owned, key, Some(&args))
 }
@@ -390,5 +425,255 @@ mod tests {
         assert!(fr.contains("2026"));
         assert!(!en.contains("2,026"));
         assert!(!fr.contains("2 026"));
+    }
+
+    /// Every `t("key")` referenced from a template must exist in the English
+    /// bundle. Without this, a typo or a key dropped during a refactor renders
+    /// the raw message id in the UI and nothing fails until someone sees it.
+    #[test]
+    fn every_template_key_exists_in_english() {
+        let mut missing: Vec<String> = Vec::new();
+        for path in template_files() {
+            let src = std::fs::read_to_string(&path).expect("read template");
+            for key in regex_lite_find_keys(&src) {
+                if translate("en", &key, None) == key {
+                    missing.push(format!("{}: {}", path.display(), key));
+                }
+            }
+        }
+        assert!(
+            missing.is_empty(),
+            "missing English keys:\n{}",
+            missing.join("\n")
+        );
+    }
+
+    /// Handlers translate too (form validation errors, the troubleshoot
+    /// timeline). A typo there renders the raw message id into the page just
+    /// as silently as it would from a template.
+    #[test]
+    fn every_rust_key_exists_in_english() {
+        let mut missing: Vec<String> = Vec::new();
+        for path in rust_files() {
+            let src = std::fs::read_to_string(&path).expect("read source");
+            for key in find_rust_keys(&src) {
+                if translate("en", &key, None) == key {
+                    missing.push(format!("{}: {}", path.display(), key));
+                }
+            }
+        }
+        assert!(
+            missing.is_empty(),
+            "missing English keys:\n{}",
+            missing.join("\n")
+        );
+    }
+
+    /// Message ids passed to `translate(lang, "key", ..)` or `tr1(lang, "key", ..)`.
+    fn find_rust_keys(src: &str) -> Vec<String> {
+        let mut keys = Vec::new();
+        for call in ["translate(", "tr1("] {
+            let mut i = 0;
+            while let Some(pos) = src[i..].find(call) {
+                let start = i + pos + call.len();
+                i = start;
+                // Skip the lang argument, then read the quoted key.
+                let Some(comma) = src[start..].find(',') else {
+                    continue;
+                };
+                let rest = src[start + comma + 1..].trim_start();
+                let Some(inner) = rest.strip_prefix('"') else {
+                    continue;
+                };
+                let Some(end) = inner.find('"') else {
+                    continue;
+                };
+                let key = &inner[..end];
+                if key.contains('-')
+                    && key
+                        .chars()
+                        .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+                {
+                    keys.push(key.to_string());
+                }
+            }
+        }
+        keys
+    }
+
+    /// All `.rs` files under `src/`, recursively.
+    fn rust_files() -> Vec<std::path::PathBuf> {
+        fn walk(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
+            for entry in std::fs::read_dir(dir).expect("read src dir") {
+                let path = entry.expect("dir entry").path();
+                if path.is_dir() {
+                    walk(&path, out);
+                } else if path.extension().is_some_and(|e| e == "rs")
+                    // This module's own tests translate a deliberately absent
+                    // key to exercise the fallback chain.
+                    && !path.ends_with("i18n.rs")
+                {
+                    out.push(path);
+                }
+            }
+        }
+        let mut out = Vec::new();
+        walk(std::path::Path::new("src"), &mut out);
+        out.sort();
+        out
+    }
+
+    /// Every template must still parse after a localization pass, in every
+    /// shipped locale (a locale only changes the strings, but a template that
+    /// fails to load is a 500 on a live page).
+    #[test]
+    fn every_template_loads() {
+        let mut env = Environment::new();
+        env.set_undefined_behavior(minijinja::UndefinedBehavior::Lenient);
+        env.set_loader(minijinja::path_loader("templates"));
+        register(&mut env);
+        for path in template_files() {
+            let name = path
+                .strip_prefix("templates/")
+                .expect("template path")
+                .to_string_lossy()
+                .to_string();
+            env.get_template(&name)
+                .unwrap_or_else(|e| panic!("{name} failed to load: {e}"));
+        }
+    }
+
+    /// Collect every `t("key")` / `t('key')` occurrence in a template source.
+    fn regex_lite_find_keys(src: &str) -> Vec<String> {
+        let mut keys = Vec::new();
+        let bytes = src.as_bytes();
+        let mut i = 0;
+        while let Some(pos) = src[i..].find("t(") {
+            let start = i + pos;
+            // Reject identifiers that merely end in `t`, e.g. `format(`.
+            let prev_ok =
+                start == 0 || !bytes[start - 1].is_ascii_alphanumeric() && bytes[start - 1] != b'_';
+            i = start + 2;
+            if !prev_ok {
+                continue;
+            }
+            let rest = &src[i..];
+            let quote = match rest.chars().next() {
+                Some(c @ ('"' | '\'')) => c,
+                _ => continue,
+            };
+            let after = &rest[1..];
+            let Some(end) = after.find(quote) else {
+                continue;
+            };
+            let key = &after[..end];
+            if !key.is_empty()
+                && key
+                    .chars()
+                    .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+            {
+                keys.push(key.to_string());
+            }
+        }
+        keys
+    }
+
+    /// All `.html` files under `templates/`, recursively.
+    fn template_files() -> Vec<std::path::PathBuf> {
+        fn walk(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
+            for entry in std::fs::read_dir(dir).expect("read templates dir") {
+                let path = entry.expect("dir entry").path();
+                if path.is_dir() {
+                    walk(&path, out);
+                } else if path.extension().is_some_and(|e| e == "html") {
+                    out.push(path);
+                }
+            }
+        }
+        let mut out = Vec::new();
+        walk(std::path::Path::new("templates"), &mut out);
+        out.sort();
+        out
+    }
+
+    /// Fluent plural selectors have to see a number, not a stringified one.
+    /// A string "1" never matches the `one` variant and silently falls through
+    /// to `other`, which is how "1 members" reaches a page.
+    #[test]
+    fn integer_args_select_plural_variants() {
+        let mut env = Environment::new();
+        env.set_undefined_behavior(minijinja::UndefinedBehavior::Lenient);
+        register(&mut env);
+        env.add_template("p", "{{ t('teams-member-count', count=n) }}")
+            .expect("template");
+        let tmpl = env.get_template("p").expect("template");
+        let render = |n: i64| {
+            tmpl.render(minijinja::context! { lang => "en", n => n })
+                .expect("render")
+        };
+        assert_eq!(render(1), "1 member");
+        assert_eq!(render(2), "2 members");
+        assert_eq!(render(0), "0 members");
+    }
+
+    /// Numbers must render without locale grouping. Fluent would otherwise
+    /// print a booking notice of 1440 minutes as "1,440" in English and
+    /// "1 440" in French, changing copy that used to be a plain string.
+    #[test]
+    fn integer_args_render_without_grouping() {
+        let mut env = Environment::new();
+        env.set_undefined_behavior(minijinja::UndefinedBehavior::Lenient);
+        register(&mut env);
+        env.add_template("p", "{{ t('confirmed-cancel-notice-info', minutes=m) }}")
+            .expect("template");
+        let tmpl = env.get_template("p").expect("template");
+        for lang in ["en", "fr"] {
+            let out = tmpl
+                .render(minijinja::context! { lang => lang, m => 1440 })
+                .expect("render");
+            assert!(out.contains("1440"), "{lang}: {out}");
+            assert!(
+                !out.contains("1,440") && !out.contains("1 440"),
+                "{lang}: {out}"
+            );
+        }
+    }
+
+    /// French is a fully-translated locale (issue #195 shipped EN and FR at
+    /// 100%). A key added to English without a French value silently renders
+    /// English inside an otherwise French page, so catch it here rather than
+    /// on a live dashboard.
+    #[test]
+    fn french_covers_every_english_key() {
+        let missing: Vec<&str> = message_ids("en")
+            .into_iter()
+            .filter(|id| !message_ids("fr").contains(id))
+            .collect();
+        assert!(
+            missing.is_empty(),
+            "keys present in English but missing from French:\n{}",
+            missing.join("\n")
+        );
+    }
+
+    /// Message ids declared in a locale's bundle, read from the .ftl source
+    /// (FluentBundle exposes no iterator over its messages).
+    fn message_ids(lang: &str) -> Vec<&'static str> {
+        let src = SUPPORTED_LANGS
+            .iter()
+            .find(|(code, _, _)| *code == lang)
+            .map(|(_, _, src)| *src)
+            .unwrap_or("");
+        src.lines()
+            .filter_map(|line| {
+                let id = line.split(" =").next()?;
+                let valid = !id.is_empty()
+                    && id.starts_with(|c: char| c.is_ascii_lowercase())
+                    && id
+                        .chars()
+                        .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-');
+                (valid && line.starts_with(id) && line[id.len()..].starts_with(" =")).then_some(id)
+            })
+            .collect()
     }
 }

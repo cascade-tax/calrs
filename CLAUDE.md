@@ -100,7 +100,8 @@ calrs/
 │   ├── 057_runtime_settings.sql  ← base_url + allow_private_hosts on auth_config (env-overridable runtime settings)
 │   ├── 058_resources.sql         ← shared resources: resources, resource_events, event_type_resources; resource_scheduling_mode, assigned_resource_id, lend_resource_write
 │   ├── 059_resource_sync_error.sql ← last_sync_error on resources (feed failure indicator)
-│   └── 062_sms_notifications.sql ← SMS: guest_phone on bookings, sms_phone_mode on event_types, sms_config + sms_usage tables, sms_allow_all_users on auth_config
+│   ├── 062_sms_notifications.sql ← SMS: guest_phone on bookings, sms_phone_mode on event_types, sms_config + sms_usage tables, sms_allow_all_users on auth_config
+│   └── 063_booking_horizon.sql   ← booking_horizon_days on event_types (NULL = unlimited)
 ├── templates/
 │   ├── base.html                 ← base layout + CSS (light/dark mode)
 │   ├── dashboard_base.html       ← sidebar layout (extends base.html, all dashboard pages extend this)
@@ -452,7 +453,7 @@ Because `--surface`, `--border`, etc. are already overridden by `html.dark { ...
 
 **Visibility:** host-facing emails (new booking, approval request, confirmed, host reminder) show a "Resource" row via `BookingDetails.resource_name` (`booking_resource_label()`: assigned resource in round_robin, attached names in 'all'); guests never see resource names. The event-types listing shows a "resources" badge, and the bookings dashboard shows the assigned resource per booking.
 
-**Admin UI:** `/dashboard/admin` Resources card: add (feed validated and synced on create, name auto-filled from `X-WR-CALNAME`), edit (keep-current password pattern; feed re-validated and re-synced), delete, "Sync now", "Test write" (PUT/verify/DELETE cycle with a temp event 24h out). Members opt in to credential lending in Profile & Settings. The event type form gains a "Required resources" checkbox section + mode radio, visible to admins only. Dashboard resource UI is English for now, like the rest of the dashboard surface (localize with that surface, not piecemeal).
+**Admin UI:** `/dashboard/admin` Resources card: add (feed validated and synced on create, name auto-filled from `X-WR-CALNAME`), edit (keep-current password pattern; feed re-validated and re-synced), delete, "Sync now", "Test write" (PUT/verify/DELETE cycle with a temp event 24h out). Members opt in to credential lending in Profile & Settings. The event type form gains a "Required resources" checkbox section + mode radio, visible to admins only.
 
 **CLI:** `calrs resource probe --url <URL> [--username U] [--write-test]` probes a feed or CalDAV collection (full RFC 4791 discovery fallback, write test with a temporary event). Known gap: `calrs event-type slots` and `calrs booking create` do not consult resources yet; the web paths do.
 
@@ -502,8 +503,9 @@ The country is **seeded, not guessed**. Only an explicit BCP-47 region subtag co
 - ~~**Passwords echoed to terminal**~~ — **Fixed in v0.10.0**: `prompt_password()` now uses `rpassword` for hidden input.
 
 ### Features not yet implemented
-- Full delta sync using CalDAV `sync-token` and `ctag` (time-range filtering is implemented for on-demand sync)
-- REST API for third-party integrations
+- REST API for third-party integrations (tracked in #169)
+
+**Note:** delta sync is implemented. `commands/sync.rs` stores a per-calendar `sync-token` (migration 027) and `ctag`, issues an RFC 6578 `sync-collection` REPORT when it has one, and falls back to a full fetch when the server rejects it or reports an empty delta against a changed ctag. `--full` clears both. EWS sources keep their own flow.
 
 ### Test coverage roadmap
 - **Web handler integration tests** — use `axum::test` with in-memory SQLite to test the full booking flow (create event type → fetch slots → book → confirm/cancel), dashboard renders, admin panel, token-based actions. Requires building a shared test harness (DB seed, AppState setup). This is the biggest coverage opportunity (~49% of codebase is `web/mod.rs`).
@@ -581,14 +583,27 @@ When adding a new migration:
 
 ### Localization (Fluent + Weblate)
 
-calrs ships with translations for English, French, Spanish, and Polish. Source files live under `i18n/{lang}/main.ftl` and are embedded in the binary via `include_str!` (no runtime files). The loader, language detection, and minijinja `t()` global are in `src/i18n.rs`. Templates use `{{ t("message-id", arg=value) }}` and the active language is injected into the rendering context as `lang` by the calling handler.
+calrs ships with translations for English, French, Spanish, Polish, German, Italian, Estonian and Brazilian Portuguese. Source files live under `i18n/{lang}/main.ftl` and are embedded in the binary via `include_str!` (no runtime files). The loader, language detection, and minijinja `t()` global are in `src/i18n.rs`. Templates use `{{ t("message-id", arg=value) }}` and the active language is injected into the rendering context as `lang` by the calling handler.
+
+Both the guest side and the host side (dashboard, settings, forms, admin panel, auth pages) render through Fluent. English and French are complete; the other locales fall back to English per missing key.
+
+**Where `lang` comes from on host pages.** The `AuthUser`, `AdminUser` and `OptionalAuthUser` extractors resolve it once, in `src/auth.rs`, from the user's saved preference then `Accept-Language`. A dashboard handler passes `lang => auth_user.lang` and nothing else. Pre-login pages (login, register) have no user row, so they call `i18n::detect_from_headers` directly.
+
+**Three guard tests** in `src/i18n.rs`: every `t()` key referenced from a template exists in the English bundle; every template still loads; and French covers every English key. The last one is what keeps a French dashboard from sprouting an English sentence when someone adds a key.
+
+**Numbers passed to `t()`** reach Fluent as numbers, not strings, so `{ $count -> [one] ... }` plural selectors work. Grouping is switched off, so an integer renders as it always did ("1440", not "1,440").
+
+**Strings a page composes at runtime** (JS building a summary hint or a search result) cannot use Fluent arguments, because the values only exist after the visitor acts. Those keys use `%1`/`%2` placeholders substituted client-side, collected in one object per page (`ETF_I18N`, `ADMIN_I18N`) built with `{{ t('key') | tojson }}`. Prefer real Fluent arguments everywhere else.
+
+**Literal braces in a Fluent value** must be escaped as `{"{"}`: a bare `{` starts a placeable. This bites the meeting-pattern help, which documents `{username}` and `{random}` tokens.
 
 **Branch workflow (long-lived `i18n` branch).** The `i18n` branch is permanent. **Do not delete it after merging.** Translators commit through Hosted Weblate, which pushes to `i18n` via the Weblate GitHub App. Periodically (e.g. before each release) merge `i18n` into `main`, then continue using the same branch for the next round of translations. The branch never gets recreated.
 
 **When you add or change a translatable string:**
 1. Land it on the `i18n` branch first, not `main`. This avoids half-translated UI on `main` and gives Weblate translators time to catch up before the next merge.
 2. Add the new key to `i18n/en/main.ftl` (the source of truth). Stub languages don't need entries: missing keys fall back to English at runtime.
-3. If the change touches a template that wasn't translated yet, convert its hard-coded strings to `{{ t("...") }}` calls in the same commit, and add render-site context entries (`lang => crate::i18n::detect_from_headers(&headers)` for guest pages, or `crate::i18n::resolve(user.language.as_deref(), &headers)` for authenticated dashboard pages).
+3. If the change touches a template that wasn't translated yet, convert its hard-coded strings to `{{ t("...") }}` calls in the same commit, and add render-site context entries (`lang => crate::i18n::detect_from_headers(&headers)` for guest pages, `lang => auth_user.lang` for authenticated dashboard pages).
+4. Add the French value too, or the parity test fails. Every other locale may lag.
 
 **When you add a new locale:**
 1. Create `i18n/{code}/main.ftl` (start empty, runtime falls back to English).
@@ -604,15 +619,17 @@ calrs ships with translations for English, French, Spanish, and Polish. Source f
 
 The site (landing page + mdbook docs) lives on the `gh-pages` branch. To update it:
 
-1. **Build the docs on `main`:** `mdbook build docs` (output goes to `docs/book/`)
-2. **Switch branch:** `git checkout gh-pages`
-3. **Copy docs source and rebuild:** `git checkout main -- docs/src docs/book.toml` then `mdbook build docs`
-4. **Replace published docs:** `cp -r docs/book/* docs/` then `rm -rf docs/src docs/book.toml docs/book`
-5. **Update `index.html`** if the landing page needs changes (feature cards, version, etc.)
-6. **Stage only `docs/` and `index.html`** — do not stage untracked files from main (worktrees, build artifacts)
-7. **Commit with `--no-verify`** — the pre-commit hook expects `Cargo.toml` which doesn't exist on `gh-pages`
-8. **Push:** `git push origin gh-pages`
-9. **Switch back:** `git checkout main`
+1. **Sync the branch first:** `git fetch origin gh-pages` and work from `origin/gh-pages`, not the local ref. **The local `gh-pages` is almost always many releases stale** — nothing on `main` ever advances it, so it sits wherever it was left the last time the site was touched on this machine. Editing the stale copy produces a page that re-adds features the published site already documents, and the push is rejected as non-fast-forward. `git worktree add <dir> gh-pages` inherits the same staleness; reset to `origin/gh-pages` inside it before touching anything.
+2. **Build the docs on `main`:** `mdbook build docs` (output goes to `docs/book/`)
+3. **Switch branch:** `git checkout gh-pages`
+4. **Copy docs source and rebuild:** `git checkout main -- docs/src docs/book.toml` then `mdbook build docs`
+5. **Replace published docs:** `cp -r docs/book/* docs/` then `rm -rf docs/src docs/book.toml docs/book`
+6. **Drop orphaned build artefacts:** mdbook writes content-hashed `searchindex-*.js` / `toc-*.js`, and the copy in step 5 never removes the previous hash. They accumulate silently. Delete any hashed file no HTML/JS/CSS under `docs/` still references.
+7. **Update `index.html`** if the landing page needs changes (feature cards, version badge in the hero, test count)
+8. **Stage only `docs/` and `index.html`** — do not stage untracked files from main (worktrees, build artifacts)
+9. **Commit with `--no-verify`** — the pre-commit hook expects `Cargo.toml` which doesn't exist on `gh-pages`
+10. **Push:** `git push origin gh-pages`
+11. **Switch back:** `git checkout main`
 
 When adding a new subcommand:
 1. Create `src/commands/yourcmd.rs` with a `YourCommands` enum and `pub async fn run(db, cmd)`.

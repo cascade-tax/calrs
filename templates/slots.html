@@ -806,7 +806,7 @@
     "monthYear": "{{ month_year }}",
     "monthLabel": "{{ month_label }}",
     "hasPrevMonth": {% if prev_month is defined and prev_month %}true{% else %}false{% endif %},
-    "prevMonth": "{{ prev_month | default(value='') }}",
+    "prevMonth": "{% if prev_month is defined and prev_month %}{{ prev_month }}{% endif %}",
     "hasNextMonth": {% if next_month is defined and next_month %}true{% else %}false{% endif %},
     "nextMonth": "{% if next_month is defined and next_month %}{{ next_month }}{% endif %}",
     "defaultCalendarView": "{{ default_calendar_view | default(value='month') }}",
@@ -1214,7 +1214,7 @@
     var nav = document.getElementById('main-cal-nav');
     if (!nav) return;
     nav.innerHTML = '';
-    if (data.prevMonth) {
+    if (data.hasPrevMonth && data.prevMonth) {
       var prevUrl = basePath + '?month=' + data.prevMonth;
       if (guestTz) prevUrl += '&tz=' + encodeURIComponent(guestTz);
       if (inviteToken) prevUrl += '&invite=' + encodeURIComponent(inviteToken);
