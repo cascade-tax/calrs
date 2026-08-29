@@ -551,3 +551,138 @@ overrides-empty = Aucune exception de date pour le moment.<br>Utilisez le formul
 
 team-profile-subtitle = Choisissez un type d'événement pour réserver un créneau.
 team-profile-empty = Aucun type d'événement disponible pour le moment.
+
+# Availability troubleshoot (templates/troubleshoot.html, src/web/mod.rs)
+
+troubleshoot-page-title = Diagnostic
+troubleshoot-empty = Aucun type d'événement trouvé. { $link } pour commencer à diagnostiquer vos disponibilités.
+troubleshoot-empty-link-label = Créez-en un
+troubleshoot-subtitle = Comprenez pourquoi les créneaux sont disponibles ou bloqués pour { $title }
+troubleshoot-duration = { $minutes } min
+troubleshoot-buffer-before = { $minutes } min de marge avant
+troubleshoot-buffer-after = { $minutes } min de marge après
+troubleshoot-min-notice = { $minutes } min de préavis
+troubleshoot-blocked-override = Bloqué par une exception de date (jour de congé)
+troubleshoot-custom-hours-active = Exception d'horaires personnalisés active (remplace les règles hebdomadaires)
+troubleshoot-legend-available = Disponible
+troubleshoot-legend-calendar-event = Événement d'agenda
+troubleshoot-legend-booking = Réservation
+troubleshoot-legend-resource = Ressource occupée
+troubleshoot-legend-outside = Hors horaires
+troubleshoot-legend-buffer = Marge / préavis minimum
+troubleshoot-blocked-slots = Créneaux bloqués
+troubleshoot-none-date-blocked = Cette date est bloquée par une exception de disponibilité (jour de congé). Aucun créneau disponible.
+troubleshoot-none-custom-hours = Exception d'horaires personnalisés active, mais aucune plage correspondante. Vérifiez le réglage de l'exception.
+troubleshoot-none-no-rules = Aucune règle de disponibilité pour ce jour de la semaine. Ce type d'événement n'est pas réservable le { $date }.
+troubleshoot-none-all-bookable = Aucun créneau bloqué pendant les horaires de disponibilité. Tous les horaires sont réservables.
+troubleshoot-label-outside = Hors disponibilité
+troubleshoot-label-available = Disponible
+troubleshoot-label-min-notice = Préavis minimum ({ $minutes } min)
+troubleshoot-label-beyond-horizon = Au-delà de l'horizon de réservation ({ $days } jours)
+troubleshoot-label-buffer = Marge ({ $minutes } min)
+troubleshoot-label-resource-busy = Ressource occupée : { $names }
+troubleshoot-detail-around = Autour de : { $label }
+troubleshoot-detail-around-booking = Autour de la réservation de { $guest }
+troubleshoot-reason-calendar-event = Événement d'agenda : { $label }
+troubleshoot-reason-booking = Réservation : { $label }
+
+# Invite management (templates/invite_form.html)
+
+invites-heading = Invitations
+invites-back-teams = Retour aux équipes
+invites-back-event-types = Retour aux types d'événement
+invites-intro = Envoyez des liens d'invitation pour { $title }
+invites-capped = <strong>La saisie a été limitée à { $max } destinataires par envoi.</strong> Envoyez le reste dans un autre lot.
+invites-failed-hint = — consultez les journaux du serveur pour en savoir plus.
+invites-quick-link = Lien rapide
+invites-quick-link-help = Générez un lien à usage unique et copiez-le dans votre presse-papiers.
+invites-get-link = Obtenir un lien
+invites-or-email = Ou envoyer par e-mail
+invites-recipients = Destinataires
+invites-recipients-hint = (une adresse par ligne, { $max } au maximum)
+invites-message = Message personnel
+invites-message-hint = (facultatif, envoyé à chaque destinataire)
+invites-message-placeholder = Au plaisir de vous présenter une démo...
+invites-expires-in = Expire dans
+invites-expires-days = { $days } jours
+invites-expires-never = Jamais
+invites-allow-multiple = Autoriser plusieurs réservations par destinataire
+invites-send = Envoyer les invitations
+invites-sent-heading = Invitations envoyées
+invites-badge-expired = expirée
+invites-badge-used = utilisée
+invites-badge-active = active
+invites-sent-by = Envoyée par { $name }
+invites-uses = { $used }/{ $max } utilisations
+invites-expires-at = Expire le { $date }
+invites-copy-link = Copier le lien
+invites-delete = Supprimer
+invites-delete-confirm = Supprimer cette invitation ?
+invites-empty = Aucune invitation envoyée pour le moment. Utilisez le formulaire ci-dessus pour envoyer un lien de réservation.
+invites-js-generating = Génération...
+invites-js-copied = Copié !
+invites-js-error = Erreur
+
+invites-sent-count =
+    { $count ->
+        [one] { $count } invitation envoyée.
+       *[other] { $count } invitations envoyées.
+    }
+
+invites-skipped-invalid =
+    { $count ->
+        [one] { $count } ligne invalide ignorée :
+       *[other] { $count } lignes invalides ignorées :
+    }
+
+invites-skipped-duplicate =
+    { $count ->
+        [one] { $count } ligne en double ignorée :
+       *[other] { $count } lignes en double ignorées :
+    }
+
+invites-failed =
+    { $count ->
+        [one] { $count } invitation en échec (BDD ou SMTP) :
+       *[other] { $count } invitations en échec (BDD ou SMTP) :
+    }
+
+# Calendar source form (templates/source_form.html)
+
+source-form-title-edit = Modifier la source d'agenda
+source-form-title-add = Ajouter un agenda
+source-form-heading-edit = Modifier la source d'agenda
+source-form-heading-add = Connecter un agenda
+source-form-subtitle-edit = Mettez à jour la connexion. Laissez le mot de passe vide pour conserver l'actuel. Après avoir changé l'URL ou le nom d'utilisateur, lancez une synchronisation pour rafraîchir la liste des agendas détectés.
+source-form-subtitle-add = Connectez un serveur CalDAV ou Microsoft Exchange (EWS) pour que calrs puisse vérifier vos disponibilités lors des réservations.
+source-form-backend = Backend
+source-form-preset = Préréglage
+source-form-connect-google = Se connecter avec Google
+source-form-google-unavailable = Google Agenda n'est pas disponible. Contactez votre administrateur.
+source-form-name = Nom affiché
+source-form-name-placeholder = Mon agenda
+source-form-url-caldav = URL CalDAV
+source-form-url-ews = URL du point de terminaison EWS
+source-form-username = Nom d'utilisateur
+source-form-password = Mot de passe
+source-form-password-keep = Laissez vide pour conserver l'actuel
+source-form-password-placeholder = Mot de passe d'application ou du compte
+source-form-skip-test = Ignorer le test de connexion
+source-form-skip-test-help = À utiliser si le test se bloque (fréquent sur certaines installations BlueMind/Zimbra). Vous pourrez tester la connexion plus tard.
+source-form-save = Enregistrer les modifications
+source-form-add = Ajouter la source d'agenda
+source-form-help-google-configured = Cliquez sur le bouton ci-dessous pour autoriser calrs à accéder à votre Google Agenda.
+source-form-help-google-unconfigured = L'intégration Google Agenda n'est pas encore configurée. Demandez à votre administrateur de renseigner les identifiants OAuth2 Google dans le panneau d'administration.
+
+# Calendar source form: provider help (templates/source_form.html)
+
+source-form-help-bluemind = <strong>BlueMind</strong> — Utilisez le point de terminaison DAV de votre serveur BlueMind.<br> En général : <code>https://mail.yourcompany.com/dav/</code><br> Le nom d'utilisateur est votre <strong>adresse e-mail</strong> (ex. <code>alice@yourcompany.com</code>), pas seulement l'identifiant.<br> Si le test de connexion se bloque, cochez « Ignorer le test de connexion » et lancez directement une synchronisation.
+source-form-help-nextcloud = <strong>Nextcloud</strong> — Utilisez la racine WebDAV, pas l'URL d'un agenda précis.<br> En général : <code>https://cloud.example.com/remote.php/dav</code>
+source-form-help-fastmail = <strong>Fastmail</strong> — Indiquez votre adresse complète dans le chemin de l'URL.<br> Exemple : <code>https://caldav.fastmail.com/dav/calendars/user/you@fastmail.com/</code><br> Utilisez un mot de passe d'application (Settings &rarr; Privacy &amp; Security &rarr; Integrations).
+source-form-help-icloud = <strong>iCloud</strong> — Utilisez <code>https://caldav.icloud.com/</code><br> Un mot de passe d'application est nécessaire, à créer sur <a href="https://appleid.apple.com" target="_blank" style="color: var(--accent);">appleid.apple.com</a> (Sécurité &rarr; Mots de passe pour application).
+source-form-help-zimbra = <strong>Zimbra</strong> — Utilisez le point de terminaison DAV de votre serveur Zimbra.<br> En général : <code>https://mail.example.com/dav/</code>
+source-form-help-sogo = <strong>SOGo</strong> — Utilisez le point de terminaison DAV de SOGo.<br> En général : <code>https://mail.example.com/SOGo/dav/</code>
+source-form-help-radicale = <strong>Radicale</strong> — Utilisez l'URL racine du serveur.<br> En général : <code>https://cal.example.com/</code>
+source-form-help-exchange = <strong>Microsoft Exchange (EWS)</strong>. Utilisez le point de terminaison SOAP :<br> <code>https://mail.example.com/EWS/Exchange.asmx</code><br> Le nom d'utilisateur est l'adresse de la boîte aux lettres ; le mot de passe doit accepter l'authentification HTTP Basic sur TLS (à activer sur une boîte de service si votre tenant l'a désactivée).<br> Pensez également à choisir <strong>Microsoft Exchange (EWS)</strong> dans la liste Backend ci-dessus.
+source-form-help-google = <strong>Google Agenda</strong> : connexion via OAuth2. Aucun mot de passe requis.<br>
+source-form-help-other = Saisissez l'<strong>URL racine DAV</strong> de votre serveur CalDAV, pas celle d'un agenda précis ni un lien public.<br> calrs découvrira automatiquement vos agendas via PROPFIND (RFC 4791).

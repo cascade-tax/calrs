@@ -620,3 +620,138 @@ overrides-empty = No date overrides yet.<br>Use the form above to block specific
 
 team-profile-subtitle = Pick an event type to book a time.
 team-profile-empty = No event types available yet.
+
+# Availability troubleshoot (templates/troubleshoot.html, src/web/mod.rs)
+
+troubleshoot-page-title = Troubleshoot
+troubleshoot-empty = No event types found. { $link } to start troubleshooting availability.
+troubleshoot-empty-link-label = Create one
+troubleshoot-subtitle = See why time slots are available or blocked for { $title }
+troubleshoot-duration = { $minutes }min
+troubleshoot-buffer-before = { $minutes }min buffer before
+troubleshoot-buffer-after = { $minutes }min buffer after
+troubleshoot-min-notice = { $minutes }min notice
+troubleshoot-blocked-override = Blocked by date override (day off)
+troubleshoot-custom-hours-active = Custom hours override active (replaces weekly rules)
+troubleshoot-legend-available = Available
+troubleshoot-legend-calendar-event = Calendar event
+troubleshoot-legend-booking = Booking
+troubleshoot-legend-resource = Resource busy
+troubleshoot-legend-outside = Outside hours
+troubleshoot-legend-buffer = Buffer / Min. notice
+troubleshoot-blocked-slots = Blocked slots
+troubleshoot-none-date-blocked = This date is blocked by an availability override (day off). No slots available.
+troubleshoot-none-custom-hours = Custom hours override active but no matching windows. Check your override settings.
+troubleshoot-none-no-rules = No availability rules for this day of the week. This event type is not bookable on { $date }.
+troubleshoot-none-all-bookable = No blocked slots during availability hours. All times are bookable.
+troubleshoot-label-outside = Outside availability
+troubleshoot-label-available = Available
+troubleshoot-label-min-notice = Min. notice ({ $minutes }min)
+troubleshoot-label-beyond-horizon = Beyond booking horizon ({ $days } days)
+troubleshoot-label-buffer = Buffer ({ $minutes }min)
+troubleshoot-label-resource-busy = Resource busy: { $names }
+troubleshoot-detail-around = Around: { $label }
+troubleshoot-detail-around-booking = Around: { $guest } booking
+troubleshoot-reason-calendar-event = Calendar event: { $label }
+troubleshoot-reason-booking = Booking: { $label }
+
+# Invite management (templates/invite_form.html)
+
+invites-heading = Invites
+invites-back-teams = Back to teams
+invites-back-event-types = Back to event types
+invites-intro = Send invite links for { $title }
+invites-capped = <strong>Input was capped at { $max } recipients per submission.</strong> Submit the rest in another batch.
+invites-failed-hint = — check server logs for details.
+invites-quick-link = Quick link
+invites-quick-link-help = Generate a single-use link and copy it to your clipboard.
+invites-get-link = Get link
+invites-or-email = Or send via email
+invites-recipients = Recipients
+invites-recipients-hint = (one email per line, max { $max })
+invites-message = Personal message
+invites-message-hint = (optional, sent to every recipient)
+invites-message-placeholder = Looking forward to showing you a demo...
+invites-expires-in = Expires in
+invites-expires-days = { $days } days
+invites-expires-never = Never
+invites-allow-multiple = Allow multiple bookings per recipient
+invites-send = Send invites
+invites-sent-heading = Sent invites
+invites-badge-expired = expired
+invites-badge-used = used
+invites-badge-active = active
+invites-sent-by = Sent by { $name }
+invites-uses = { $used }/{ $max } uses
+invites-expires-at = Expires { $date }
+invites-copy-link = Copy link
+invites-delete = Delete
+invites-delete-confirm = Delete this invite?
+invites-empty = No invites sent yet. Use the form above to send a booking link to someone.
+invites-js-generating = Generating...
+invites-js-copied = Copied!
+invites-js-error = Error
+
+invites-sent-count =
+    { $count ->
+        [one] Sent { $count } invite.
+       *[other] Sent { $count } invites.
+    }
+
+invites-skipped-invalid =
+    { $count ->
+        [one] Skipped { $count } invalid row:
+       *[other] Skipped { $count } invalid rows:
+    }
+
+invites-skipped-duplicate =
+    { $count ->
+        [one] Skipped { $count } duplicate row:
+       *[other] Skipped { $count } duplicate rows:
+    }
+
+invites-failed =
+    { $count ->
+        [one] { $count } invite failed (DB or SMTP):
+       *[other] { $count } invites failed (DB or SMTP):
+    }
+
+# Calendar source form (templates/source_form.html)
+
+source-form-title-edit = Edit calendar source
+source-form-title-add = Add calendar
+source-form-heading-edit = Edit calendar source
+source-form-heading-add = Connect a calendar
+source-form-subtitle-edit = Update the connection. Leave the password blank to keep the existing one. After changing the URL or username, run a sync to refresh the discovered calendar list.
+source-form-subtitle-add = Connect a CalDAV server or Microsoft Exchange (EWS) so calrs can check availability when guests book meetings.
+source-form-backend = Backend
+source-form-preset = Preset
+source-form-connect-google = Connect with Google
+source-form-google-unavailable = Google Calendar is not available. Contact your administrator.
+source-form-name = Display name
+source-form-name-placeholder = My Calendar
+source-form-url-caldav = CalDAV URL
+source-form-url-ews = EWS endpoint URL
+source-form-username = Username
+source-form-password = Password
+source-form-password-keep = Leave blank to keep existing
+source-form-password-placeholder = App password or account password
+source-form-skip-test = Skip connection test
+source-form-skip-test-help = Use this if the test hangs (common with some BlueMind/Zimbra setups). You can test the connection later.
+source-form-save = Save changes
+source-form-add = Add calendar source
+source-form-help-google-configured = Click the button below to authorize calrs to access your Google Calendar.
+source-form-help-google-unconfigured = Google Calendar integration is not configured yet. Ask your administrator to set up Google OAuth2 credentials in the admin panel.
+
+# Calendar source form: provider help (templates/source_form.html)
+
+source-form-help-bluemind = <strong>BlueMind</strong> — Use the DAV endpoint of your BlueMind server.<br> Typically: <code>https://mail.yourcompany.com/dav/</code><br> Username is your <strong>email address</strong> (e.g. <code>alice@yourcompany.com</code>), not just the login name.<br> If the connection test hangs, check "Skip connection test" and try syncing directly.
+source-form-help-nextcloud = <strong>Nextcloud</strong> — Use the WebDAV root, not a specific calendar URL.<br> Typically: <code>https://cloud.example.com/remote.php/dav</code>
+source-form-help-fastmail = <strong>Fastmail</strong> — Use your full email in the URL path.<br> Example: <code>https://caldav.fastmail.com/dav/calendars/user/you@fastmail.com/</code><br> Use an app-specific password (Settings &rarr; Privacy &amp; Security &rarr; Integrations).
+source-form-help-icloud = <strong>iCloud</strong> — Use <code>https://caldav.icloud.com/</code><br> You need an app-specific password from <a href="https://appleid.apple.com" target="_blank" style="color: var(--accent);">appleid.apple.com</a> (Security &rarr; App-Specific Passwords).
+source-form-help-zimbra = <strong>Zimbra</strong> — Use the DAV endpoint of your Zimbra server.<br> Typically: <code>https://mail.example.com/dav/</code>
+source-form-help-sogo = <strong>SOGo</strong> — Use the SOGo DAV endpoint.<br> Typically: <code>https://mail.example.com/SOGo/dav/</code>
+source-form-help-radicale = <strong>Radicale</strong> — Use the server root URL.<br> Typically: <code>https://cal.example.com/</code>
+source-form-help-exchange = <strong>Microsoft Exchange (EWS)</strong>. Use the SOAP endpoint:<br> <code>https://mail.example.com/EWS/Exchange.asmx</code><br> Username is the mailbox email; password must accept HTTP Basic over TLS (enable on a service mailbox if your tenant disabled Basic).<br> Make sure to also pick <strong>Microsoft Exchange (EWS)</strong> in the Backend dropdown above.
+source-form-help-google = <strong>Google Calendar</strong>: Connect via OAuth2. No password needed.<br>
+source-form-help-other = Enter your CalDAV server's <strong>DAV root URL</strong> — not a specific calendar or public link.<br> calrs will auto-discover your calendars via PROPFIND (RFC 4791).

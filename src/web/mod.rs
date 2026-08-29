@@ -14818,6 +14818,16 @@ struct TroubleshootQuery {
     event_type: Option<String>,
 }
 
+/// Translate a message that takes exactly one string argument.
+///
+/// Server-rendered labels (the troubleshoot timeline, mostly) are built one at
+/// a time and would otherwise each need four lines of FluentArgs plumbing.
+fn tr1(lang: &str, key: &str, arg: &str, value: &str) -> String {
+    let mut args = fluent_bundle::FluentArgs::new();
+    args.set(arg, fluent_bundle::FluentValue::from(value));
+    crate::i18n::translate(lang, key, Some(&args))
+}
+
 async fn troubleshoot(
     State(state): State<Arc<AppState>>,
     auth_user: crate::auth::AuthUser,
@@ -15152,7 +15162,13 @@ async fn troubleshoot(
             None,
         )
         .await;
-    let resource_label = format!("Resource busy: {}", resource_names.join(", "));
+    let lang = auth_user.lang;
+    let resource_label = tr1(
+        lang,
+        "troubleshoot-label-resource-busy",
+        "names",
+        &resource_names.join(", "),
+    );
 
     // Scan in 15-min increments and classify each tick
     struct Tick {
@@ -15179,7 +15195,7 @@ async fn troubleshoot(
             ticks.push(Tick {
                 time: cursor,
                 status: "outside".to_string(),
-                label: "Outside availability".to_string(),
+                label: crate::i18n::translate(lang, "troubleshoot-label-outside", None),
                 detail: String::new(),
             });
             cursor = (tick_dt + tick_size).time();
@@ -15191,7 +15207,12 @@ async fn troubleshoot(
             ticks.push(Tick {
                 time: cursor,
                 status: "min_notice".to_string(),
-                label: format!("Min. notice ({}min)", min_notice),
+                label: tr1(
+                    lang,
+                    "troubleshoot-label-min-notice",
+                    "minutes",
+                    &min_notice.to_string(),
+                ),
                 detail: String::new(),
             });
             cursor = (tick_dt + tick_size).time();
@@ -15203,9 +15224,11 @@ async fn troubleshoot(
             ticks.push(Tick {
                 time: cursor,
                 status: "beyond_horizon".to_string(),
-                label: format!(
-                    "Beyond booking horizon ({} days)",
-                    booking_horizon.unwrap_or(0)
+                label: tr1(
+                    lang,
+                    "troubleshoot-label-beyond-horizon",
+                    "days",
+                    &booking_horizon.unwrap_or(0).to_string(),
                 ),
                 detail: String::new(),
             });
@@ -15234,15 +15257,18 @@ async fn troubleshoot(
                 ticks.push(Tick {
                     time: cursor,
                     status: "buffer".to_string(),
-                    label: format!(
-                        "Buffer ({}min)",
-                        if tick_dt < *ev_s {
+                    label: tr1(
+                        lang,
+                        "troubleshoot-label-buffer",
+                        "minutes",
+                        &if tick_dt < *ev_s {
                             buf_before
                         } else {
                             buf_after
                         }
+                        .to_string(),
                     ),
-                    detail: format!("Around: {}", ev_label),
+                    detail: tr1(lang, "troubleshoot-detail-around", "label", ev_label),
                 });
             }
             cursor = (tick_dt + tick_size).time();
@@ -15269,15 +15295,23 @@ async fn troubleshoot(
                 ticks.push(Tick {
                     time: cursor,
                     status: "buffer".to_string(),
-                    label: format!(
-                        "Buffer ({}min)",
-                        if tick_dt < *bk_s {
+                    label: tr1(
+                        lang,
+                        "troubleshoot-label-buffer",
+                        "minutes",
+                        &if tick_dt < *bk_s {
                             buf_before
                         } else {
                             buf_after
                         }
+                        .to_string(),
                     ),
-                    detail: format!("Around: {} booking", bk_guest),
+                    detail: tr1(
+                        lang,
+                        "troubleshoot-detail-around-booking",
+                        "guest",
+                        bk_guest,
+                    ),
                 });
             }
             cursor = (tick_dt + tick_size).time();
@@ -15303,7 +15337,7 @@ async fn troubleshoot(
         ticks.push(Tick {
             time: cursor,
             status: "available".to_string(),
-            label: "Available".to_string(),
+            label: crate::i18n::translate(lang, "troubleshoot-label-available", None),
             detail: String::new(),
         });
         cursor = (tick_dt + tick_size).time();
@@ -15381,8 +15415,13 @@ async fn troubleshoot(
         .filter(|b| b.status != "available" && b.status != "outside")
         .map(|b| {
             let reason = match b.status.as_str() {
-                "busy_event" => format!("Calendar event: {}", b.label),
-                "booking" => format!("Booking: {}", b.label),
+                "busy_event" => tr1(
+                    lang,
+                    "troubleshoot-reason-calendar-event",
+                    "label",
+                    &b.label,
+                ),
+                "booking" => tr1(lang, "troubleshoot-reason-booking", "label", &b.label),
                 "buffer" => b.label.clone(),
                 "min_notice" => b.label.clone(),
                 "beyond_horizon" => b.label.clone(),
