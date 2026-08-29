@@ -1215,3 +1215,11 @@ form-error-connection-failed = Connection failed: { $error }. Check the URL and 
 # Settings page flash (src/web/mod.rs)
 
 settings-saved = Settings saved.
+
+# Profile settings validation and flash messages (src/web/mod.rs)
+
+settings-error-name-length = Name must be between 1 and 255 characters.
+settings-error-username-length = Username must be at least 2 characters.
+settings-error-username-taken = This username is already taken.
+settings-error-booking-email = Please enter a valid booking email address.
+settings-error-save-failed = Failed to save settings.

@@ -2486,6 +2486,7 @@ async fn show_team_form(
 
     Html(
         tmpl.render(context! {
+            lang => admin.lang,
             sidebar => admin_sidebar_context(user, "teams"),
             users => users_ctx,
             oidc_groups => if groups_ctx.is_empty() { None } else { Some(groups_ctx) },
@@ -2523,6 +2524,7 @@ async fn create_team(
         return render_team_form_error(
             &state,
             user,
+            admin.lang,
             &crate::i18n::translate(admin.lang, "form-error-team-name-slug-required", None),
             &form,
         )
@@ -2534,6 +2536,7 @@ async fn create_team(
         return render_team_form_error(
             &state,
             user,
+            admin.lang,
             &crate::i18n::translate(admin.lang, "form-error-team-name-length", None),
             &form,
         )
@@ -2546,6 +2549,7 @@ async fn create_team(
             return render_team_form_error(
                 &state,
                 user,
+                admin.lang,
                 &crate::i18n::translate(admin.lang, "form-error-team-description-length", None),
                 &form,
             )
@@ -2561,6 +2565,7 @@ async fn create_team(
         return render_team_form_error(
             &state,
             user,
+            admin.lang,
             &crate::i18n::translate(admin.lang, "form-error-slug-charset", None),
             &form,
         )
@@ -2574,6 +2579,7 @@ async fn create_team(
         return render_team_form_error(
             &state,
             user,
+            admin.lang,
             &crate::i18n::translate(admin.lang, "form-error-slug-reserved", None),
             &form,
         )
@@ -2591,6 +2597,7 @@ async fn create_team(
         return render_team_form_error(
             &state,
             user,
+            admin.lang,
             &crate::i18n::translate(admin.lang, "form-error-team-slug-taken", None),
             &form,
         )
@@ -2679,6 +2686,7 @@ async fn create_team(
 async fn render_team_form_error(
     state: &AppState,
     user: &crate::models::User,
+    lang: &str,
     error: &str,
     form: &TeamForm,
 ) -> Html<String> {
@@ -2722,6 +2730,7 @@ async fn render_team_form_error(
 
     Html(
         tmpl.render(context! {
+            lang => lang,
             sidebar => admin_sidebar_context(user, "teams"),
             users => users_ctx,
             oidc_groups => if groups_ctx.is_empty() { None } else { Some(groups_ctx) },
@@ -2949,6 +2958,7 @@ async fn settings_page(
     settings_render(
         &state,
         &auth_user.user,
+        auth_user.lang,
         None,
         None,
         sidebar,
@@ -3176,6 +3186,7 @@ async fn dashboard_availability_default(
 fn settings_render(
     state: &AppState,
     user: &crate::models::User,
+    lang: &str,
     success: Option<&str>,
     error: Option<&str>,
     sidebar: minijinja::Value,
@@ -3199,6 +3210,7 @@ fn settings_render(
         .collect();
     Html(
         tmpl.render(context! {
+            lang => lang,
             sidebar => sidebar,
             form_name => user.name,
             form_initials => compute_initials(&user.name),
@@ -3243,8 +3255,13 @@ async fn settings_save(
         return settings_render(
             &state,
             user,
+            auth_user.lang,
             None,
-            Some("Name must be between 1 and 255 characters."),
+            Some(&crate::i18n::translate(
+                auth_user.lang,
+                "settings-error-name-length",
+                None,
+            )),
             sidebar,
             imp,
             &imp_name,
@@ -3273,8 +3290,13 @@ async fn settings_save(
             return settings_render(
                 &state,
                 user,
+                auth_user.lang,
                 None,
-                Some("Username must be at least 2 characters."),
+                Some(&crate::i18n::translate(
+                    auth_user.lang,
+                    "settings-error-username-length",
+                    None,
+                )),
                 sidebar,
                 imp,
                 &imp_name,
@@ -3296,8 +3318,13 @@ async fn settings_save(
                 return settings_render(
                     &state,
                     user,
+                    auth_user.lang,
                     None,
-                    Some("This username is already taken."),
+                    Some(&crate::i18n::translate(
+                        auth_user.lang,
+                        "settings-error-username-taken",
+                        None,
+                    )),
                     sidebar,
                     imp,
                     &imp_name,
@@ -3346,8 +3373,13 @@ async fn settings_save(
             return settings_render(
                 &state,
                 user,
+                auth_user.lang,
                 None,
-                Some("Please enter a valid booking email address."),
+                Some(&crate::i18n::translate(
+                    auth_user.lang,
+                    "settings-error-booking-email",
+                    None,
+                )),
                 sidebar,
                 imp,
                 &imp_name,
@@ -3413,7 +3445,12 @@ async fn settings_save(
             settings_render(
                 &state,
                 &updated_user,
-                Some("Settings saved."),
+                auth_user.lang,
+                Some(&crate::i18n::translate(
+                    auth_user.lang,
+                    "settings-saved",
+                    None,
+                )),
                 None,
                 sidebar,
                 imp,
@@ -3426,8 +3463,13 @@ async fn settings_save(
         Err(_) => settings_render(
             &state,
             user,
+            auth_user.lang,
             None,
-            Some("Failed to save settings."),
+            Some(&crate::i18n::translate(
+                auth_user.lang,
+                "settings-error-save-failed",
+                None,
+            )),
             sidebar,
             imp,
             &imp_name,
@@ -7159,6 +7201,7 @@ async fn setup_write_calendar(
 
     Html(
         tmpl.render(context! {
+            lang => auth_user.lang,
             source_id => source_id,
             source_name => source_name,
             calendars => cal_values,
@@ -32426,6 +32469,84 @@ mod tests {
     }
 
     const XSS_PAYLOAD: &str = r#"\\'));alert(1);//"#;
+
+    /// Every host-facing page must pass `lang` into its render context. A
+    /// handler that forgets renders English regardless of the viewer's saved
+    /// preference, and nothing fails: the page still looks fine, just in the
+    /// wrong language. Three handlers shipped that way on this branch before
+    /// this test existed.
+    #[test]
+    fn every_host_render_site_passes_lang() {
+        const HOST_TEMPLATES: &[&str] = &[
+            "dashboard_overview.html",
+            "dashboard_event_types.html",
+            "dashboard_bookings.html",
+            "dashboard_sources.html",
+            "dashboard_teams.html",
+            "dashboard_internal.html",
+            "settings.html",
+            "admin.html",
+            "event_type_form.html",
+            "invite_form.html",
+            "source_form.html",
+            "source_test.html",
+            "source_write_setup.html",
+            "team_form.html",
+            "team_settings.html",
+            "troubleshoot.html",
+            "overrides.html",
+            "auth/login.html",
+            "auth/register.html",
+        ];
+
+        let mut offenders = Vec::new();
+        for file in ["src/web/mod.rs", "src/auth.rs"] {
+            let src = std::fs::read_to_string(file).expect("read source");
+            // Only the shipping code: the test module below renders templates
+            // with deliberately minimal contexts.
+            let src = src.split("\nmod tests {").next().unwrap_or(&src);
+            let lines: Vec<&str> = src.lines().collect();
+            for (i, line) in lines.iter().enumerate() {
+                let Some(name) = line
+                    .split_once("get_template(\"")
+                    .and_then(|(_, rest)| rest.split_once('"'))
+                    .map(|(name, _)| name)
+                else {
+                    continue;
+                };
+                if !HOST_TEMPLATES.contains(&name) {
+                    continue;
+                }
+                // The render call follows; take the context block after it.
+                let Some(start) = (i..lines.len().min(i + 400)).find(|&j| {
+                    lines[j].contains("render(context!")
+                        || lines[j].contains("render(minijinja::context!")
+                }) else {
+                    continue;
+                };
+                let mut depth = 0i32;
+                let mut block = String::new();
+                for line in lines.iter().skip(start).take(150) {
+                    block.push_str(line);
+                    block.push('\n');
+                    depth += line.matches('{').count() as i32;
+                    depth -= line.matches('}').count() as i32;
+                    if depth <= 0 && block.lines().count() > 1 {
+                        break;
+                    }
+                }
+                let passes_lang = block.contains("lang =>") || block.contains("lang,");
+                if !passes_lang {
+                    offenders.push(format!("{file}:{} renders {name} without lang", start + 1));
+                }
+            }
+        }
+        assert!(
+            offenders.is_empty(),
+            "host pages rendered without a language:\n{}",
+            offenders.join("\n")
+        );
+    }
 
     const XSS_PAYLOAD_HTML: &str = "<script>alert(1)</script>";
 

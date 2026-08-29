@@ -1196,3 +1196,11 @@ form-error-connection-failed = Échec de la connexion : { $error }. Vérifiez l'
 # Settings page flash (src/web/mod.rs)
 
 settings-saved = Paramètres enregistrés.
+
+# Profile settings validation and flash messages (src/web/mod.rs)
+
+settings-error-name-length = Le nom doit contenir entre 1 et 255 caractères.
+settings-error-username-length = Le nom d'utilisateur doit contenir au moins 2 caractères.
+settings-error-username-taken = Ce nom d'utilisateur est déjà pris.
+settings-error-booking-email = Saisissez une adresse e-mail de réservation valide.
+settings-error-save-failed = Échec de l'enregistrement des paramètres.
