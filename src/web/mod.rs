@@ -9392,6 +9392,7 @@ async fn team_profile_page(
             event_types => et_ctx,
             invite_token => invite_token_for_template,
             company_link => state.company_link.read().await.clone(),
+            lang => optional_auth.lang,
         })
         .unwrap_or_else(|e| internal_error_body("template render", &e)),
     )

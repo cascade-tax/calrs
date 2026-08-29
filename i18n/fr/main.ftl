@@ -406,3 +406,148 @@ event-types-delete = Supprimer
 event-types-delete-confirm = Supprimer le type d'événement « { $title } » ? Cette action est irréversible.
 event-types-empty = Aucun type d'événement pour le moment. { $link } pour commencer à accepter des réservations.
 event-types-empty-link-label = Créez-en un
+
+# Markdown editor toolbar (templates/settings.html, templates/team_form.html)
+
+editor-bold = Gras (Ctrl+B)
+editor-italic = Italique (Ctrl+I)
+editor-strikethrough = Barré
+editor-code = Code en ligne
+editor-link = Insérer un lien (Ctrl+K)
+editor-toggle-preview = Afficher ou masquer l'aperçu
+editor-preview = Aperçu
+
+# Profile and settings (templates/settings.html)
+
+settings-page-title = Paramètres
+settings-heading = Profil et paramètres
+settings-public-page-label = Votre page de réservation publique
+settings-copy = Copier
+settings-copied = Copié !
+settings-open = Ouvrir
+settings-avatar = Avatar
+settings-upload = Téléverser
+settings-remove = Supprimer
+settings-display-name = Nom affiché
+settings-display-name-placeholder = Votre nom
+settings-username = Nom d'utilisateur
+settings-username-hint = (utilisé dans votre URL de réservation)
+settings-username-pattern-title = Minuscules, chiffres et tirets uniquement
+settings-username-help = Votre page de réservation publique :
+settings-title = Fonction
+settings-title-placeholder = ex. Ingénieure logiciel, Chef de produit
+settings-title-help = Affichée sur votre profil public et dans la barre latérale.
+settings-bio = Biographie
+settings-bio-placeholder = Présentez-vous en quelques mots...
+settings-bio-help = Affichée sur votre page de réservation publique. Prend en charge **gras**, *italique*, ~~barré~~, `code` et [liens](url).
+settings-booking-email = E-mail de réservation
+settings-booking-email-help = Cette adresse apparaîtra sur vos pages de réservation publiques et dans les notifications. Laissez vide pour utiliser votre adresse de connexion.
+settings-booking-email-warning = Assurez-vous que cette adresse existe chez votre fournisseur de messagerie. Sinon, les notifications ne seront pas remises.
+settings-timezone = Fuseau horaire
+settings-timezone-help = Vos règles de disponibilité et vos horaires de réservation sont calculés dans ce fuseau horaire.
+settings-language = Langue
+settings-language-auto = Auto (langue du navigateur)
+settings-language-help = Choisissez une langue d'interface, ou laissez sur Auto pour suivre le réglage de votre navigateur.
+settings-dynamic-group = Autoriser les autres à m'inclure dans les liens de groupe dynamiques
+settings-dynamic-group-help = Une fois activé, d'autres utilisateurs peuvent créer des URL de réunion collective ponctuelles qui vous incluent (ex. { $example }).
+settings-lend-resource = Prêter mon accès agenda pour les réservations de ressources
+settings-lend-resource-help = Lorsqu'une réservation doit réserver une ressource partagée (laboratoire de démo, salle de réunion) accessible en écriture par votre compte agenda, autoriser calrs à utiliser vos identifiants enregistrés pour cette écriture.
+settings-default-availability = Disponibilité par défaut
+settings-default-availability-help = Vos horaires de travail par défaut. Utilisés pour les liens de groupe dynamiques lorsque d'autres vous incluent dans une réunion.
+settings-copy-to-all = Copier sur tous les jours
+settings-copy-to-all-title = Copier les plages du premier jour activé vers tous les autres jours activés
+settings-add-window = Ajouter une plage horaire
+settings-remove-window = Supprimer la plage
+settings-save = Enregistrer les paramètres
+settings-appearance = Apparence
+settings-theme-system = Système
+settings-theme-light = Clair
+settings-theme-dark = Sombre
+
+# Sign in (templates/auth/login.html)
+
+login-page-title = Connexion
+login-heading = Connexion
+login-subtitle = Connectez-vous à votre compte calrs
+login-sso = Se connecter avec le SSO
+login-or = ou
+login-email = E-mail
+login-password = Mot de passe
+login-submit = Se connecter par e-mail
+login-no-account = Vous n'avez pas de compte ? { $link }
+login-register-link = Inscrivez-vous
+
+# Registration (templates/auth/register.html)
+
+register-page-title = Inscription
+register-heading = Créer un compte
+register-subtitle = Créez un nouveau compte calrs
+register-domains-limited = L'inscription est réservée à : { $domains }
+register-name = Nom
+register-name-placeholder = Votre nom
+register-email = E-mail
+register-password = Mot de passe
+register-password-hint = (12 caractères minimum)
+register-submit = Créer le compte
+register-have-account = Vous avez déjà un compte ? { $link }
+register-signin-link = Connectez-vous
+
+# Authentication errors (src/auth.rs)
+
+auth-error-rate-limited = Trop de tentatives de connexion. Veuillez réessayer plus tard.
+auth-error-invalid-credentials = Adresse e-mail ou mot de passe incorrect
+auth-error-internal = Erreur interne
+auth-error-registration-disabled = Les inscriptions sont désactivées.
+auth-error-name-length = Le nom doit contenir entre 1 et 255 caractères
+auth-error-email-length = L'adresse e-mail doit contenir entre 1 et 255 caractères
+auth-error-email-invalid = Veuillez saisir une adresse e-mail valide
+auth-error-email-domain = Domaine de messagerie non autorisé
+auth-error-password-length = Le mot de passe doit contenir au moins 12 caractères
+auth-error-email-taken = Cette adresse e-mail est déjà utilisée
+auth-error-create-failed = Échec de la création du compte
+
+# Calendar source test and write-back setup (templates/source_test.html, templates/source_write_setup.html)
+
+source-test-page-title = Source d'agenda
+source-test-sync-heading = Synchronisation : { $name }
+source-test-heading = Test de connexion
+source-write-page-title = Configurer l'écriture dans l'agenda
+source-write-back = Retour au tableau de bord
+source-write-heading = Où enregistrer les réservations ?
+source-write-help = Lorsqu'une personne réserve une réunion avec vous, calrs peut créer automatiquement l'événement dans votre agenda. Choisissez l'agenda dans lequel écrire les réservations pour { $name }.
+source-write-save = Enregistrer
+source-write-skip = Passer pour l'instant
+source-write-sync-results = Résultats de la synchronisation
+
+source-write-event-count =
+    { $count ->
+        [one] { $count } événement
+       *[other] { $count } événements
+    }
+
+# Date overrides (templates/overrides.html)
+
+overrides-page-title = Exceptions de date
+overrides-heading = Exceptions de date
+overrides-back-teams = Retour aux équipes
+overrides-back-event-types = Retour aux types d'événement
+overrides-intro = Ajoutez des exceptions à des dates précises pour { $title }
+overrides-add-heading = Ajouter une exception
+overrides-date = Date
+overrides-type = Type d'exception
+overrides-type-blocked = Bloquer toute la journée
+overrides-type-custom = Horaires personnalisés
+overrides-start-time = Heure de début
+overrides-end-time = Heure de fin
+overrides-add-submit = Ajouter l'exception
+overrides-existing = Exceptions existantes
+overrides-badge-blocked = bloquée
+overrides-badge-custom = horaires personnalisés
+overrides-delete = Supprimer
+overrides-delete-confirm = Supprimer cette exception ?
+overrides-empty = Aucune exception de date pour le moment.<br>Utilisez le formulaire ci-dessus pour bloquer des dates précises (jours fériés, congés) ou définir des horaires personnalisés.
+
+# Public team page (templates/team_profile.html)
+
+team-profile-subtitle = Choisissez un type d'événement pour réserver un créneau.
+team-profile-empty = Aucun type d'événement disponible pour le moment.

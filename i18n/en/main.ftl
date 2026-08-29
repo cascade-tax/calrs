@@ -475,3 +475,148 @@ event-types-delete = Delete
 event-types-delete-confirm = Delete event type '{ $title }'? This cannot be undone.
 event-types-empty = No event types yet. { $link } to start accepting bookings.
 event-types-empty-link-label = Create one
+
+# Markdown editor toolbar (templates/settings.html, templates/team_form.html)
+
+editor-bold = Bold (Ctrl+B)
+editor-italic = Italic (Ctrl+I)
+editor-strikethrough = Strikethrough
+editor-code = Inline code
+editor-link = Insert link (Ctrl+K)
+editor-toggle-preview = Toggle preview
+editor-preview = Preview
+
+# Profile and settings (templates/settings.html)
+
+settings-page-title = Settings
+settings-heading = Profile & Settings
+settings-public-page-label = Your public booking page
+settings-copy = Copy
+settings-copied = Copied!
+settings-open = Open
+settings-avatar = Avatar
+settings-upload = Upload
+settings-remove = Remove
+settings-display-name = Display name
+settings-display-name-placeholder = Your name
+settings-username = Username
+settings-username-hint = (used in your booking URL)
+settings-username-pattern-title = Lowercase letters, numbers, and dashes only
+settings-username-help = Your public booking page:
+settings-title = Title
+settings-title-placeholder = e.g. Software Engineer, Product Manager
+settings-title-help = Shown on your public profile and in the sidebar.
+settings-bio = Bio
+settings-bio-placeholder = Tell people a bit about yourself...
+settings-bio-help = Shown on your public booking page. Supports **bold**, *italic*, ~~strikethrough~~, `code`, and [links](url).
+settings-booking-email = Booking email
+settings-booking-email-help = This email will appear on your public booking pages and in email notifications. Leave empty to use your login email.
+settings-booking-email-warning = Make sure this email exists on your mail provider. If it doesn't, notifications won't be delivered.
+settings-timezone = Timezone
+settings-timezone-help = Your availability rules and booking times are computed in this timezone.
+settings-language = Language
+settings-language-auto = Auto (browser default)
+settings-language-help = Pick a UI language, or leave on Auto to follow your browser's setting.
+settings-dynamic-group = Allow others to include me in dynamic group links
+settings-dynamic-group-help = When enabled, other users can create ad-hoc collective meeting URLs that include you (e.g. { $example }).
+settings-lend-resource = Lend my calendar access for resource reservations
+settings-lend-resource-help = When a booking needs to reserve a shared resource (demo lab, meeting room) that your calendar account can write to, allow calrs to use your stored calendar credentials for that write.
+settings-default-availability = Default availability
+settings-default-availability-help = Your default working hours. Used for dynamic group links when others include you in a meeting.
+settings-copy-to-all = Copy to all days
+settings-copy-to-all-title = Copy the first enabled day's windows to all other enabled days
+settings-add-window = Add time window
+settings-remove-window = Remove window
+settings-save = Save settings
+settings-appearance = Appearance
+settings-theme-system = System
+settings-theme-light = Light
+settings-theme-dark = Dark
+
+# Sign in (templates/auth/login.html)
+
+login-page-title = Sign in
+login-heading = Sign in
+login-subtitle = Sign in to your calrs account
+login-sso = Sign in with SSO
+login-or = or
+login-email = Email
+login-password = Password
+login-submit = Sign in with email
+login-no-account = Don't have an account? { $link }
+login-register-link = Register
+
+# Registration (templates/auth/register.html)
+
+register-page-title = Register
+register-heading = Create account
+register-subtitle = Register for a new calrs account
+register-domains-limited = Registration is limited to: { $domains }
+register-name = Name
+register-name-placeholder = Your name
+register-email = Email
+register-password = Password
+register-password-hint = (min. 12 characters)
+register-submit = Create account
+register-have-account = Already have an account? { $link }
+register-signin-link = Sign in
+
+# Authentication errors (src/auth.rs)
+
+auth-error-rate-limited = Too many login attempts. Please try again later.
+auth-error-invalid-credentials = Invalid email or password
+auth-error-internal = Internal error
+auth-error-registration-disabled = Registration is disabled.
+auth-error-name-length = Name must be between 1 and 255 characters
+auth-error-email-length = Email must be between 1 and 255 characters
+auth-error-email-invalid = Please enter a valid email address
+auth-error-email-domain = Email domain not allowed
+auth-error-password-length = Password must be at least 12 characters
+auth-error-email-taken = Email already registered
+auth-error-create-failed = Failed to create account
+
+# Calendar source test and write-back setup (templates/source_test.html, templates/source_write_setup.html)
+
+source-test-page-title = Calendar source
+source-test-sync-heading = Sync: { $name }
+source-test-heading = Connection test
+source-write-page-title = Set up calendar write-back
+source-write-back = Back to dashboard
+source-write-heading = Where should bookings go?
+source-write-help = When someone books a meeting with you, calrs can automatically create the event in your calendar. Pick which calendar to write bookings to for { $name }.
+source-write-save = Save
+source-write-skip = Skip for now
+source-write-sync-results = Sync results
+
+source-write-event-count =
+    { $count ->
+        [one] { $count } event
+       *[other] { $count } events
+    }
+
+# Date overrides (templates/overrides.html)
+
+overrides-page-title = Date overrides
+overrides-heading = Date overrides
+overrides-back-teams = Back to teams
+overrides-back-event-types = Back to event types
+overrides-intro = Add date-specific exceptions for { $title }
+overrides-add-heading = Add new override
+overrides-date = Date
+overrides-type = Override type
+overrides-type-blocked = Block entire day
+overrides-type-custom = Custom hours
+overrides-start-time = Start time
+overrides-end-time = End time
+overrides-add-submit = Add override
+overrides-existing = Existing overrides
+overrides-badge-blocked = blocked
+overrides-badge-custom = custom hours
+overrides-delete = Delete
+overrides-delete-confirm = Delete this override?
+overrides-empty = No date overrides yet.<br>Use the form above to block specific dates (holidays, days off) or set custom hours.
+
+# Public team page (templates/team_profile.html)
+
+team-profile-subtitle = Pick an event type to book a time.
+team-profile-empty = No event types available yet.
