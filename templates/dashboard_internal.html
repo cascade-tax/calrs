@@ -30,7 +30,7 @@
   {% else %}
     <div class="empty" style="padding: 2rem 1rem;">
       <div class="empty-icon">&#127970;</div>
-      <div class="empty-text">{{ t("invite-links-empty", link='<a href="/dashboard/event-types/new?preset=internal" style="color: var(--accent); text-decoration: none;">' ~ t("invite-links-empty-link-label") ~ '</a>') | safe }}</div>
+      <div class="empty-text">{{ t("invite-links-empty", link='<a href="/dashboard/event-types/new?preset=internal" style="color: var(--accent); text-decoration: none;">' ~ (t("invite-links-empty-link-label") | escape) ~ '</a>') | safe }}</div>
     </div>
   {% endif %}
 </div>

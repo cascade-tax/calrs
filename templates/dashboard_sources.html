@@ -58,7 +58,7 @@
     </div>
     {% endfor %}
   {% else %}
-    <p class="empty" style="padding: 1rem;">{{ t("sources-empty", link='<a href="/dashboard/sources/new" style="color: var(--accent); text-decoration: none;">' ~ t("sources-empty-link-label") ~ '</a>') | safe }}</p>
+    <p class="empty" style="padding: 1rem;">{{ t("sources-empty", link='<a href="/dashboard/sources/new" style="color: var(--accent); text-decoration: none;">' ~ (t("sources-empty-link-label") | escape) ~ '</a>') | safe }}</p>
   {% endif %}
 </div>
 {% endblock %}

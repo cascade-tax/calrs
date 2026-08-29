@@ -1126,7 +1126,7 @@ admin-send-test-email = Send a test email to
 admin-send-test-email-hint = (defaults to your account email)
 admin-send-test-email-btn = Send test email
 admin-smtp-clear-confirm = Delete the database SMTP configuration?
-admin-smtp-clear = Clear database config
+admin-clear-db-config = Clear database config
 admin-sms = SMS settings
 admin-sms-help = Optional. SMS is only sent for bookings on event types where "SMS notifications" is turned on, and only when the guest left a phone number.
 admin-sms-test-sent = Test message sent.
@@ -1163,7 +1163,7 @@ admin-show-fewer = Show fewer
 
 # Admin panel: strings carrying markup or literal braces (templates/admin.html)
 
-admin-delete-user-confirm = Permanently delete user { $email }?\n\nThis removes their user record, scheduling account, calendar sources, event types, and all data uniquely owned by them. Past bookings will be deleted with their event types.\n\nFor OIDC/SSO users: if auto-register is enabled, this person will be re-created on their next login.\n\nThis cannot be undone.
+admin-delete-user-confirm = Permanently delete user { $email }?{"\u000A"}{"\u000A"}This removes their user record, scheduling account, calendar sources, event types, and all data uniquely owned by them. Past bookings will be deleted with their event types.{"\u000A"}{"\u000A"}For OIDC/SSO users: if auto-register is enabled, this person will be re-created on their next login.{"\u000A"}{"\u000A"}This cannot be undone.
 admin-system-settings-help = Public URL and network-security settings. These can also be set with the environment variables <code>CALRS_BASE_URL</code> and <code>CALRS_ALLOW_PRIVATE_HOSTS</code>. When an environment variable is set it <strong>takes precedence</strong> over the value below.
 admin-set-by-env = — set by environment ({ $var }), overriding the stored value
 admin-google-help = To enable Google Calendar integration, create OAuth2 credentials at <a href="https://console.cloud.google.com/apis/credentials" target="_blank" style="color: var(--accent);">Google Cloud Console</a>. Enable the <strong>Google Calendar API</strong>, then add { $redirect_uri } as an authorized redirect URI.
@@ -1193,3 +1193,25 @@ source-form-backend-help = Pick the protocol your server speaks. EWS targets on-
 admin-sms-going-live = <strong>Before going live:</strong> restrict destination countries in your gateway (Twilio calls this Geo Permissions), keep the account prepaid without auto-recharge, and leave the captcha on. Those three between them bound what an SMS pumping attempt can cost you.
 
 troubleshoot-heading = Troubleshoot availability
+
+# Host-side form validation errors (src/web/mod.rs)
+
+form-error-team-name-slug-required = Name and slug are required.
+form-error-team-name-length = Name must be at most 255 characters.
+form-error-team-description-length = Description must be at most 5000 characters.
+form-error-slug-charset = Slug must contain only lowercase letters, numbers, and dashes.
+form-error-slug-reserved = This slug is reserved. Please choose a different one.
+form-error-team-slug-taken = A team with this slug already exists.
+form-error-title-required = Title is required to generate a slug.
+form-error-event-type-slug-taken = An event type with this slug already exists.
+form-error-event-type-slug-taken-team = An event type with this slug already exists in this team.
+form-error-location-required = Location details are required (e.g. a video call link, phone number, or address).
+form-error-not-team-admin = You are not a team admin of this team.
+form-error-no-account = No scheduling account found. Please contact an administrator.
+form-error-all-fields-required = All fields are required.
+form-error-encryption = Encryption error.
+form-error-connection-failed = Connection failed: { $error }. Check the URL and credentials, or check "Skip connection test" to save anyway.
+
+# Settings page flash (src/web/mod.rs)
+
+settings-saved = Settings saved.

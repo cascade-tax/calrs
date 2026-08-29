@@ -80,7 +80,7 @@
   {% for b in pending_bookings %}
   <div class="booking-row" {% if not loop.last %}style="border-bottom: 1px solid var(--border);"{% endif %}>
     <div class="booking-info">
-      <div>{{ t("overview-booking-with", title='<strong>' ~ b.event_title ~ '</strong>', guest=b.guest_name) | safe }} <span class="badge badge-pending">{{ t("overview-badge-pending") }}</span></div>
+      <div>{{ t("overview-booking-with", title='<strong>' ~ (b.event_title | escape) ~ '</strong>', guest=b.guest_name | escape) | safe }} <span class="badge badge-pending">{{ t("overview-badge-pending") }}</span></div>
       <div style="color: var(--text-muted); font-size: 0.85rem;">{{ b.start_at }}</div>
       {% if b.start_at_guest %}<div style="color: var(--text-muted); font-size: 0.75rem;">{{ t("overview-guest-booked") }} {{ b.start_at_guest }}</div>{% endif %}
     </div>

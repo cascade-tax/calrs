@@ -6,12 +6,12 @@
 {% if no_event_types %}
 <div class="card">
   <h1>{{ t("troubleshoot-heading") }}</h1>
-  <p class="empty">{{ t("troubleshoot-empty", link='<a href="/dashboard/event-types/new" style="color: var(--accent); text-decoration: none;">' ~ t("troubleshoot-empty-link-label") ~ '</a>') | safe }}</p>
+  <p class="empty">{{ t("troubleshoot-empty", link='<a href="/dashboard/event-types/new" style="color: var(--accent); text-decoration: none;">' ~ (t("troubleshoot-empty-link-label") | escape) ~ '</a>') | safe }}</p>
 </div>
 {% else %}
 <div class="card">
   <h1>{{ t("troubleshoot-heading") }}</h1>
-  <p class="subtitle">{{ t("troubleshoot-subtitle", title='<strong>' ~ et_title ~ '</strong>') | safe }} ({{ t("troubleshoot-duration", minutes=duration) }}{% if buf_before %}, {{ t("troubleshoot-buffer-before", minutes=buf_before) }}{% endif %}{% if buf_after %}, {{ t("troubleshoot-buffer-after", minutes=buf_after) }}{% endif %}{% if min_notice %}, {{ t("troubleshoot-min-notice", minutes=min_notice) }}{% endif %}).</p>
+  <p class="subtitle">{{ t("troubleshoot-subtitle", title='<strong>' ~ (et_title | escape) ~ '</strong>') | safe }} ({{ t("troubleshoot-duration", minutes=duration) }}{% if buf_before %}, {{ t("troubleshoot-buffer-before", minutes=buf_before) }}{% endif %}{% if buf_after %}, {{ t("troubleshoot-buffer-after", minutes=buf_after) }}{% endif %}{% if min_notice %}, {{ t("troubleshoot-min-notice", minutes=min_notice) }}{% endif %}).</p>
 
   <form id="troubleshoot-form" method="get" action="/dashboard/troubleshoot" style="display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; margin: 1rem 0;">
     <select name="event_type" style="padding: 0.375rem 0.625rem; border: 1px solid var(--border); border-radius: var(--radius); font-size: 0.85rem; font-family: inherit; background: var(--surface); color: var(--text);">

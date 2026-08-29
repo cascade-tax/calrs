@@ -2520,15 +2520,25 @@ async fn create_team(
 
     // Validate
     if name.is_empty() || slug.is_empty() {
-        return render_team_form_error(&state, user, "Name and slug are required.", &form)
-            .await
-            .into_response();
+        return render_team_form_error(
+            &state,
+            user,
+            &crate::i18n::translate(admin.lang, "form-error-team-name-slug-required", None),
+            &form,
+        )
+        .await
+        .into_response();
     }
 
     if name.len() > 255 {
-        return render_team_form_error(&state, user, "Name must be at most 255 characters.", &form)
-            .await
-            .into_response();
+        return render_team_form_error(
+            &state,
+            user,
+            &crate::i18n::translate(admin.lang, "form-error-team-name-length", None),
+            &form,
+        )
+        .await
+        .into_response();
     }
 
     if let Some(ref d) = description {
@@ -2536,7 +2546,7 @@ async fn create_team(
             return render_team_form_error(
                 &state,
                 user,
-                "Description must be at most 5000 characters.",
+                &crate::i18n::translate(admin.lang, "form-error-team-description-length", None),
                 &form,
             )
             .await
@@ -2551,7 +2561,7 @@ async fn create_team(
         return render_team_form_error(
             &state,
             user,
-            "Slug must contain only lowercase letters, numbers, and dashes.",
+            &crate::i18n::translate(admin.lang, "form-error-slug-charset", None),
             &form,
         )
         .await
@@ -2564,7 +2574,7 @@ async fn create_team(
         return render_team_form_error(
             &state,
             user,
-            "This slug is reserved. Please choose a different one.",
+            &crate::i18n::translate(admin.lang, "form-error-slug-reserved", None),
             &form,
         )
         .await
@@ -2581,7 +2591,7 @@ async fn create_team(
         return render_team_form_error(
             &state,
             user,
-            "A team with this slug already exists.",
+            &crate::i18n::translate(admin.lang, "form-error-team-slug-taken", None),
             &form,
         )
         .await
@@ -3840,7 +3850,9 @@ async fn team_settings_page(
             all_users => all_users_ctx,
             oidc_groups => if groups_ctx.is_empty() { None } else { Some(groups_ctx) },
             linked_groups => linked_groups_ctx,
-            success => query.get("success").map(|_| "Settings saved."),
+            success => query
+                .get("success")
+                .map(|_| crate::i18n::translate(auth_user.lang, "settings-saved", None)),
         })
         .unwrap_or_else(|e| internal_error_body("template render", &e)),
     )
@@ -5044,7 +5056,7 @@ async fn create_event_type(
         return render_event_type_form_error(
             &state,
             &auth_user,
-            "Title is required to generate a slug.",
+            &crate::i18n::translate(auth_user.lang, "form-error-title-required", None),
             &form,
             false,
         )
@@ -5078,7 +5090,7 @@ async fn create_event_type(
         return render_event_type_form_error(
             &state,
             &auth_user,
-            "An event type with this slug already exists.",
+            &crate::i18n::translate(auth_user.lang, "form-error-event-type-slug-taken", None),
             &form,
             false,
         )
@@ -5105,7 +5117,7 @@ async fn create_event_type(
         return render_event_type_form_error(
             &state,
             &auth_user,
-            "Location details are required (e.g. a video call link, phone number, or address).",
+            &crate::i18n::translate(auth_user.lang, "form-error-location-required", None),
             &form,
             false,
         )
@@ -5120,7 +5132,7 @@ async fn create_event_type(
             return render_event_type_form_error(
                 &state,
                 &auth_user,
-                "You are not a team admin of this team.",
+                &crate::i18n::translate(auth_user.lang, "form-error-not-team-admin", None),
                 &form,
                 false,
             )
@@ -5712,7 +5724,7 @@ async fn update_event_type(
             return render_event_type_form_error(
                 &state,
                 &auth_user,
-                "An event type with this slug already exists.",
+                &crate::i18n::translate(auth_user.lang, "form-error-event-type-slug-taken", None),
                 &form,
                 true,
             )
@@ -5735,7 +5747,7 @@ async fn update_event_type(
         return render_event_type_form_error(
             &state,
             &auth_user,
-            "Location details are required (e.g. a video call link, phone number, or address).",
+            &crate::i18n::translate(auth_user.lang, "form-error-location-required", None),
             &form,
             true,
         )
@@ -6256,7 +6268,7 @@ async fn create_source(
             return render_source_form_error(
                 &state,
                 &auth_user,
-                "No scheduling account found. Please contact an administrator.",
+                &crate::i18n::translate(auth_user.lang, "form-error-no-account", None),
                 &form,
             )
             .into_response()
@@ -6268,8 +6280,13 @@ async fn create_source(
     let name = form.name.trim().to_string();
 
     if url.is_empty() || username.is_empty() || name.is_empty() || form.password.is_empty() {
-        return render_source_form_error(&state, &auth_user, "All fields are required.", &form)
-            .into_response();
+        return render_source_form_error(
+            &state,
+            &auth_user,
+            &crate::i18n::translate(auth_user.lang, "form-error-all-fields-required", None),
+            &form,
+        )
+        .into_response();
     }
 
     let provider_type = match parse_provider_type(form.provider_type.as_deref()) {
@@ -6300,7 +6317,12 @@ async fn create_source(
         match client.check_connection().await {
             Ok(_) => {} // fine, even if features not explicitly advertised
             Err(e) => {
-                let msg = format!("Connection failed: {}. Check the URL and credentials, or check \"Skip connection test\" to save anyway.", e);
+                let msg = tr1(
+                    auth_user.lang,
+                    "form-error-connection-failed",
+                    "error",
+                    &e.to_string(),
+                );
                 return render_source_form_error(&state, &auth_user, &msg, &form).into_response();
             }
         }
@@ -6309,7 +6331,14 @@ async fn create_source(
     let id = uuid::Uuid::new_v4().to_string();
     let password_enc = match crate::crypto::encrypt_password(&state.secret_key, &form.password) {
         Ok(enc) => enc,
-        Err(_) => return Html("Encryption error.".to_string()).into_response(),
+        Err(_) => {
+            return Html(crate::i18n::translate(
+                auth_user.lang,
+                "form-error-encryption",
+                None,
+            ))
+            .into_response()
+        }
     };
 
     let _ = sqlx::query(
@@ -6561,7 +6590,14 @@ async fn update_source(
         let new_enc = match crate::crypto::encrypt_password(&state.secret_key, &plaintext_password)
         {
             Ok(enc) => enc,
-            Err(_) => return Html("Encryption error.".to_string()).into_response(),
+            Err(_) => {
+                return Html(crate::i18n::translate(
+                    auth_user.lang,
+                    "form-error-encryption",
+                    None,
+                ))
+                .into_response()
+            }
         };
         let _ = sqlx::query(
             "UPDATE caldav_sources SET name = ?, url = ?, username = ?, password_enc = ? WHERE id = ?",
@@ -8100,7 +8136,12 @@ async fn group_embed_page(
     let is_admin = user.role == "admin";
 
     if !is_admin && !is_team_admin(&state.pool, &user.id, &team_id).await {
-        return Html("You are not a team admin of this team.".to_string()).into_response();
+        return Html(crate::i18n::translate(
+            auth_user.lang,
+            "form-error-not-team-admin",
+            None,
+        ))
+        .into_response();
     }
 
     let et: Option<(String, String, String, String, String, String)> = sqlx::query_as(
@@ -8280,7 +8321,12 @@ async fn create_group_event_type(
 
     // Only team admins (and global admins) can create team event types
     if !is_admin && !is_team_admin(&state.pool, &user.id, &team_id).await {
-        return Html("You are not a team admin of this team.".to_string()).into_response();
+        return Html(crate::i18n::translate(
+            auth_user.lang,
+            "form-error-not-team-admin",
+            None,
+        ))
+        .into_response();
     }
 
     // Find the user's account
@@ -8315,7 +8361,12 @@ async fn create_group_event_type(
         slug = slug.trim_matches('-').to_string();
     }
     if slug.is_empty() {
-        return Html("Title is required to generate a slug.".to_string()).into_response();
+        return Html(crate::i18n::translate(
+            auth_user.lang,
+            "form-error-title-required",
+            None,
+        ))
+        .into_response();
     }
 
     // Check uniqueness within the team
@@ -8328,8 +8379,12 @@ async fn create_group_event_type(
             .unwrap_or(None);
 
     if existing.is_some() {
-        return Html("An event type with this slug already exists in this team.".to_string())
-            .into_response();
+        return Html(crate::i18n::translate(
+            auth_user.lang,
+            "form-error-event-type-slug-taken-team",
+            None,
+        ))
+        .into_response();
     }
 
     let et_id = uuid::Uuid::new_v4().to_string();
@@ -8352,7 +8407,7 @@ async fn create_group_event_type(
         return render_event_type_form_error(
             &state,
             &auth_user,
-            "Location details are required (e.g. a video call link, phone number, or address).",
+            &crate::i18n::translate(auth_user.lang, "form-error-location-required", None),
             &form,
             false,
         )
@@ -8897,7 +8952,11 @@ async fn update_group_event_type(
             return render_event_type_form_error(
                 &state,
                 &auth_user,
-                "An event type with this slug already exists in this team.",
+                &crate::i18n::translate(
+                    auth_user.lang,
+                    "form-error-event-type-slug-taken-team",
+                    None,
+                ),
                 &form,
                 true,
             )
@@ -8920,7 +8979,7 @@ async fn update_group_event_type(
         return render_event_type_form_error(
             &state,
             &auth_user,
-            "Location details are required (e.g. a video call link, phone number, or address).",
+            &crate::i18n::translate(auth_user.lang, "form-error-location-required", None),
             &form,
             true,
         )
@@ -16880,12 +16939,26 @@ async fn google_callback(
     // Encrypt tokens
     let access_token_enc = match crate::crypto::encrypt_password(&state.secret_key, &access_token) {
         Ok(enc) => enc,
-        Err(_) => return Html("Encryption error.".to_string()).into_response(),
+        Err(_) => {
+            return Html(crate::i18n::translate(
+                auth_user.lang,
+                "form-error-encryption",
+                None,
+            ))
+            .into_response()
+        }
     };
     let refresh_token_enc = match crate::crypto::encrypt_password(&state.secret_key, &refresh_token)
     {
         Ok(enc) => enc,
-        Err(_) => return Html("Encryption error.".to_string()).into_response(),
+        Err(_) => {
+            return Html(crate::i18n::translate(
+                auth_user.lang,
+                "form-error-encryption",
+                None,
+            ))
+            .into_response()
+        }
     };
     let expires_at = chrono::Utc::now() + chrono::Duration::seconds(expires_in);
 
@@ -32278,7 +32351,83 @@ mod tests {
         None
     }
 
+    /// Sentences that interpolate markup are rendered through `t(...) | safe`,
+    /// which turns off autoescaping for the whole string. Every value spliced
+    /// into one must therefore be escaped explicitly. A guest picks their own
+    /// name, so forgetting it once is stored XSS on the host's dashboard.
+    #[test]
+    fn safe_interpolated_sentences_escape_their_values() {
+        let mut env = minijinja::Environment::new();
+        env.set_undefined_behavior(minijinja::UndefinedBehavior::Lenient);
+        env.set_loader(minijinja::path_loader("templates"));
+        crate::i18n::register(&mut env);
+
+        let booking_row = context! {
+            id => "b1",
+            event_title => XSS_PAYLOAD_HTML,
+            guest_name => XSS_PAYLOAD_HTML,
+            guest_email => "guest@example.com",
+            start_at => "2026-03-16 10:00",
+        };
+        let cases: Vec<(&str, minijinja::Value)> = vec![
+            (
+                "dashboard_bookings.html",
+                context! {
+                    lang => "en", sidebar => context! {},
+                    bookings => vec![booking_row.clone()],
+                    pending_bookings => vec![booking_row.clone()],
+                    claimable_bookings => vec![booking_row.clone()],
+                },
+            ),
+            (
+                "dashboard_overview.html",
+                context! {
+                    lang => "en", sidebar => context! {},
+                    pending_bookings => vec![booking_row.clone()],
+                },
+            ),
+            (
+                "overrides.html",
+                context! { lang => "en", sidebar => context! {}, event_type_title => XSS_PAYLOAD_HTML },
+            ),
+            (
+                "invite_form.html",
+                context! { lang => "en", sidebar => context! {}, event_type_title => XSS_PAYLOAD_HTML },
+            ),
+            (
+                "troubleshoot.html",
+                context! { lang => "en", sidebar => context! {}, et_title => XSS_PAYLOAD_HTML },
+            ),
+            (
+                "source_write_setup.html",
+                context! { lang => "en", source_name => XSS_PAYLOAD_HTML },
+            ),
+            (
+                "auth/register.html",
+                context! { lang => "en", allowed_domains => XSS_PAYLOAD_HTML },
+            ),
+        ];
+
+        for (name, ctx) in cases {
+            let rendered = env
+                .get_template(name)
+                .unwrap_or_else(|e| panic!("{name} loads: {e}"))
+                .render(ctx)
+                .unwrap_or_else(|e| panic!("{name} renders: {e}"));
+            assert!(
+                !rendered.contains(XSS_PAYLOAD_HTML),
+                "{name} emitted an unescaped interpolated value"
+            );
+            assert!(
+                rendered.contains("&lt;script&gt;"),
+                "{name} did not render the payload at all — the test context is wrong"
+            );
+        }
+    }
+
     const XSS_PAYLOAD: &str = r#"\\'));alert(1);//"#;
+
+    const XSS_PAYLOAD_HTML: &str = "<script>alert(1)</script>";
 
     #[test]
     fn dashboard_event_types_delete_button_no_onclick_interpolation() {

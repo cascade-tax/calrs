@@ -432,11 +432,10 @@ mod tests {
     /// the raw message id in the UI and nothing fails until someone sees it.
     #[test]
     fn every_template_key_exists_in_english() {
-        let key_re = regex_lite_find_keys as fn(&str) -> Vec<String>;
         let mut missing: Vec<String> = Vec::new();
         for path in template_files() {
             let src = std::fs::read_to_string(&path).expect("read template");
-            for key in key_re(&src) {
+            for key in regex_lite_find_keys(&src) {
                 if translate("en", &key, None) == key {
                     missing.push(format!("{}: {}", path.display(), key));
                 }
@@ -447,6 +446,81 @@ mod tests {
             "missing English keys:\n{}",
             missing.join("\n")
         );
+    }
+
+    /// Handlers translate too (form validation errors, the troubleshoot
+    /// timeline). A typo there renders the raw message id into the page just
+    /// as silently as it would from a template.
+    #[test]
+    fn every_rust_key_exists_in_english() {
+        let mut missing: Vec<String> = Vec::new();
+        for path in rust_files() {
+            let src = std::fs::read_to_string(&path).expect("read source");
+            for key in find_rust_keys(&src) {
+                if translate("en", &key, None) == key {
+                    missing.push(format!("{}: {}", path.display(), key));
+                }
+            }
+        }
+        assert!(
+            missing.is_empty(),
+            "missing English keys:\n{}",
+            missing.join("\n")
+        );
+    }
+
+    /// Message ids passed to `translate(lang, "key", ..)` or `tr1(lang, "key", ..)`.
+    fn find_rust_keys(src: &str) -> Vec<String> {
+        let mut keys = Vec::new();
+        for call in ["translate(", "tr1("] {
+            let mut i = 0;
+            while let Some(pos) = src[i..].find(call) {
+                let start = i + pos + call.len();
+                i = start;
+                // Skip the lang argument, then read the quoted key.
+                let Some(comma) = src[start..].find(',') else {
+                    continue;
+                };
+                let rest = src[start + comma + 1..].trim_start();
+                let Some(inner) = rest.strip_prefix('"') else {
+                    continue;
+                };
+                let Some(end) = inner.find('"') else {
+                    continue;
+                };
+                let key = &inner[..end];
+                if key.contains('-')
+                    && key
+                        .chars()
+                        .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+                {
+                    keys.push(key.to_string());
+                }
+            }
+        }
+        keys
+    }
+
+    /// All `.rs` files under `src/`, recursively.
+    fn rust_files() -> Vec<std::path::PathBuf> {
+        fn walk(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
+            for entry in std::fs::read_dir(dir).expect("read src dir") {
+                let path = entry.expect("dir entry").path();
+                if path.is_dir() {
+                    walk(&path, out);
+                } else if path.extension().is_some_and(|e| e == "rs")
+                    // This module's own tests translate a deliberately absent
+                    // key to exercise the fallback chain.
+                    && !path.ends_with("i18n.rs")
+                {
+                    out.push(path);
+                }
+            }
+        }
+        let mut out = Vec::new();
+        walk(std::path::Path::new("src"), &mut out);
+        out.sort();
+        out
     }
 
     /// Every template must still parse after a localization pass, in every

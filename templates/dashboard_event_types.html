@@ -78,7 +78,7 @@
   {% else %}
     <div class="empty" style="padding: 2rem 1rem;">
       <div class="empty-icon">&#128197;</div>
-      <div class="empty-text">{{ t("event-types-empty", link='<a href="/dashboard/event-types/new" style="color: var(--accent); text-decoration: none;">' ~ t("event-types-empty-link-label") ~ '</a>') | safe }}</div>
+      <div class="empty-text">{{ t("event-types-empty", link='<a href="/dashboard/event-types/new" style="color: var(--accent); text-decoration: none;">' ~ (t("event-types-empty-link-label") | escape) ~ '</a>') | safe }}</div>
     </div>
   {% endif %}
 </div>

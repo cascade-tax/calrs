@@ -361,7 +361,7 @@ document.querySelectorAll('input[type="color"]').forEach(function(picker) {
   </div>
   <form method="post" action="/dashboard/admin/google-oauth2">
     <p style="font-size: 0.825rem; color: var(--text-muted); margin-bottom: 1rem;">
-      {{ t("admin-google-help", redirect_uri='<code>' ~ base_url ~ '/dashboard/sources/google/callback</code>') | safe }}
+      {{ t("admin-google-help", redirect_uri='<code>' ~ (base_url | escape) ~ '/dashboard/sources/google/callback</code>') | safe }}
     </p>
     <div class="form-group">
       <label>{{ t("admin-client-id-label") }}</label>
@@ -578,7 +578,7 @@ document.querySelectorAll('input[type="color"]').forEach(function(picker) {
       <label>{{ t("admin-room-pattern") }}</label>
       <input type="text" id="jitsi_pattern" name="jitsi_pattern" value="{{ jitsi_pattern }}" placeholder="{{ jitsi_default_pattern }}" oninput="updateJitsiRandomWarning()">
       <span style="font-size: 0.8rem; color: var(--text-muted);">
-        {{ t("admin-room-pattern-help", default='<code>' ~ jitsi_default_pattern ~ '</code>') | safe }}
+        {{ t("admin-room-pattern-help", default='<code>' ~ (jitsi_default_pattern | escape) ~ '</code>') | safe }}
       </span>
       <span id="jitsi_pattern_random_warning" style="display: none; font-size: 0.8rem; color: var(--warning-text, #b45309); margin-top: 0.25rem;">
         ⚠ {{ t("admin-room-pattern-warning") | safe }}
@@ -723,7 +723,7 @@ document.querySelectorAll('input[type="color"]').forEach(function(picker) {
     <button type="submit" class="slot-btn" style="cursor: pointer; font-weight: 600;">{{ t("admin-send-test-email-btn") }}</button>
   </form>
   <form method="post" action="/dashboard/admin/smtp/clear" style="margin-top: 1rem;" data-confirm="{{ t('admin-smtp-clear-confirm') }}" onsubmit="return confirm(this.dataset.confirm);">
-    <button type="submit" class="slot-btn" style="cursor: pointer; color: var(--error-text); border-color: var(--error-text);">{{ t("admin-smtp-clear") }}</button>
+    <button type="submit" class="slot-btn" style="cursor: pointer; color: var(--error-text); border-color: var(--error-text);">{{ t("admin-clear-db-config") }}</button>
   </form>
   {% endif %}
 
@@ -862,7 +862,7 @@ document.querySelectorAll('input[type="color"]').forEach(function(picker) {
     <button type="submit" class="slot-btn" style="cursor: pointer; font-weight: 600;">{{ t("admin-test-gateway") }}</button>
   </form>
   <form method="post" action="/dashboard/admin/sms/clear" style="margin-top: 1rem;" data-confirm="{{ t('admin-sms-clear-confirm') }}" onsubmit="return confirm(this.dataset.confirm);">
-    <button type="submit" class="slot-btn" style="cursor: pointer; color: var(--error-text); border-color: var(--error-text);">{{ t("admin-smtp-clear") }}</button>
+    <button type="submit" class="slot-btn" style="cursor: pointer; color: var(--error-text); border-color: var(--error-text);">{{ t("admin-clear-db-config") }}</button>
   </form>
   {% endif %}
 

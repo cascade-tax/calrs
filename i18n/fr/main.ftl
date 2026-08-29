@@ -1057,7 +1057,7 @@ admin-send-test-email = Envoyer un e-mail de test à
 admin-send-test-email-hint = (par défaut, l'adresse de votre compte)
 admin-send-test-email-btn = Envoyer l'e-mail de test
 admin-smtp-clear-confirm = Supprimer la configuration SMTP enregistrée en base ?
-admin-smtp-clear = Effacer la configuration en base
+admin-clear-db-config = Effacer la configuration en base
 admin-sms = Paramètres SMS
 admin-sms-help = Facultatif. Les SMS ne sont envoyés que pour les réservations sur les types d'événement où les « Notifications SMS » sont activées, et uniquement si l'invité a laissé un numéro.
 admin-sms-test-sent = Message de test envoyé.
@@ -1094,7 +1094,7 @@ admin-show-fewer = Afficher moins
 
 # Admin panel: strings carrying markup or literal braces (templates/admin.html)
 
-admin-delete-user-confirm = Supprimer définitivement l'utilisateur { $email } ?\n\nCela efface son compte, son profil de planification, ses sources d'agenda, ses types d'événement et toutes les données dont il est le seul propriétaire. Les réservations passées seront supprimées avec leurs types d'événement.\n\nPour les utilisateurs OIDC/SSO : si l'inscription automatique est activée, la personne sera recréée à sa prochaine connexion.\n\nCette action est irréversible.
+admin-delete-user-confirm = Supprimer définitivement l'utilisateur { $email } ?{"\u000A"}{"\u000A"}Cela efface son compte, son profil de planification, ses sources d'agenda, ses types d'événement et toutes les données dont il est le seul propriétaire. Les réservations passées seront supprimées avec leurs types d'événement.{"\u000A"}{"\u000A"}Pour les utilisateurs OIDC/SSO : si l'inscription automatique est activée, la personne sera recréée à sa prochaine connexion.{"\u000A"}{"\u000A"}Cette action est irréversible.
 admin-system-settings-help = URL publique et paramètres de sécurité réseau. Ils peuvent aussi être définis par les variables d'environnement <code>CALRS_BASE_URL</code> et <code>CALRS_ALLOW_PRIVATE_HOSTS</code>. Lorsqu'une variable d'environnement est définie, elle <strong>prime</strong> sur la valeur ci-dessous.
 admin-set-by-env = — défini par l'environnement ({ $var }), prioritaire sur la valeur enregistrée
 admin-google-help = Pour activer l'intégration Google Agenda, créez des identifiants OAuth2 sur la <a href="https://console.cloud.google.com/apis/credentials" target="_blank" style="color: var(--accent);">Google Cloud Console</a>. Activez l'<strong>API Google Calendar</strong>, puis ajoutez { $redirect_uri } comme URI de redirection autorisée.
@@ -1174,3 +1174,25 @@ dashboard-event-types-copy = Copier
 dashboard-event-types-copied = Copié !
 dashboard-event-types-copy-title = Copier le lien de réservation
 dashboard-event-types-copy-failed = Échec de la copie
+
+# Host-side form validation errors (src/web/mod.rs)
+
+form-error-team-name-slug-required = Le nom et l'identifiant sont obligatoires.
+form-error-team-name-length = Le nom ne doit pas dépasser 255 caractères.
+form-error-team-description-length = La description ne doit pas dépasser 5000 caractères.
+form-error-slug-charset = L'identifiant ne peut contenir que des minuscules, des chiffres et des tirets.
+form-error-slug-reserved = Cet identifiant est réservé. Choisissez-en un autre.
+form-error-team-slug-taken = Une équipe utilise déjà cet identifiant.
+form-error-title-required = Le titre est obligatoire pour générer un identifiant.
+form-error-event-type-slug-taken = Un type d'événement utilise déjà cet identifiant.
+form-error-event-type-slug-taken-team = Un type d'événement de cette équipe utilise déjà cet identifiant.
+form-error-location-required = Les détails du lieu sont obligatoires (lien de visioconférence, numéro de téléphone ou adresse).
+form-error-not-team-admin = Vous n'êtes pas administrateur de cette équipe.
+form-error-no-account = Aucun profil de planification trouvé. Contactez un administrateur.
+form-error-all-fields-required = Tous les champs sont obligatoires.
+form-error-encryption = Erreur de chiffrement.
+form-error-connection-failed = Échec de la connexion : { $error }. Vérifiez l'URL et les identifiants, ou cochez « Ignorer le test de connexion » pour enregistrer malgré tout.
+
+# Settings page flash (src/web/mod.rs)
+
+settings-saved = Paramètres enregistrés.

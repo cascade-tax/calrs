@@ -10,7 +10,7 @@
     {% if is_team %}<a href="/dashboard/teams" class="slot-btn" style="text-decoration: none; font-size: 0.8rem;">{{ t("overrides-back-teams") }}</a>{% else %}<a href="/dashboard/event-types" class="slot-btn" style="text-decoration: none; font-size: 0.8rem;">{{ t("overrides-back-event-types") }}</a>{% endif %}
   </div>
   <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 1.25rem;">
-    {{ t("overrides-intro", title='<strong>' ~ event_type_title ~ '</strong>') | safe }}
+    {{ t("overrides-intro", title='<strong>' ~ (event_type_title | escape) ~ '</strong>') | safe }}
   </p>
 
   {% if error %}
