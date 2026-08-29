@@ -1223,3 +1223,18 @@ settings-error-username-length = Username must be at least 2 characters.
 settings-error-username-taken = This username is already taken.
 settings-error-booking-email = Please enter a valid booking email address.
 settings-error-save-failed = Failed to save settings.
+
+# Host-facing error responses (src/web/mod.rs)
+
+error-team-not-found-or-not-admin = Team not found or you are not a team admin.
+error-team-not-found = Team not found.
+error-event-type-not-found = Event type not found.
+error-decrypt-failed = Failed to decrypt stored credentials.
+error-source-not-found = Source not found.
+error-source-no-password = Source has no stored password.
+error-oauth-invalid-state = Invalid state parameter. Please try again.
+error-oauth-no-code = No authorization code received.
+error-oauth-not-configured = Google OAuth2 not configured.
+error-no-scheduling-account = No scheduling account found.
+error-private-event-type-not-found = Private event type not found.
+error-access-denied = Access denied.

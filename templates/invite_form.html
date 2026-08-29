@@ -27,7 +27,7 @@
     {% if bulk_result.has_issues %}
       <div style="padding: 0.75rem 1rem; background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.3); border-radius: var(--radius); margin-bottom: 1.25rem; font-size: 0.9rem;">
         {% if bulk_result.over_limit %}
-          <div style="margin-bottom: 0.4rem;">{{ t("invites-capped", max=bulk_result.max_recipients) | safe }}</div>
+          <div style="margin-bottom: 0.4rem;">{{ t("invites-capped", max=bulk_result.max_recipients | escape) | safe }}</div>
         {% endif %}
         {% if bulk_result.invalid %}
           <div style="margin-bottom: 0.4rem;"><strong>{{ t("invites-skipped-invalid", count=bulk_result.invalid|length) }}</strong>

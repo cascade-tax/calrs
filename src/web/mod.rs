@@ -3772,7 +3772,11 @@ async fn team_settings_page(
     let user = &auth_user.user;
     let is_admin = user.role == "admin";
     if !is_admin && !is_team_admin(&state.pool, &user.id, &team_id).await {
-        return Html("Team not found or you are not a team admin.".to_string());
+        return Html(crate::i18n::translate(
+            auth_user.lang,
+            "error-team-not-found-or-not-admin",
+            None,
+        ));
     }
 
     let team: Option<(String, String, String, Option<String>, Option<String>, String, Option<String>)> =
@@ -3785,7 +3789,13 @@ async fn team_settings_page(
     let (tid, team_name, team_slug, description, avatar_path, visibility, invite_token) = match team
     {
         Some(t) => t,
-        None => return Html("Team not found.".to_string()),
+        None => {
+            return Html(crate::i18n::translate(
+                auth_user.lang,
+                "error-team-not-found",
+                None,
+            ))
+        }
     };
 
     let members: Vec<(String, String, Option<String>, String, String)> = sqlx::query_as(
@@ -5386,7 +5396,13 @@ async fn edit_event_type_form(
         team_id,
     ) = match et {
         Some(e) => e,
-        None => return Html("Event type not found.".to_string()),
+        None => {
+            return Html(crate::i18n::translate(
+                auth_user.lang,
+                "error-event-type-not-found",
+                None,
+            ))
+        }
     };
 
     let slot_interval: Option<i32> =
@@ -6611,7 +6627,12 @@ async fn update_source(
         match crate::crypto::decrypt_password(&state.secret_key, &existing_password_enc) {
             Ok(p) => p,
             Err(_) => {
-                return Html("Failed to decrypt stored credentials.".to_string()).into_response()
+                return Html(crate::i18n::translate(
+                    auth_user.lang,
+                    "error-decrypt-failed",
+                    None,
+                ))
+                .into_response()
             }
         }
     };
@@ -6743,7 +6764,14 @@ async fn test_source(
         provider_type,
     ) = match source {
         Some(s) => s,
-        None => return Html("Source not found.".to_string()).into_response(),
+        None => {
+            return Html(crate::i18n::translate(
+                auth_user.lang,
+                "error-source-not-found",
+                None,
+            ))
+            .into_response()
+        }
     };
 
     let label = crate::providers::factory::label(&provider_type);
@@ -6755,12 +6783,21 @@ async fn test_source(
             Some(enc) => match crate::crypto::decrypt_password(&state.secret_key, enc) {
                 Ok(p) => p,
                 Err(_) => {
-                    return Html("Failed to decrypt stored credentials.".to_string())
-                        .into_response()
+                    return Html(crate::i18n::translate(
+                        auth_user.lang,
+                        "error-decrypt-failed",
+                        None,
+                    ))
+                    .into_response()
                 }
             },
             None => {
-                return Html("Source has no stored password.".to_string()).into_response();
+                return Html(crate::i18n::translate(
+                    auth_user.lang,
+                    "error-source-no-password",
+                    None,
+                ))
+                .into_response();
             }
         };
         match crate::providers::build_provider(&provider_type, &url, &username, &password) {
@@ -6790,7 +6827,12 @@ async fn test_source(
         {
             Ok(c) => c,
             Err(_) => {
-                return Html("Failed to decrypt stored credentials.".to_string()).into_response()
+                return Html(crate::i18n::translate(
+                    auth_user.lang,
+                    "error-decrypt-failed",
+                    None,
+                ))
+                .into_response()
             }
         };
         match client.check_connection().await {
@@ -6985,7 +7027,14 @@ async fn force_sync_source(
         provider_type,
     ) = match source {
         Some(s) => s,
-        None => return Html("Source not found.".to_string()).into_response(),
+        None => {
+            return Html(crate::i18n::translate(
+                auth_user.lang,
+                "error-source-not-found",
+                None,
+            ))
+            .into_response()
+        }
     };
 
     // Clear sync tokens to force a full fetch (same as `calrs sync --full`)
@@ -7065,7 +7114,14 @@ async fn sync_source(
         provider_type,
     ) = match source {
         Some(s) => s,
-        None => return Html("Source not found.".to_string()).into_response(),
+        None => {
+            return Html(crate::i18n::translate(
+                auth_user.lang,
+                "error-source-not-found",
+                None,
+            ))
+            .into_response()
+        }
     };
 
     tracing::info!(source_id = %sid, "calendar sync triggered from dashboard");
@@ -7478,7 +7534,14 @@ async fn render_invite_management(
 
     let (et_id, et_title, et_slug, team_slug, username, owner_name, visibility) = match et {
         Some(e) => e,
-        None => return Html("Private event type not found.".to_string()).into_response(),
+        None => {
+            return Html(crate::i18n::translate(
+                auth_user.lang,
+                "error-private-event-type-not-found",
+                None,
+            ))
+            .into_response()
+        }
     };
 
     // Internal event types: any authenticated user can issue invites — that's
@@ -7487,7 +7550,12 @@ async fn render_invite_management(
     // team admin only).
     if visibility == "private" && !can_manage_event_type(&state.pool, &auth_user.user, &et_id).await
     {
-        return Html("Access denied.".to_string()).into_response();
+        return Html(crate::i18n::translate(
+            auth_user.lang,
+            "error-access-denied",
+            None,
+        ))
+        .into_response();
     }
 
     let invites: Vec<(String, String, String, String, Option<String>, Option<String>, i32, i32, String, String)> = sqlx::query_as(
@@ -8642,7 +8710,13 @@ async fn edit_group_event_type_form(
         scheduling_mode,
     ) = match et {
         Some(e) => e,
-        None => return Html("Event type not found.".to_string()),
+        None => {
+            return Html(crate::i18n::translate(
+                auth_user.lang,
+                "error-event-type-not-found",
+                None,
+            ))
+        }
     };
 
     let slot_interval: Option<i32> =
@@ -15000,7 +15074,13 @@ async fn troubleshoot(
 
     let et_id = match et_id {
         Some((id,)) => id,
-        None => return Html("Event type not found".to_string()),
+        None => {
+            return Html(crate::i18n::translate(
+                auth_user.lang,
+                "error-event-type-not-found",
+                None,
+            ))
+        }
     };
 
     let booking_horizon = get_booking_horizon(&state.pool, &et_id).await;
@@ -16881,7 +16961,12 @@ async fn google_callback(
         .unwrap_or_default();
     let query_state = query.state.unwrap_or_default();
     if stored_state.is_empty() || stored_state != query_state {
-        return Html("Invalid state parameter. Please try again.".to_string()).into_response();
+        return Html(crate::i18n::translate(
+            auth_user.lang,
+            "error-oauth-invalid-state",
+            None,
+        ))
+        .into_response();
     }
 
     // Cross-tab defense-in-depth: the user cookie set at /connect must match
@@ -16906,7 +16991,14 @@ async fn google_callback(
 
     let code = match query.code {
         Some(c) => c,
-        None => return Html("No authorization code received.".to_string()).into_response(),
+        None => {
+            return Html(crate::i18n::translate(
+                auth_user.lang,
+                "error-oauth-no-code",
+                None,
+            ))
+            .into_response()
+        }
     };
 
     // Load Google OAuth2 credentials
@@ -16919,7 +17011,14 @@ async fn google_callback(
 
     let (client_id, client_secret_enc) = match creds {
         Some(c) => c,
-        None => return Html("Google OAuth2 not configured.".to_string()).into_response(),
+        None => {
+            return Html(crate::i18n::translate(
+                auth_user.lang,
+                "error-oauth-not-configured",
+                None,
+            ))
+            .into_response()
+        }
     };
 
     // The stored Google OAuth2 client secret is encrypted at rest; the
@@ -16976,7 +17075,14 @@ async fn google_callback(
 
     let account_id = match account {
         Some((id,)) => id,
-        None => return Html("No scheduling account found.".to_string()).into_response(),
+        None => {
+            return Html(crate::i18n::translate(
+                auth_user.lang,
+                "error-no-scheduling-account",
+                None,
+            ))
+            .into_response()
+        }
     };
 
     // Encrypt tokens
@@ -32546,6 +32652,124 @@ mod tests {
             "host pages rendered without a language:\n{}",
             offenders.join("\n")
         );
+    }
+
+    /// The `| escape` in a safe-filtered `t()` call is load-bearing, and the
+    /// render test above only covers the sites that exist today. This one is
+    /// structural: in any `t(...) | safe` call, every operand concatenated into
+    /// an argument must be a string literal, an `| escape`d expression, or a
+    /// nested `t()` (whose output is our own translation, not user data).
+    /// A new site that splices a bare variable in fails here.
+    #[test]
+    fn safe_filtered_translations_never_splice_bare_variables() {
+        let mut offenders = Vec::new();
+        for path in template_paths() {
+            let src = std::fs::read_to_string(&path).expect("read template");
+            for (n, line) in src.lines().enumerate() {
+                if !(line.contains("t(") && line.contains("| safe")) {
+                    continue;
+                }
+                for operand in concat_operands(line) {
+                    let trimmed = operand.trim();
+                    let literal = trimmed.starts_with('\'') || trimmed.starts_with('"');
+                    let escaped = trimmed.contains("| escape") || trimmed.contains("|escape");
+                    let translated = trimmed.starts_with("t(") || trimmed.starts_with("(t(");
+                    if !(literal || escaped || translated) {
+                        offenders.push(format!(
+                            "{}:{}: `{}` is spliced into a | safe string without | escape",
+                            path.display(),
+                            n + 1,
+                            trimmed
+                        ));
+                    }
+                }
+            }
+        }
+        assert!(
+            offenders.is_empty(),
+            "unescaped values in safe-filtered translations:\n{}",
+            offenders.join("\n")
+        );
+    }
+
+    /// Every operand of every argument of a `t(...)` call on this line: the
+    /// argument list is split on top-level commas, then each argument on `~`.
+    fn concat_operands(line: &str) -> Vec<String> {
+        let mut operands = Vec::new();
+        let Some(open) = line.find("t(") else {
+            return operands;
+        };
+        let body = &line[open + 2..];
+
+        let mut depth = 0i32;
+        let mut quote: Option<char> = None;
+        let mut current = String::new();
+        for ch in body.chars() {
+            match quote {
+                Some(q) => {
+                    current.push(ch);
+                    if ch == q {
+                        quote = None;
+                    }
+                }
+                None if ch == '\'' || ch == '"' => {
+                    current.push(ch);
+                    quote = Some(ch);
+                }
+                None if ch == '(' => {
+                    depth += 1;
+                    current.push(ch);
+                }
+                None if ch == ')' && depth > 0 => {
+                    depth -= 1;
+                    current.push(ch);
+                }
+                // End of the t(...) call.
+                None if ch == ')' => break,
+                None if (ch == ',' || ch == '~') && depth == 0 => {
+                    operands.push(std::mem::take(&mut current));
+                }
+                None => current.push(ch),
+            }
+        }
+        operands.push(current);
+
+        operands
+            .into_iter()
+            .map(|o| {
+                let o = o.trim().trim_start_matches('(').trim();
+                // Drop a leading `name=` so an argument is judged on its value,
+                // not its keyword.
+                match o.split_once('=') {
+                    Some((name, rest))
+                        if !name.is_empty()
+                            && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') =>
+                    {
+                        rest.trim().to_string()
+                    }
+                    _ => o.to_string(),
+                }
+            })
+            .filter(|o| !o.is_empty())
+            .collect()
+    }
+
+    /// All `.html` files under `templates/`, recursively.
+    fn template_paths() -> Vec<std::path::PathBuf> {
+        fn walk(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
+            for entry in std::fs::read_dir(dir).expect("read templates dir") {
+                let path = entry.expect("dir entry").path();
+                if path.is_dir() {
+                    walk(&path, out);
+                } else if path.extension().is_some_and(|e| e == "html") {
+                    out.push(path);
+                }
+            }
+        }
+        let mut out = Vec::new();
+        walk(std::path::Path::new("templates"), &mut out);
+        out.sort();
+        out
     }
 
     const XSS_PAYLOAD_HTML: &str = "<script>alert(1)</script>";

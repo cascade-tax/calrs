@@ -1204,3 +1204,18 @@ settings-error-username-length = Le nom d'utilisateur doit contenir au moins 2 c
 settings-error-username-taken = Ce nom d'utilisateur est déjà pris.
 settings-error-booking-email = Saisissez une adresse e-mail de réservation valide.
 settings-error-save-failed = Échec de l'enregistrement des paramètres.
+
+# Host-facing error responses (src/web/mod.rs)
+
+error-team-not-found-or-not-admin = Équipe introuvable, ou vous n'en êtes pas administrateur.
+error-team-not-found = Équipe introuvable.
+error-event-type-not-found = Type d'événement introuvable.
+error-decrypt-failed = Impossible de déchiffrer les identifiants enregistrés.
+error-source-not-found = Source introuvable.
+error-source-no-password = Aucun mot de passe enregistré pour cette source.
+error-oauth-invalid-state = Paramètre d'état invalide. Veuillez réessayer.
+error-oauth-no-code = Aucun code d'autorisation reçu.
+error-oauth-not-configured = OAuth2 Google n'est pas configuré.
+error-no-scheduling-account = Aucun profil de planification trouvé.
+error-private-event-type-not-found = Type d'événement privé introuvable.
+error-access-denied = Accès refusé.
