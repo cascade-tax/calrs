@@ -1238,3 +1238,22 @@ error-oauth-not-configured = Google OAuth2 not configured.
 error-no-scheduling-account = No scheduling account found.
 error-private-event-type-not-found = Private event type not found.
 error-access-denied = Access denied.
+
+# Guest booking-flow errors (src/web/mod.rs)
+
+error-slot-unavailable = This slot is no longer available.
+error-slot-too-soon = This slot is no longer available (too soon).
+error-slot-beyond-horizon = This slot is beyond the booking window.
+error-invite-required = This event type requires an invite link.
+error-invite-invalid = Invalid invite link.
+error-invite-expired = This invite link has expired.
+error-invite-used = This invite link has already been used.
+error-invalid-date = Invalid date.
+error-invalid-time = Invalid time.
+error-invalid-date-format = Invalid date format.
+error-invalid-time-format = Invalid time format.
+error-too-many-bookings = Too many booking attempts. Please try again in a few minutes.
+error-too-many-requests = Too many requests. Please try again later.
+error-no-members-available = No team members are available for this slot.
+error-dynamic-group-public-only = Dynamic group links are only available for public event types.
+error-user-not-found = User not found.

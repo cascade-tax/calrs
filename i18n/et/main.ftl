@@ -1238,3 +1238,22 @@ error-oauth-not-configured = Google OAuth2 ei ole seadistatud.
 error-no-scheduling-account = Ajaplaneerimise profiili ei leitud.
 error-private-event-type-not-found = Privaatset sündmuse tüüpi ei leitud.
 error-access-denied = Ligipääs keelatud.
+
+# Guest booking-flow errors (src/web/mod.rs)
+
+error-slot-unavailable = See aeg ei ole enam saadaval.
+error-slot-too-soon = See aeg ei ole enam saadaval (liiga lühikese etteteatamisega).
+error-slot-beyond-horizon = See aeg jääb broneerimisaknast välja.
+error-invite-required = See sündmuse tüüp nõuab kutselinki.
+error-invite-invalid = Vigane kutselink.
+error-invite-expired = See kutselink on aegunud.
+error-invite-used = See kutselink on juba kasutatud.
+error-invalid-date = Vigane kuupäev.
+error-invalid-time = Vigane kellaaeg.
+error-invalid-date-format = Vigane kuupäevavorming.
+error-invalid-time-format = Vigane kellaajavorming.
+error-too-many-bookings = Liiga palju broneerimiskatseid. Palun proovi mõne minuti pärast uuesti.
+error-too-many-requests = Liiga palju päringuid. Palun proovi hiljem uuesti.
+error-no-members-available = Ükski meeskonnaliige ei ole sel ajal saadaval.
+error-dynamic-group-public-only = Dünaamilised rühmalingid on saadaval ainult avalike sündmuse tüüpide puhul.
+error-user-not-found = Kasutajat ei leitud.

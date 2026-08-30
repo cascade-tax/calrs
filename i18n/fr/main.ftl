@@ -23,6 +23,8 @@ confirmed-detail-additional-guests = Invités supplémentaires :
 
 confirmed-book-another = Réserver un autre créneau
 
+confirmed-add-to-calendar = Ajouter à l'agenda
+
 # Slot picker (templates/slots.html)
 
 slots-location-video = Visioconférence
@@ -75,6 +77,17 @@ book-additional-guests-label = Invités supplémentaires
 book-additional-guests-hint = (facultatif, jusqu'à { $max })
 book-add-guest-btn = + Ajouter un invité
 book-guest-email-placeholder = collegue@example.com
+book-phone-label = Numéro de téléphone
+book-phone-placeholder = 06 12 34 56 78
+book-phone-help = Les numéros locaux fonctionnent ; sans le + initial, nous supposons { $country }.
+book-phone-optional-consequence = Laissez vide si vous préférez ne pas recevoir de SMS au sujet de cette réservation.
+book-phone-required = Un numéro de téléphone est obligatoire pour cette réservation.
+book-phone-invalid-title = Numéro de téléphone invalide
+book-phone-invalid = Veuillez saisir un numéro joignable par SMS, ou laisser le champ vide.
+book-phone-country-search = Rechercher
+book-phone-country-label = Choisir le pays
+book-phone-country-none = Aucun pays sélectionné
+book-phone-country-no-results = Aucun pays ne correspond à cette recherche
 captcha-label = Vérification de sécurité
 captcha-initial-state = Vérifiez que vous êtes humain
 captcha-verifying = Vérification en cours...
@@ -88,6 +101,17 @@ captcha-verified-aria = Vérifié
 captcha-required = Veuillez vérifier que vous êtes humain
 captcha-error-aria = Une erreur est survenue, veuillez réessayer
 book-confirm-button = Confirmer la réservation
+
+# SMS notifications (src/sms/message.rs).
+#
+# These are text messages, billed per 160-character segment (70 if the text
+# contains any character outside the GSM-7 alphabet, which includes most
+# accented letters). Keep them short and plain.
+
+sms-confirmed = Réservation confirmée : { $event }, le { $date } à { $time } ({ $tz }).
+sms-cancelled = Réservation annulée : { $event }, le { $date } à { $time } ({ $tz }).
+sms-rescheduled = Réservation déplacée : { $event } aura lieu le { $date } à { $time } ({ $tz }).
+sms-reminder = Rappel : { $event } commence le { $date } à { $time } ({ $tz }).
 
 # Shared labels used across the cancel / decline / approve / reschedule / claim flows
 
@@ -177,6 +201,7 @@ profile-pick-event-type-invite = Choisissez un type d'événement pour réserver
 profile-no-event-type = Aucun type d'événement disponible pour le moment.
 
 # Month and weekday names + per-locale date format patterns.
+# Used by server-side date formatters in src/i18n.rs.
 
 common-month-1 = janvier
 common-month-2 = février
@@ -199,7 +224,11 @@ common-weekday-long-fri = vendredi
 common-weekday-long-sat = samedi
 common-weekday-long-sun = dimanche
 
-# French dates: no comma, day before month, lowercase day/month names.
+# Format patterns are parametric per locale to handle word order. Translators
+# pick where each placeholder lands. Example outputs:
+#   EN: April 2026  /  Tuesday, March 12, 2026
+#   FR: avril 2026  /  mardi 12 mars 2026
+#   ES: abril 2026  /  martes, 12 de marzo de 2026
 common-format-month-year = { $month } { $year }
 common-format-long-date = { $weekday } { $day } { $month } { $year }
 
@@ -211,6 +240,8 @@ email-action-cancel-booking = Annuler la réservation
 
 # Email: guest booking confirmation
 
+# Kept to "event — date": Exchange titles the guest appointment after the
+# email Subject header, not the ICS SUMMARY (#157).
 email-confirm-subject = { $event } — { $date }
 email-confirm-greeting = Bonjour { $name },
 email-confirm-headline = Votre réservation est confirmée !
@@ -230,6 +261,44 @@ email-cancel-headline-by-host = Votre réservation a été annulée par { $host 
 email-cancel-headline-by-guest = Votre réservation a été annulée.
 email-cancel-ics-attached-plain = Une annulation de calendrier est jointe.
 email-cancel-ics-attached-html = Une annulation de calendrier est jointe à cet e-mail.
+
+# Confirmation email: notice-window policy lines (src/email.rs)
+
+email-confirm-cancel-notice = Note : l'annulation exige un préavis d'au moins { $minutes } minutes.
+email-confirm-reschedule-notice = Note : la reprogrammation exige un préavis d'au moins { $minutes } minutes.
+
+# Event type form: cancel/reschedule minimum notice (templates/event_type_form.html)
+
+event-type-form-cancel-notice-label = Préavis minimum pour annuler
+event-type-form-reschedule-notice-label = Préavis minimum pour reprogrammer
+event-type-form-notice-help = Laissez vide pour ne pas imposer de restriction.
+event-type-form-resources-label = Ressources requises
+event-type-form-resources-hint = Les créneaux ne sont proposés que si les ressources sélectionnées sont disponibles, selon le mode ci-dessous.
+event-type-form-resources-mode-all = Toutes les ressources sélectionnées doivent être libres
+event-type-form-resources-mode-round-robin = Une seule ressource libre suffit (elle est attribuée à la réservation)
+event-type-form-notice-unit-minutes = minutes
+event-type-form-notice-unit-hours = heures
+event-type-form-notice-unit-days = jours
+event-type-form-booking-horizon-label = Horizon de réservation
+event-type-form-booking-horizon-help = Nombre de jours à l'avance pendant lesquels les invités peuvent réserver. Laissez vide pour aucune limite, 0 pour aujourd'hui seulement.
+
+# Booking confirmation: cancel/reschedule policy notices (templates/confirmed.html)
+
+confirmed-cancel-notice-info = L'annulation exige un préavis d'au moins { $minutes } minutes avant la réunion.
+confirmed-reschedule-notice-info = La reprogrammation exige un préavis d'au moins { $minutes } minutes avant la réunion.
+
+# Booking action blocked page (templates/booking_action_blocked.html)
+
+booking-blocked-title-cancel = Cette réservation ne peut plus être annulée en ligne
+booking-blocked-title-reschedule = Cette réservation ne peut plus être reprogrammée en ligne
+booking-blocked-body = L'hôte exige un préavis d'au moins { $minutes } minutes. Si vous ne pouvez pas être présent, écrivez directement à <a href="mailto:{ $host_email }">{ $host_email }</a>.
+
+# Dashboard event types listing (templates/dashboard_event_types.html)
+
+dashboard-event-types-copy = Copier
+dashboard-event-types-copied = Copié !
+dashboard-event-types-copy-title = Copier le lien de réservation
+dashboard-event-types-copy-failed = Échec de la copie
 
 # Dashboard sidebar and shared chrome (templates/dashboard_base.html)
 
@@ -1125,56 +1194,6 @@ admin-sms-going-live = <strong>Avant la mise en production :</strong> restreigne
 
 troubleshoot-heading = Diagnostic des disponibilités
 
-# Backfill: guest-side and event-type-form keys that had no French value
-# before the dashboard localization pass.
-
-confirmed-add-to-calendar = Ajouter à l'agenda
-
-book-phone-label = Numéro de téléphone
-book-phone-placeholder = 06 12 34 56 78
-book-phone-help = Les numéros locaux fonctionnent ; { $country } est supposé sauf si vous commencez par +.
-book-phone-optional-consequence = Laissez vide si vous préférez ne pas recevoir de SMS au sujet de cette réservation.
-book-phone-required = Un numéro de téléphone est obligatoire pour cette réservation.
-book-phone-invalid-title = Numéro de téléphone invalide
-book-phone-invalid = Veuillez saisir un numéro joignable par SMS, ou laisser le champ vide.
-book-phone-country-search = Rechercher
-book-phone-country-label = Choisir le pays
-book-phone-country-none = Aucun pays sélectionné
-book-phone-country-no-results = Aucun pays ne correspond à cette recherche
-
-sms-confirmed = Réservation confirmée : { $event }, le { $date } à { $time } ({ $tz }).
-sms-cancelled = Réservation annulée : { $event }, le { $date } à { $time } ({ $tz }).
-sms-rescheduled = Réservation déplacée : { $event } aura lieu le { $date } à { $time } ({ $tz }).
-sms-reminder = Rappel : { $event } commence le { $date } à { $time } ({ $tz }).
-
-email-confirm-cancel-notice = Note : l'annulation exige un préavis d'au moins { $minutes } minutes.
-email-confirm-reschedule-notice = Note : la reprogrammation exige un préavis d'au moins { $minutes } minutes.
-
-event-type-form-cancel-notice-label = Préavis minimum pour annuler
-event-type-form-reschedule-notice-label = Préavis minimum pour reprogrammer
-event-type-form-notice-help = Laissez vide pour ne pas imposer de restriction.
-event-type-form-resources-label = Ressources requises
-event-type-form-resources-hint = Les créneaux ne sont proposés que si les ressources sélectionnées sont disponibles, selon le mode ci-dessous.
-event-type-form-resources-mode-all = Toutes les ressources sélectionnées doivent être libres
-event-type-form-resources-mode-round-robin = Une seule ressource libre suffit (elle est attribuée à la réservation)
-event-type-form-notice-unit-minutes = minutes
-event-type-form-notice-unit-hours = heures
-event-type-form-notice-unit-days = jours
-event-type-form-booking-horizon-label = Horizon de réservation
-event-type-form-booking-horizon-help = Nombre de jours à l'avance pendant lesquels les invités peuvent réserver. Laissez vide pour aucune limite, 0 pour aujourd'hui seulement.
-
-confirmed-cancel-notice-info = L'annulation exige un préavis d'au moins { $minutes } minutes avant la réunion.
-confirmed-reschedule-notice-info = La reprogrammation exige un préavis d'au moins { $minutes } minutes avant la réunion.
-
-booking-blocked-title-cancel = Cette réservation ne peut plus être annulée en ligne
-booking-blocked-title-reschedule = Cette réservation ne peut plus être reprogrammée en ligne
-booking-blocked-body = L'hôte exige un préavis d'au moins { $minutes } minutes. Si vous ne pouvez pas être présent, écrivez directement à <a href="mailto:{ $host_email }">{ $host_email }</a>.
-
-dashboard-event-types-copy = Copier
-dashboard-event-types-copied = Copié !
-dashboard-event-types-copy-title = Copier le lien de réservation
-dashboard-event-types-copy-failed = Échec de la copie
-
 # Host-side form validation errors (src/web/mod.rs)
 
 form-error-team-name-slug-required = Le nom et l'identifiant sont obligatoires.
@@ -1219,3 +1238,22 @@ error-oauth-not-configured = OAuth2 Google n'est pas configuré.
 error-no-scheduling-account = Aucun profil de planification trouvé.
 error-private-event-type-not-found = Type d'événement privé introuvable.
 error-access-denied = Accès refusé.
+
+# Guest booking-flow errors (src/web/mod.rs)
+
+error-slot-unavailable = Ce créneau n'est plus disponible.
+error-slot-too-soon = Ce créneau n'est plus disponible (trop proche).
+error-slot-beyond-horizon = Ce créneau dépasse la période de réservation.
+error-invite-required = Ce type d'événement nécessite un lien d'invitation.
+error-invite-invalid = Lien d'invitation invalide.
+error-invite-expired = Ce lien d'invitation a expiré.
+error-invite-used = Ce lien d'invitation a déjà été utilisé.
+error-invalid-date = Date invalide.
+error-invalid-time = Heure invalide.
+error-invalid-date-format = Format de date invalide.
+error-invalid-time-format = Format d'heure invalide.
+error-too-many-bookings = Trop de tentatives de réservation. Veuillez réessayer dans quelques minutes.
+error-too-many-requests = Trop de requêtes. Veuillez réessayer plus tard.
+error-no-members-available = Aucun membre de l'équipe n'est disponible pour ce créneau.
+error-dynamic-group-public-only = Les liens de groupe dynamiques ne sont disponibles que pour les types d'événement publics.
+error-user-not-found = Utilisateur introuvable.
