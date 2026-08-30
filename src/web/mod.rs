@@ -9716,14 +9716,14 @@ async fn show_group_slots(
     };
 
     if !can_view {
-        let msg = if visibility == "private" || visibility == "internal" {
-            "This event type requires an invite link."
+        let key = if visibility == "private" || visibility == "internal" {
+            "error-invite-required"
         } else {
             // Public event on private team without team invite — preserve legacy
             // "Event type not found" response so we don't leak existence.
-            "Event type not found."
+            "error-event-type-not-found"
         };
-        return Html(msg.to_string()).into_response();
+        return Html(crate::i18n::translate(lang, key, None)).into_response();
     }
 
     // can_book: only with a valid booking invite for private/internal events.
