@@ -1,26 +1,33 @@
-# Cal.rs upstream review
+# Cal.rs upstream review and production baseline
 
 ## Aug 30, 2026
 
-Production was updated to `1.17.0-cascade.1`, built from Cascade fork revision
-`8973a0faf142e8281dc4bb1d1a88368953dc3c39` and pinned to immutable Artifact
+Production runs `1.17.1-cascade.1`, built from exact Cascade fork revision
+`d7f9e1a9f4a213825341b199613972ea92d9fd38` and pinned to immutable Artifact
 Registry digest
-`sha256:f8065fb52361f12e3e4689f0b7167eb5a4d768529bdbbc40d3e4b6dbbc122da9`.
-Cloud Build `3bcc1fff-8cb2-4e44-8bd1-daf91d970572` succeeded, and its archived
-source matched all 285 files in the reviewed checkout.
+`sha256:b26907b66609f11bb0ceeb1dafd4a244f191d40b030037b4b7835af70ab5ab19`.
+Cloud Build `207b20c1-76ff-4c45-acdb-6abb8f18f2ca` succeeded, and its source
+archive matched all 285 files in the reviewed checkout. The fork later advanced
+to `1ed7169` for upstream translation-documentation corrections only; that
+revision is not the built production source.
 
-The deployed fork is based on the latest stable upstream release, `1.17.0` at
-`da4a44e1027257be9b797aead7d7fbdbc2e9ab48`. Cascade's old
-`062_microsoft_graph` migration was renumbered to `064_microsoft_graph`; the
-migrator adopts the legacy production record instead of replaying its schema.
-The upgrade was rehearsed against a fresh production backup, and the full Rust
-suite, lint/format checks, 68 desktop/mobile light/dark screenshots, live
-Sunday-first rendering, Cascade palettes/branding, service health, and Teams
-meeting creation/cleanup all passed.
+Upstream 1.17.1 was released during the work. It localizes booking error pages
+and fixes five unstyled guest errors without database migrations or
+configuration changes. The post-tag upstream change at review watermark
+`0f0a0d3159928319747b8a5553bdd757124b4181` only removes stale Weblate
+documentation and was ported to the fork.
 
-Upstream issue #121 and PR #143 were fixed in 1.16. Issues #161, #162, and #194
-remain open, and PR #182 remains open. Preparation approval
-`162ef0b45c554b8e9e1d6148391ce830` and exact-artifact production approval
-`eeec3bbff05141f7bb3d7b95582ba71d` were approved before deployment. The
-pre-deploy backup is
-`gs://cascade-calendar-backups-cascade-calendar-prod/cascade-calendar-20260830T132211Z.tar.gz`.
+The final suite reported 943 passed and 1 ignored; lint and format checks
+passed; and all 68 visual captures passed. Live verification covered French
+error localization, exact Cascade light/dark palettes, Sunday-first month/week
+views, forced 12-hour display, OIDC and Google route reachability, service
+health, migration metadata, and Teams meeting create/delete. The legacy
+`062_microsoft_graph` adoption as `064_microsoft_graph` remains verified by the
+production-backup rehearsal.
+
+Exact 1.17.1 production approval `3833b88e239d4813822068618df1bedc` was
+approved. The prior 1.17.0 approvals remain audit history, not the current
+production baseline. The latest pre-deploy backup is
+`gs://cascade-calendar-backups-cascade-calendar-prod/cascade-calendar-20260830T134757Z.tar.gz`.
+Issue #121 and PR #143 are fixed. Issues #161, #162, and #194 and PR #182
+remain open.
