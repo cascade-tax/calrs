@@ -193,7 +193,7 @@ base-loader-checking = Vabade aegade kontrollimine
 base-loader-please-wait = Palun oota, laadime värskeimaid kalendriandmeid...
 base-stop-impersonating = Lõpeta teise kasutajana toimetamine
 base-theme-toggle = Vaheta teemat
-base-powered-by = Tööl hoiab
+base-powered-by = Töötab platvormil
 
 # Profile (templates/profile.html)
 
