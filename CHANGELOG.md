@@ -163,6 +163,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 | Localized dashboard | 1.17.0 | The host side — dashboard, settings, every form, admin panel, sign-in — renders through Fluent, so an operator can run calrs in their own language |
 | Eight complete locales | 1.17.0 | English, French, German, Spanish, Italian, Polish, Brazilian Portuguese and Estonian at 100%, held there by a test |
 
+## [1.17.1] - 2026-08-30
+
+Patch release. 1.17.0 said the booking flow's bare error responses were localized. Most were; the page they actually render was not. A guest who mistyped an email address, followed an expired cancellation link, or opened an already-approved booking got English regardless of the language they had been booking in. This finishes that, and fixes five paths that answered with no page at all. No migrations, no configuration change.
+
+### Fixed
+
+- **The booking error page spoke English to every guest** - Two mechanisms fed it: twenty-one call sites passing an English sentence, and eight handlers rendering the template inline with their own hard-coded pair. Both are gone; every one now names a message id resolved against the guest's `Accept-Language`. The same applies to the form validators, which returned a sentence and now return an id. Forty-three keys, translated across all eight locales, which stand at 1043.
+- **Five booking paths answered a date too far out with an unstyled fragment** - The date check returned its message as a bare `Html`, so instead of the error page a guest got a wall of unformatted text with no header, no theme and no way back. They render the real page now, in the guest's language.
+- **A dynamic-group booking announced a member conflict in English** - `/u/alice+bob/intro` reported "This slot is no longer available (alice has a conflict)" as a raw string. Its own neighbours in the same handler had been translating the equivalent message since 1.17.0; this one had been missed. It also covers the guest-count cap, which now carries a plural selector, so Polish reads correctly at two and at five where a single form cannot.
+
+### Internal
+
+- Three guard tests, each mutation-checked, and two of them only because the check found them broken first. The plural test passed with a locale's selector deliberately flattened, because comparing the two renderings is satisfied by the interpolated numeral alone; normalising the digit away catches it. The key guard could not see ids that reach Fluent through a variable rather than inline, which is exactly the shape this release introduces, so a typo would have rendered the raw id to a guest with nothing failing. The third asserts no call site hands the error page a bare English sentence.
+- One definition of how calrs renders an integer. Rust call sites built their own arguments with the library default, which groups thousands; the template path had always switched grouping off. Both go through `i18n::number()` now, on values too small for the difference to have shown.
+- An end-to-end test posts a booking with a bad email under `Accept-Language: fr` and asserts the French is on the page, the English is not, and the raw id is not. The static guards cannot see through the three steps between a validator and a rendered page.
+- 913 tests, all green.
+
 ## [1.17.0] - 2026-08-30
 
 Minor release. The headline is that **calrs speaks your language on both sides of the booking link**: the host-facing interface is localized, and all eight shipped locales are complete rather than partial. No migrations, no configuration change, and no visible difference for English users.
