@@ -276,11 +276,35 @@ pub async fn migrate(pool: &SqlitePool) -> Result<()> {
 
     let mut applied_count = 0u32;
     for (name, sql) in migrations {
-        let applied: Option<(String,)> =
+        let mut applied: Option<(String,)> =
             sqlx::query_as("SELECT name FROM _migrations WHERE name = ?")
                 .bind(name)
                 .fetch_optional(pool)
                 .await?;
+
+        // Cascade shipped the Microsoft Graph schema as 062 before upstream
+        // assigned 062 and 063 to SMS and booking horizons. Adopt that legacy
+        // record under its stable post-rebase number instead of replaying the
+        // already-applied ALTER TABLE statements on existing deployments.
+        if *name == "064_microsoft_graph" && applied.is_none() {
+            let legacy: Option<(String,)> =
+                sqlx::query_as("SELECT name FROM _migrations WHERE name = '062_microsoft_graph'")
+                    .fetch_optional(pool)
+                    .await?;
+            if legacy.is_some() {
+                sqlx::query(
+                    "UPDATE _migrations SET name = '064_microsoft_graph' WHERE name = '062_microsoft_graph'",
+                )
+                .execute(pool)
+                .await?;
+                tracing::info!(
+                    migration = %name,
+                    legacy_migration = "062_microsoft_graph",
+                    "database migration record renumbered"
+                );
+                applied = Some(((*name).to_string(),));
+            }
+        }
 
         if applied.is_none() {
             sqlx::raw_sql(sql).execute(pool).await?;
@@ -917,6 +941,42 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(count.0, 64, "Still 64 migrations after second run");
+    }
+
+    #[tokio::test]
+    async fn migrate_adopts_legacy_microsoft_graph_record() {
+        let pool = memory_pool().await;
+        migrate(&pool).await.unwrap();
+
+        sqlx::query(
+            "UPDATE _migrations SET name = '062_microsoft_graph' WHERE name = '064_microsoft_graph'",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        migrate(&pool).await.unwrap();
+
+        let legacy: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM _migrations WHERE name = '062_microsoft_graph'",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        let current: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM _migrations WHERE name = '064_microsoft_graph'",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM _migrations")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+
+        assert_eq!(legacy, 0, "the legacy migration record must be retired");
+        assert_eq!(current, 1, "the renumbered migration must be tracked");
+        assert_eq!(count, 64, "renumbering must not add a duplicate record");
     }
 
     #[tokio::test]
