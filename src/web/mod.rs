@@ -889,7 +889,7 @@ fn format_time_from_dt(dt_str: &str) -> String {
 
 /// Format either a stored datetime or an `HH:MM` value for display.
 /// Machine-facing calendar and form values remain 24-hour strings.
-fn format_time_12h(value: &str) -> String {
+pub(crate) fn format_time_12h(value: &str) -> String {
     if let Some(ndt) = parse_booking_datetime(value) {
         return ndt.time().format("%-I:%M %p").to_string();
     }
@@ -1330,7 +1330,6 @@ pub async fn create_router(pool: SqlitePool, data_dir: PathBuf, secret_key: [u8;
     let mut env = Environment::new();
     env.set_undefined_behavior(minijinja::UndefinedBehavior::Lenient);
     env.set_loader(minijinja::path_loader("templates"));
-    env.add_filter("time12h", format_time_12h);
     // Cache-busting token on the declared favicon URLs; see `icon_version`.
     env.add_global("icon_v", minijinja::Value::from(icon_version()));
     crate::i18n::register(&mut env);
@@ -9943,7 +9942,6 @@ async fn redirect_team_link_to_team(
     headers: HeaderMap,
     Path(token): Path<String>,
 ) -> impl IntoResponse {
-    let lang = crate::i18n::detect_from_headers(&headers);
     // Look up the team by invite_token (team links were migrated to teams)
     let team: Option<(Option<String>,)> =
         sqlx::query_as("SELECT slug FROM teams WHERE invite_token = ?")
@@ -10966,6 +10964,17 @@ async fn handle_group_booking(
             axum::http::StatusCode::CONFLICT,
             "Slot no longer available",
             "This slot is no longer available (too soon).",
+        )
+        .into_response();
+    }
+
+    if slot_exceeds_booking_horizon(&state.pool, &et_id, host_tz, slot_start).await {
+        return render_error_page(
+            &state,
+            &headers,
+            axum::http::StatusCode::CONFLICT,
+            "Slot no longer available",
+            "This slot is beyond the booking horizon.",
         )
         .into_response();
     }
@@ -12118,6 +12127,17 @@ async fn handle_dynamic_group_booking(
         .into_response();
     }
 
+    if slot_exceeds_booking_horizon(&state.pool, &et_id, host_tz, slot_start).await {
+        return render_error_page(
+            state,
+            headers,
+            axum::http::StatusCode::CONFLICT,
+            "Slot no longer available",
+            "This slot is beyond the booking horizon.",
+        )
+        .into_response();
+    }
+
     let buf_start = slot_start - Duration::minutes(buffer_before as i64);
     let buf_end = slot_end + Duration::minutes(buffer_after as i64);
 
@@ -13184,6 +13204,17 @@ async fn handle_booking_for_user(
             axum::http::StatusCode::CONFLICT,
             "Slot no longer available",
             "This slot is no longer available (too soon).",
+        )
+        .into_response();
+    }
+
+    if slot_exceeds_booking_horizon(&state.pool, &et_id, host_tz, slot_start).await {
+        return render_error_page(
+            &state,
+            &headers,
+            axum::http::StatusCode::CONFLICT,
+            "Slot no longer available",
+            "This slot is beyond the booking horizon.",
         )
         .into_response();
     }
@@ -14712,6 +14743,19 @@ async fn get_booking_horizon(pool: &SqlitePool, et_id: &str) -> Option<i32> {
     .flatten()
 }
 
+async fn slot_exceeds_booking_horizon(
+    pool: &SqlitePool,
+    et_id: &str,
+    host_tz: Tz,
+    slot_start: NaiveDateTime,
+) -> bool {
+    horizon_last_date(
+        Utc::now().with_timezone(&host_tz).naive_local(),
+        get_booking_horizon(pool, et_id).await,
+    )
+    .is_some_and(|last| slot_start.date() > last)
+}
+
 /// The last host-local date a guest may book, for a given horizon.
 /// `None` horizon means unlimited, so no date is ever past it. A horizon that
 /// runs off the end of the representable calendar is unlimited for the same
@@ -15411,7 +15455,7 @@ async fn show_book_form(
     Query(query): Query<BookQuery>,
 ) -> impl IntoResponse {
     let lang = crate::i18n::detect_from_headers(&headers);
-    let et: Option<(String, String, String, Option<String>, i32, i32, String, bool)> = sqlx::query_as(
+    let et: Option<(String, String, String, Option<String>, i32, i32, String, String)> = sqlx::query_as(
         "SELECT id, slug, title, description, duration_min, max_additional_guests, visibility, sms_phone_mode
          FROM event_types WHERE slug = ? AND enabled = 1",
     )
@@ -15970,6 +16014,17 @@ async fn handle_booking(
         .into_response();
     }
 
+    if slot_exceeds_booking_horizon(&state.pool, &et_id, host_tz, slot_start).await {
+        return render_error_page(
+            &state,
+            &headers,
+            axum::http::StatusCode::CONFLICT,
+            "Slot no longer available",
+            "This slot is beyond the booking horizon.",
+        )
+        .into_response();
+    }
+
     // Validate conflicts
     let buf_start = slot_start - Duration::minutes(buffer_before as i64);
     let buf_end = slot_end + Duration::minutes(buffer_after as i64);
@@ -16494,7 +16549,7 @@ async fn troubleshoot(
         vec![(user.id.clone(), user.name.clone())]
     };
 
-    let booking_horizon = get_booking_horizon(&state.pool, &et_id).await;
+    let booking_horizon = get_booking_horizon(&state.pool, et_id).await;
 
     // Always sync every calendar that participates in the result before
     // troubleshooting, just as the public collective slot page does.
@@ -18533,7 +18588,7 @@ async fn admin_update_microsoft_oauth2(
     if let Err(e) = result {
         return internal_error_response("save Microsoft OAuth2 settings", &e);
     }
-    tracing::info!(admin = %_admin.0.email, "admin: Microsoft OAuth2 config updated");
+    tracing::info!(admin = %_admin.user.email, "admin: Microsoft OAuth2 config updated");
     Redirect::to("/dashboard/admin").into_response()
 }
 
@@ -22009,7 +22064,7 @@ async fn guest_reschedule_booking(
         &uid,
     )
     .await;
-    if has_conflict(&busy, slot_start, slot_end) {
+    if !busy_source_is_free(&busy, slot_start, slot_end) {
         return render_error_page(
             &state,
             &headers,
@@ -28128,11 +28183,11 @@ mod tests {
     #[test]
     fn month_grid_uses_sunday_as_first_day() {
         // August 1, 2026 is a Saturday: its Sunday-first grid offset is 6.
-        let params = build_month_params(2026, 8, chrono_tz::UTC, chrono_tz::UTC, "en");
+        let params = build_month_params(2026, 8, chrono_tz::UTC, chrono_tz::UTC, "en", None);
         assert_eq!(params.5, 6);
 
         // November 1, 2026 is a Sunday and therefore starts at column 0.
-        let params = build_month_params(2026, 11, chrono_tz::UTC, chrono_tz::UTC, "en");
+        let params = build_month_params(2026, 11, chrono_tz::UTC, chrono_tz::UTC, "en", None);
         assert_eq!(params.5, 0);
     }
 
@@ -34159,7 +34214,7 @@ mod tests {
             ))
             .await
             .unwrap();
-        assert_eq!(response.status(), 200);
+        assert_eq!(response.status(), axum::http::StatusCode::CONFLICT);
         assert!(
             body_string(response).await.contains("no longer available"),
             "10:00 is taken on the assigned member's calendar"
@@ -36529,7 +36584,7 @@ mod tests {
             ))
             .await
             .unwrap();
-        assert_eq!(response.status(), 200);
+        assert_eq!(response.status(), axum::http::StatusCode::CONFLICT);
         assert_eq!(
             booking_count(&pool, &et_id).await,
             0,
@@ -36573,7 +36628,7 @@ mod tests {
             ))
             .await
             .unwrap();
-        assert_eq!(response.status(), 200);
+        assert_eq!(response.status(), axum::http::StatusCode::CONFLICT);
         assert_eq!(booking_count(&pool, &et_id).await, 0);
 
         // Control: same route, horizon cleared.
@@ -36625,7 +36680,7 @@ mod tests {
             ))
             .await
             .unwrap();
-        assert_eq!(response.status(), 200);
+        assert_eq!(response.status(), axum::http::StatusCode::CONFLICT);
         assert_eq!(
             booking_count(&pool, &et_id).await,
             0,
@@ -36720,7 +36775,7 @@ mod tests {
             ))
             .await
             .unwrap();
-        assert_eq!(response.status(), 200);
+        assert_eq!(response.status(), axum::http::StatusCode::CONFLICT);
         assert_eq!(
             booking_count(&pool, &team_et_id).await,
             0,

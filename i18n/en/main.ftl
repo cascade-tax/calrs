@@ -626,6 +626,7 @@ team-profile-empty = No event types available yet.
 troubleshoot-page-title = Troubleshoot
 troubleshoot-empty = No event types found. { $link } to start troubleshooting availability.
 troubleshoot-empty-link-label = Create one
+troubleshoot-empty-team-only = No personal or collective event types found. Round-robin team event types are not supported here.
 troubleshoot-subtitle = See why time slots are available or blocked for { $title }
 troubleshoot-duration = { $minutes }min
 troubleshoot-buffer-before = { $minutes }min buffer before

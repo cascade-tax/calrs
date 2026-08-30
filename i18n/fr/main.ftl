@@ -626,6 +626,7 @@ team-profile-empty = Aucun type d'événement disponible pour le moment.
 troubleshoot-page-title = Diagnostic
 troubleshoot-empty = Aucun type d'événement trouvé. { $link } pour commencer à diagnostiquer vos disponibilités.
 troubleshoot-empty-link-label = Créez-en un
+troubleshoot-empty-team-only = Aucun type d'événement personnel ou collectif trouvé. Les types d'événement d'équipe en rotation ne sont pas pris en charge ici.
 troubleshoot-subtitle = Comprenez pourquoi les créneaux sont disponibles ou bloqués pour { $title }
 troubleshoot-duration = { $minutes } min
 troubleshoot-buffer-before = { $minutes } min de marge avant

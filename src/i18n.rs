@@ -200,6 +200,12 @@ pub fn format_long_date(date: NaiveDate, lang: &str) -> String {
 /// Templates pull the active language from the rendering context's `lang` var.
 pub fn register(env: &mut Environment<'static>) {
     env.add_function("t", t_function);
+    env.add_filter("time12h", |value: minijinja::Value| {
+        value
+            .as_str()
+            .map(crate::web::format_time_12h)
+            .unwrap_or_default()
+    });
 }
 
 /// A template argument on its way into Fluent.

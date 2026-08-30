@@ -626,6 +626,7 @@ team-profile-empty = Sündmuse tüüpe pole veel saadaval.
 troubleshoot-page-title = Tõrkeotsing
 troubleshoot-empty = Sündmuse tüüpe ei leitud. { $link }, et alustada saadavuse tõrkeotsingut.
 troubleshoot-empty-link-label = Loo üks
+troubleshoot-empty-team-only = Isiklikke ega kollektiivseid sündmuse tüüpe ei leitud. Ringjaotusega meeskonna sündmuse tüüpe siin ei toetata.
 troubleshoot-subtitle = Vaata, miks sündmuse { $title } ajad on vabad või blokeeritud
 troubleshoot-duration = { $minutes } min
 troubleshoot-buffer-before = { $minutes } min puhvrit enne

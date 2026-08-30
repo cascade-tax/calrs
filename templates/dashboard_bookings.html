@@ -33,7 +33,7 @@
   <div class="booking-row">
     <div class="booking-info">
       <div class="bk-title"><span><strong>{{ b.event_title }}</strong> with {{ b.guest_name }}</span> <span class="badge badge-pending">pending</span></div>
-      <div class="bk-meta">{{ b.start_at }} &middot; {{ b.guest_email }}</div>
+      <div class="bk-meta">{{ b.start_at }} &middot; {{ b.guest_email }}{% if b.guest_phone %} &middot; {{ b.guest_phone }}{% endif %}</div>
       {% if b.start_at_guest %}<div class="bk-sub">Guest booked: {{ b.start_at_guest }}</div>{% endif %}
       {% if b.resource_name %}<div class="bk-sub">Resource: {{ b.resource_name }}</div>{% endif %}
     </div>
@@ -84,7 +84,7 @@
             <span class="badge badge-warning">awaiting reschedule</span>
           {% endif %}
         </div>
-        <div class="bk-meta">{{ b.start_at }} &middot; {{ b.guest_email }}</div>
+        <div class="bk-meta">{{ b.start_at }} &middot; {{ b.guest_email }}{% if b.guest_phone %} &middot; {{ b.guest_phone }}{% endif %}</div>
         {% if b.start_at_guest %}<div class="bk-sub">Guest booked: {{ b.start_at_guest }}</div>{% endif %}
         {% if b.resource_name %}<div class="bk-sub">Resource: {{ b.resource_name }}</div>{% endif %}
       </div>

@@ -741,6 +741,19 @@
 
     {% if can_enable_sms is defined and can_enable_sms %}
     <div class="form-group" style="margin-top: 0.75rem;">
+      <label for="sms_phone_mode">{{ t("etf-sms") }}</label>
+      <select id="sms_phone_mode" name="sms_phone_mode">
+        <option value="off" {% if form_sms_phone_mode == "off" %}selected{% endif %}>{{ t("etf-sms-off") }}</option>
+        <option value="optional" {% if form_sms_phone_mode == "optional" %}selected{% endif %}>{{ t("etf-sms-optional") }}</option>
+        <option value="required" {% if form_sms_phone_mode == "required" %}selected{% endif %}>{{ t("etf-sms-required") }}</option>
+      </select>
+      <span class="field-hint">
+        {{ t("etf-sms-help", link='<a href="/dashboard/admin">' ~ (t("etf-admin-panel-link") | escape) ~ '</a>') | safe }}
+      </span>
+    </div>
+    {% endif %}
+
+    <div class="form-group" style="margin-top: 0.75rem;">
       <label for="max_additional_guests">Additional guests</label>
       <select id="max_additional_guests" name="max_additional_guests">
         <option value="0" {% if form_max_additional_guests == 0 %}selected{% endif %}>Guests cannot add others</option>

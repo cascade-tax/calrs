@@ -626,6 +626,7 @@ team-profile-empty = Ainda não há tipos de evento disponíveis.
 troubleshoot-page-title = Diagnóstico
 troubleshoot-empty = Nenhum tipo de evento encontrado. { $link } para começar a diagnosticar a disponibilidade.
 troubleshoot-empty-link-label = Crie um
+troubleshoot-empty-team-only = Nenhum tipo de evento pessoal ou coletivo encontrado. Tipos de evento de equipe em rodízio não são compatíveis aqui.
 troubleshoot-subtitle = Veja por que os horários de { $title } estão disponíveis ou bloqueados
 troubleshoot-duration = { $minutes } min
 troubleshoot-buffer-before = { $minutes } min de intervalo antes

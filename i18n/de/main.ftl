@@ -626,6 +626,7 @@ team-profile-empty = Noch keine Terminarten verfügbar.
 troubleshoot-page-title = Diagnose
 troubleshoot-empty = Keine Terminarten gefunden. { $link }, um mit der Verfügbarkeitsdiagnose zu beginnen.
 troubleshoot-empty-link-label = Lege eine an
+troubleshoot-empty-team-only = Keine persönlichen oder kollektiven Terminarten gefunden. Round-Robin-Team-Terminarten werden hier nicht unterstützt.
 troubleshoot-subtitle = Sieh nach, warum Zeitfenster für { $title } verfügbar oder blockiert sind
 troubleshoot-duration = { $minutes } Min.
 troubleshoot-buffer-before = { $minutes } Min. Puffer davor

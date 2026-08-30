@@ -525,7 +525,7 @@
 <div class="card card-danger">
   <h2><svg class="ic" aria-hidden="true"><use href="#i-alert"/></svg> Danger zone</h2>
   <p>Permanently delete this team. Event types will be unlinked, not deleted. This cannot be undone.</p>
-  <button type="button" class="btn btn-danger" data-confirm="Delete team '{{ team_name }}'? This cannot be undone." onclick="if(confirm(this.dataset.confirm)) this.nextElementSibling.submit();">
+  <button type="button" class="btn btn-danger" data-confirm="{{ t('team-settings-delete-confirm', name=team_name) }}" onclick="if(confirm(this.dataset.confirm)) this.nextElementSibling.submit();">
     <svg class="ic" aria-hidden="true"><use href="#i-trash"/></svg> Delete this team
   </button>
   <form method="post" action="/dashboard/teams/{{ team_id }}/delete" style="display: none"></form>

@@ -937,8 +937,9 @@
     <div class="form-group">
       <label for="smtp_tls_mode">TLS mode</label>
       <select id="smtp_tls_mode" name="tls_mode">
-        <option value="starttls" {% if smtp_tls_mode != "tls" %}selected{% endif %}>STARTTLS (port 587)</option>
+        <option value="starttls" {% if smtp_tls_mode == "starttls" %}selected{% endif %}>STARTTLS (port 587)</option>
         <option value="tls" {% if smtp_tls_mode == "tls" %}selected{% endif %}>Implicit TLS (port 465)</option>
+        <option value="none" {% if smtp_tls_mode == "none" %}selected{% endif %}>None, unencrypted (local MTA only)</option>
       </select>
     </div>
     <div class="form-grid-2">
@@ -1336,6 +1337,162 @@ document.querySelectorAll('input[type="color"]').forEach(function(picker) {
   });
 });
 </script>
+
+<!-- SMS gateway settings -->
+<div class="card">
+  <h2>{{ t("admin-sms") }}</h2>
+  <p style="color: var(--text-muted); font-size: 0.85rem; margin-top: -0.5rem; margin-bottom: 1rem;">
+    {{ t("admin-sms-help") }}
+  </p>
+
+  {% if sms_test_result == "sent" %}
+  <p style="color: var(--success); font-size: 0.875rem;">✓ {{ sms_test_detail or t("admin-sms-test-sent") }}</p>
+  {% elif sms_test_result == "checked" %}
+  <p style="color: var(--success); font-size: 0.875rem;">✓ {{ sms_test_detail or t("admin-sms-test-checked") }}</p>
+  {% elif sms_test_result == "error" %}
+  <p style="color: var(--error-text); font-size: 0.875rem;">✗ {{ sms_test_detail or t("admin-sms-test-error") }}</p>
+  {% endif %}
+
+  {% if sms_trial_mode %}
+  <p style="color: var(--error-text); font-size: 0.85rem; border: 1px solid var(--error-text); border-radius: 6px; padding: 0.625rem 0.875rem;">
+    {{ t("admin-sms-trial-warning") | safe }}
+  </p>
+  {% endif %}
+
+  {% if sms_configured and not captcha_configured %}
+  <p style="color: var(--error-text); font-size: 0.85rem; border: 1px solid var(--error-text); border-radius: 6px; padding: 0.625rem 0.875rem;">
+    {{ t("admin-sms-captcha-warning") }}
+  </p>
+  {% endif %}
+
+  {% if sms_configured %}
+  <div style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 1rem;">
+    {{ t("admin-sms-sent-today") }} <strong>{{ sms_sent_today }}</strong>{% if sms_daily_cap > 0 %} {{ t("admin-sms-of-cap", cap=sms_daily_cap) }}{% endif %}{% if sms_cost_currency %} &middot; {{ sms_cost_today }} {{ sms_cost_currency }}{% endif %}
+  </div>
+  {% endif %}
+
+  {% if sms_error %}
+  <p style="color: var(--error-text); font-size: 0.875rem;">{{ t("admin-sms-config-error") }} {{ sms_error }}</p>
+  <p style="color: var(--text-muted); font-size: 0.8rem; margin-top: 0.75rem;">{{ t("admin-sms-env-error-help") | safe }}</p>
+
+  {% elif sms_from_env %}
+  <div style="border: 1px solid var(--border); border-radius: 6px; padding: 0.75rem 1rem; margin-bottom: 1rem; font-size: 0.85rem; color: var(--text-secondary);">
+    {{ t("admin-sms-env-managed") | safe }}
+  </div>
+  <div style="font-size: 0.875rem; color: var(--text-secondary); line-height: 1.8;">
+    <div>{{ t("admin-status") }} <strong style="color: var(--success);">{{ t("admin-status-configured") }}</strong> <span style="color: var(--text-muted);">{{ t("admin-via-environment") }}</span></div>
+    <div>{{ t("admin-sms-gateway") }} <span style="color: var(--text-muted);">{{ sms_provider }}</span></div>
+    {% if sms_api_key %}<div>{{ t("admin-sms-account") }} <span style="color: var(--text-muted);">{{ sms_api_key }}</span></div>{% endif %}
+    <div>{{ t("admin-sms-sender") }} <span style="color: var(--text-muted);">{{ sms_sender }}</span></div>
+  </div>
+  <form method="post" action="/dashboard/admin/sms/test" style="margin-top: 1rem;">
+    <div class="form-group">
+      <label>{{ t("admin-send-test-sms") }} <span class="hint">{% if sms_supports_check %}{{ t("admin-send-test-sms-hint-check") }}{% else %}{{ t("admin-send-test-sms-hint-e164") }}{% endif %}</span></label>
+      <input type="text" name="to" value="" placeholder="+15551234567">
+    </div>
+    <button type="submit" class="slot-btn" style="cursor: pointer; font-weight: 600;">{{ t("admin-test-gateway") }}</button>
+  </form>
+
+  {% else %}
+  <div style="margin-bottom: 1rem; font-size: 0.875rem; color: var(--text-secondary);">
+    {{ t("admin-status") }} {% if sms_configured %}<strong style="color: var(--success);">{{ t("admin-status-configured") }}</strong>{% if not sms_enabled %} <span style="color: var(--error-text);">{{ t("admin-status-disabled-paren") }}</span>{% endif %}{% else %}<span style="color: var(--text-muted);">{{ t("admin-status-not-configured") }}</span>{% endif %}
+  </div>
+  <form method="post" action="/dashboard/admin/sms">
+    <div style="margin-bottom: 1rem;">
+      <label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.925rem; cursor: pointer;">
+        <input type="checkbox" name="enabled" value="on" {% if sms_enabled or not sms_configured %}checked{% endif %} style="width: 1rem; height: 1rem;">
+        {{ t("admin-sms-enabled") }}
+      </label>
+    </div>
+    <div class="form-group">
+      <label>{{ t("admin-sms-gateway-label") }}</label>
+      <select name="provider" id="sms-provider" style="width: 100%;">
+        {% for p in sms_providers %}
+        <option value="{{ p.kind }}" {% if sms_provider == p.kind %}selected{% endif %}>{{ p.label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    {# One block per gateway, all rendered from the provider registry and
+       toggled client-side. The labels differ per gateway ("Account SID" vs
+       "API token"), so adding a gateway in src/sms/factory.rs is enough. #}
+    {% for p in sms_providers %}
+    <div class="sms-provider-fields" data-provider="{{ p.kind }}" style="display: {% if sms_provider == p.kind %}block{% else %}none{% endif %};">
+      {% if p.api_key_label %}
+      <div class="form-group">
+        <label>{{ p.api_key_label }}</label>
+        <input type="text" name="api_key" value="{% if sms_provider == p.kind %}{{ sms_api_key }}{% endif %}"{% if sms_provider != p.kind %} disabled{% endif %}>
+      </div>
+      {% endif %}
+      <div class="form-group">
+        <label>{{ p.api_secret_label }} <span class="hint">{{ t("admin-keep-current-hint") }}</span></label>
+        <input type="password" name="api_secret" value="" placeholder="{% if sms_provider == p.kind %}{{ t('admin-keep-unchanged') }}{% else %}{{ t('admin-required-on-switch') }}{% endif %}"{% if sms_provider != p.kind %} disabled{% endif %}>
+      </div>
+      <div class="form-group">
+        <label>{{ p.sender_label }} <span class="hint">{{ p.sender_hint }}</span></label>
+        <input type="text" name="sender" value="{% if sms_provider == p.kind %}{{ sms_sender }}{% endif %}"{% if sms_provider != p.kind %} disabled{% endif %}>
+      </div>
+      {% if p.base_url_label %}
+      <div class="form-group">
+        <label>{{ p.base_url_label }} <span class="hint">{{ p.base_url_hint }}</span></label>
+        <input type="text" name="base_url" value="{% if sms_provider == p.kind %}{{ sms_base_url }}{% endif %}"{% if sms_provider != p.kind %} disabled{% endif %}>
+      </div>
+      {% endif %}
+      {% if p.docs_url %}
+      <p style="color: var(--text-muted); font-size: 0.8rem; margin-top: -0.25rem;"><a href="{{ p.docs_url }}" target="_blank" rel="noopener noreferrer">{{ t("admin-sms-docs", provider=p.label) }}</a></p>
+      {% endif %}
+    </div>
+    {% endfor %}
+
+    <div style="margin-top: 1rem;">
+      <label>{{ t("admin-sms-country") }} <span class="hint">{{ t("admin-sms-country-hint") }}</span></label>
+      <select name="default_country_code" style="width: 100%;">
+        {% for country in sms_country_codes %}
+        <option value="{{ country.code }}" {% if sms_default_country == country.code %}selected{% endif %}>{{ country.label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="form-group" style="margin-top: 1rem;">
+      <label>{{ t("admin-sms-daily-cap") }} <span class="hint">{{ t("admin-sms-daily-cap-hint") }}</span></label>
+      <input type="number" name="daily_cap" min="0" step="1" value="{{ sms_daily_cap }}">
+      <span class="hint" style="font-size: 0.8rem; color: var(--text-muted); display: block; margin-top: 0.25rem;">{{ t("admin-sms-daily-cap-help") }}</span>
+    </div>
+    <button type="submit" class="slot-btn" style="cursor: pointer; font-weight: 600; color: var(--accent); border-color: var(--accent);">{{ t("admin-save-sms") }}</button>
+  </form>
+
+  {% if sms_configured %}
+  <form method="post" action="/dashboard/admin/sms/test" style="margin-top: 1.25rem;">
+    <div class="form-group">
+      <label>{{ t("admin-send-test-sms") }} <span class="hint">{% if sms_supports_check %}{{ t("admin-send-test-sms-hint-check") }}{% else %}{{ t("admin-send-test-sms-hint-e164") }}{% endif %}</span></label>
+      <input type="text" name="to" value="" placeholder="+15551234567">
+    </div>
+    <button type="submit" class="slot-btn" style="cursor: pointer; font-weight: 600;">{{ t("admin-test-gateway") }}</button>
+  </form>
+  <form method="post" action="/dashboard/admin/sms/clear" style="margin-top: 1rem;" data-confirm="{{ t('admin-sms-clear-confirm') }}" onsubmit="return confirm(this.dataset.confirm);">
+    <button type="submit" class="slot-btn" style="cursor: pointer; color: var(--error-text); border-color: var(--error-text);">{{ t("admin-clear-db-config") }}</button>
+  </form>
+  {% endif %}
+
+  <p style="color: var(--text-muted); font-size: 0.8rem; margin-top: 1rem;">{{ t("admin-sms-env-help") | safe }}</p>
+  {% endif %}
+
+  {# Instance policy, not gateway config, so it stays editable even when the
+     environment block governs the gateway. #}
+  <form method="post" action="/dashboard/admin/sms/policy" style="margin-top: 1.25rem; padding-top: 1.25rem; border-top: 1px solid var(--border);">
+    <label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.925rem; cursor: pointer;">
+      <input type="checkbox" name="allow_all_users" value="on" {% if sms_allow_all_users %}checked{% endif %} style="width: 1rem; height: 1rem;">
+      {{ t("admin-sms-allow-all") }}
+    </label>
+    <span class="hint" style="font-size: 0.8rem; color: var(--text-muted); display: block; margin: 0.375rem 0 0.75rem;">{{ t("admin-sms-allow-all-help") }}</span>
+    <button type="submit" class="slot-btn" style="cursor: pointer; font-weight: 600;">{{ t("admin-save-policy") }}</button>
+  </form>
+
+  <p style="color: var(--text-muted); font-size: 0.8rem; margin-top: 1.25rem;">
+    {{ t("admin-sms-going-live") | safe }}
+  </p>
+</div>
+
+
 
 <script>
 (function() {

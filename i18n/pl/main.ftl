@@ -630,6 +630,7 @@ team-profile-empty = Nie ma jeszcze dostępnych typów wydarzeń.
 troubleshoot-page-title = Diagnostyka
 troubleshoot-empty = Nie znaleziono typów wydarzeń. { $link }, aby zacząć diagnozować dostępność.
 troubleshoot-empty-link-label = Utwórz jakiś
+troubleshoot-empty-team-only = Nie znaleziono osobistych ani zbiorowych typów wydarzeń. Zespołowe typy wydarzeń round-robin nie są tutaj obsługiwane.
 troubleshoot-subtitle = Sprawdź, dlaczego terminy dla { $title } są dostępne albo zablokowane
 troubleshoot-duration = { $minutes } min
 troubleshoot-buffer-before = { $minutes } min buforu przed

@@ -65,7 +65,7 @@
             <button type="submit" class="btn btn-sm btn-ghost">Test</button>
           </form>
           {% if s.auth_type != "oauth2" %}<a href="/dashboard/sources/{{ s.id }}/edit" class="btn btn-sm btn-ghost">Edit</a>{% endif %}
-          <button type="button" class="btn btn-sm btn-danger" data-confirm="Remove source '{{ s.name }}'? This will delete all synced events from this source." onclick="if(confirm(this.dataset.confirm)) this.closest('div').querySelector('.remove-form').submit();">Remove</button>
+          <button type="button" class="btn btn-sm btn-danger" data-confirm="{{ t('sources-remove-confirm', name=s.name) }}" onclick="if(confirm(this.dataset.confirm)) this.closest('div').querySelector('.remove-form').submit();">{{ t("sources-remove") }}</button>
           <form method="post" action="/dashboard/sources/{{ s.id }}/remove" class="remove-form" style="display: none;"></form>
         </div>
       </div>
