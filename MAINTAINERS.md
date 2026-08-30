@@ -48,25 +48,31 @@ When adding a migration, create `migrations/NNN_description.sql` and register it
 in the migration array inside `src/db.rs::migrate()`. Verify both paths together;
 an unregistered migration does not run on existing deployments.
 
-### Localization and Weblate
+### Localization
 
-The `i18n` branch is permanent. Hosted Weblate pushes translations there; merge
-`i18n` into the release branch periodically, and do not delete or recreate the
-branch. Do not merge the release branch back into `i18n` merely to synchronize
-it.
+The `i18n` branch is permanent. Translation contributions arrive as pull
+requests against it; merge `i18n` into the release branch periodically, and do
+not delete or recreate the branch. Do not merge the release branch back into
+`i18n` merely to synchronize it. There is no translation platform: the Hosted
+Weblate project was never approved and its closed-project links must not be
+reintroduced.
 
 For new or changed translatable text:
 
 1. Branch from `i18n` and add the English source key to
-   `i18n/en/main.ftl`; missing locale keys fall back to English.
+   `i18n/en/main.ftl`, then add the key to every shipped locale. Runtime
+   fallback exists, but the coverage test requires every shipped locale to be
+   complete.
 2. Use the existing Minijinja `t()` helper in localized templates and provide
    the appropriate guest or authenticated language context.
-3. Push to `i18n` so Weblate can translate the key before the next release
-   merge.
+3. Run `cargo test i18n::` and open the pull request against `i18n`.
 
-For a new locale, create `i18n/{code}/main.ftl`, register it in
-`SUPPORTED_LANGS`, add its label to `supported_with_labels()`, and push it to
-`i18n` for Weblate discovery.
+For a new locale, first create and completely translate
+`i18n/{code}/main.ftl`; then register its code, native-language label, and
+`include_str!` entry in `SUPPORTED_LANGS`. Add the locale's CLDR plural
+categories to the `plural_messages_carry_the_locale_categories` test before
+running `cargo test i18n::`. Registering an empty locale fails the completeness
+guard immediately.
 
 ### Publishing the documentation site
 
