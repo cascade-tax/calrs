@@ -35,7 +35,7 @@ builder layers across Cloud Build workers. Build release images with:
 gcloud builds submit . \
   --project cascade-calendar-prod \
   --config cloudbuild.yaml \
-  --substitutions _TAG=1.17.0-cascade.N
+  --substitutions _TAG=1.17.1-cascade.N
 ```
 
 The `build-cache` tag is build infrastructure, not a deployable release. Pin
