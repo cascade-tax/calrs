@@ -224,16 +224,24 @@ impl Arg {
 
     fn to_fluent(&self) -> FluentValue<'_> {
         match self {
-            Arg::Num(n) => FluentValue::Number(FluentNumber::new(
-                *n,
-                FluentNumberOptions {
-                    use_grouping: false,
-                    ..Default::default()
-                },
-            )),
+            Arg::Num(n) => number(*n),
             Arg::Text(s) => FluentValue::from(s.as_str()),
         }
     }
+}
+
+/// A number for a Fluent argument, formatted the way `t()` formats one coming
+/// from a template. Rust call sites building their own `FluentArgs` go through
+/// here so the two paths cannot drift: `FluentValue::from(n)` would group
+/// thousands, and a plural selector needs a real number rather than a string.
+pub fn number<'a>(n: f64) -> FluentValue<'a> {
+    FluentValue::Number(FluentNumber::new(
+        n,
+        FluentNumberOptions {
+            use_grouping: false,
+            ..Default::default()
+        },
+    ))
 }
 
 fn t_function(state: &State, key: &str, kwargs: Kwargs) -> String {

@@ -14680,7 +14680,7 @@ fn parse_additional_guests(
         .collect();
     if emails.len() > max as usize {
         let mut args = fluent_bundle::FluentArgs::new();
-        args.set("max", fluent_bundle::FluentValue::from(max as f64));
+        args.set("max", crate::i18n::number(max as f64));
         return Err(crate::i18n::translate(lang, "guests-too-many", Some(&args)));
     }
     let primary = primary_email.trim().to_lowercase();
@@ -26402,6 +26402,58 @@ mod tests {
     fn validate_booking_input_none_notes() {
         let result = validate_booking_input("Jane", "jane@example.com", &None);
         assert!(result.is_ok());
+    }
+
+    /// The guest cap is the only Rust-side message with a plural selector, and
+    /// a wrong category is invisible: Fluent falls through to `other`, the page
+    /// still renders, and only a reader of that language notices. Polish is the
+    /// case that motivated it, selecting one/few/many where English has two
+    /// forms.
+    #[test]
+    fn the_guest_cap_message_pluralises_per_locale() {
+        let guests = Some(
+            "a@example.com,b@example.com,c@example.com,d@example.com,e@example.com,f@example.com"
+                .to_string(),
+        );
+        let cap = |max: i32, lang: &str| {
+            parse_additional_guests(&guests, max, "guest@example.com", lang)
+                .expect_err("six guests must overflow every cap this test uses")
+        };
+
+        for (lang, _label) in crate::i18n::supported_with_labels() {
+            let one = cap(1, lang);
+            let two = cap(2, lang);
+            for (n, msg) in [(1, &one), (2, &two)] {
+                assert!(
+                    !msg.contains('{') && !msg.contains("guests-too-many"),
+                    "{lang} left the message unresolved at max={n}: {msg}"
+                );
+            }
+            // Comparing the two renderings directly would pass on a message
+            // with no selector at all, since the interpolated numeral alone
+            // makes them differ. Normalise the digit away: what must differ is
+            // the wording around it.
+            assert_ne!(
+                one,
+                two.replace('2', "1"),
+                "{lang} says the same thing for one guest and for two apart \
+                 from the numeral, so the plural selector is not selecting"
+            );
+            assert!(
+                two.contains('2'),
+                "{lang} dropped the count from the plural form: {two}"
+            );
+        }
+
+        // Polish selects a third category at 5. Its wording coincides with the
+        // `few` form here (both take the genitive plural after "najwyżej"), so
+        // the property worth pinning is that the variant exists and resolves,
+        // not that it reads differently.
+        let many = cap(5, "pl");
+        assert!(
+            !many.contains('{') && many.contains('5'),
+            "pl `many` variant did not resolve: {many}"
+        );
     }
 
     // --- validate_date_not_too_far tests ---
