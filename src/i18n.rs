@@ -639,20 +639,92 @@ mod tests {
         }
     }
 
-    /// French is a fully-translated locale (issue #195 shipped EN and FR at
-    /// 100%). A key added to English without a French value silently renders
-    /// English inside an otherwise French page, so catch it here rather than
-    /// on a live dashboard.
+    /// Every shipped locale is complete: a key added to English without a
+    /// value in some locale renders English inside an otherwise translated
+    /// page, which is the kind of gap nobody reports and everybody sees.
     #[test]
-    fn french_covers_every_english_key() {
-        let missing: Vec<&str> = message_ids("en")
-            .into_iter()
-            .filter(|id| !message_ids("fr").contains(id))
+    fn every_locale_covers_every_english_key() {
+        let english = message_ids("en");
+        let mut gaps = Vec::new();
+        for (code, _, _) in SUPPORTED_LANGS {
+            if *code == DEFAULT_LANG {
+                continue;
+            }
+            let have = message_ids(code);
+            let missing: Vec<&str> = english
+                .iter()
+                .filter(|id| !have.contains(id))
+                .copied()
+                .collect();
+            if !missing.is_empty() {
+                gaps.push(format!("{code}: {}", missing.join(", ")));
+            }
+        }
+        assert!(
+            gaps.is_empty(),
+            "locales missing English keys:\n{}",
+            gaps.join("\n")
+        );
+    }
+
+    /// Plural messages must carry the categories the locale's own grammar
+    /// needs. Polish selects one/few/many for integers; a translation that
+    /// only copies English's one/other silently reads wrong for 2 and 5.
+    #[test]
+    fn plural_messages_carry_the_locale_categories() {
+        // Only the categories an integer count can select.
+        let required: &[(&str, &[&str])] = &[
+            ("pl", &["one", "few", "many"]),
+            ("de", &["one", "other"]),
+            ("fr", &["one", "other"]),
+            ("es", &["one", "other"]),
+            ("it", &["one", "other"]),
+            ("pt", &["one", "other"]),
+            ("et", &["one", "other"]),
+        ];
+        let plural_keys: Vec<&str> = SUPPORTED_LANGS
+            .iter()
+            .find(|(c, _, _)| *c == "en")
+            .map(|(_, _, src)| *src)
+            .unwrap_or("")
+            .split("\n\n")
+            .filter(|block| block.contains(" ->"))
+            .filter_map(|block| block.lines().next()?.split(" =").next())
             .collect();
         assert!(
-            missing.is_empty(),
-            "keys present in English but missing from French:\n{}",
-            missing.join("\n")
+            !plural_keys.is_empty(),
+            "no plural messages found in English"
+        );
+
+        let mut problems = Vec::new();
+        for (lang, cats) in required {
+            let src = SUPPORTED_LANGS
+                .iter()
+                .find(|(c, _, _)| c == lang)
+                .map(|(_, _, src)| *src)
+                .unwrap_or("");
+            for key in &plural_keys {
+                let Some(block) = src
+                    .split("\n\n")
+                    .find(|b| b.starts_with(&format!("{key} =")))
+                else {
+                    problems.push(format!("{lang}: {key} missing"));
+                    continue;
+                };
+                for cat in *cats {
+                    if !block.contains(&format!("[{cat}]")) {
+                        problems.push(format!("{lang}: {key} lacks [{cat}]"));
+                    }
+                }
+                if !block.contains("*[") {
+                    problems.push(format!("{lang}: {key} has no default variant"));
+                }
+            }
+        }
+        assert!(
+            problems.is_empty(),
+            "plural category gaps:\n{}",
+            problems.join("\n")
         );
     }
 
