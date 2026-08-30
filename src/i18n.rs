@@ -469,9 +469,69 @@ mod tests {
         );
     }
 
-    /// Message ids passed to `translate(lang, "key", ..)` or `tr1(lang, "key", ..)`.
+    /// A message id: kebab-case ASCII, which no template name, CSS class or
+    /// SQL fragment in this codebase looks like.
+    fn looks_like_key(key: &str) -> bool {
+        key.contains('-')
+            && key
+                .chars()
+                .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+    }
+
+    /// Message ids passed to `translate(lang, "key", ..)` or `tr1(lang, "key", ..)`,
+    /// plus the two indirect forms: the key pairs handed to
+    /// `render_booking_action_error_keys(state, headers, "title", "body")`, and the
+    /// keys the booking-form validators return as `Err("key")`. Both reach Fluent
+    /// through a variable, so without this pass a typo renders the raw id.
     fn find_rust_keys(src: &str) -> Vec<String> {
         let mut keys = Vec::new();
+        for call in ["render_booking_action_error_keys("] {
+            let mut i = 0;
+            while let Some(pos) = src[i..].find(call) {
+                let at = i + pos;
+                let start = at + call.len();
+                i = start;
+                // The guard test in web/mod.rs names this helper in a string
+                // literal; scanning from there would run past the call site.
+                if src[..at].ends_with('"') {
+                    continue;
+                }
+                let mut depth = 1i32;
+                let mut args = String::new();
+                for c in src[start..].chars() {
+                    match c {
+                        '(' => depth += 1,
+                        ')' => {
+                            depth -= 1;
+                            if depth == 0 {
+                                break;
+                            }
+                        }
+                        _ => {}
+                    }
+                    args.push(c);
+                }
+                keys.extend(
+                    args.split('"')
+                        .skip(1)
+                        .step_by(2)
+                        .filter(|k| looks_like_key(k))
+                        .map(str::to_string),
+                );
+            }
+        }
+        let mut i = 0;
+        while let Some(pos) = src[i..].find("Err(\"") {
+            let start = i + pos + 5;
+            i = start;
+            let Some(end) = src[start..].find('"') else {
+                continue;
+            };
+            let key = &src[start..start + end];
+            if looks_like_key(key) {
+                keys.push(key.to_string());
+            }
+        }
         for call in ["translate(", "tr1("] {
             let mut i = 0;
             while let Some(pos) = src[i..].find(call) {
@@ -489,11 +549,7 @@ mod tests {
                     continue;
                 };
                 let key = &inner[..end];
-                if key.contains('-')
-                    && key
-                        .chars()
-                        .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
-                {
+                if looks_like_key(key) {
                     keys.push(key.to_string());
                 }
             }

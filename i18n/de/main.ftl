@@ -1257,3 +1257,58 @@ error-too-many-requests = Zu viele Anfragen. Bitte versuche es später erneut.
 error-no-members-available = Für dieses Zeitfenster ist kein Teammitglied verfügbar.
 error-dynamic-group-public-only = Dynamische Gruppenlinks gibt es nur für öffentliche Terminarten.
 error-user-not-found = Benutzer nicht gefunden.
+
+# Booking action error page: titles (templates/booking_action_error.html)
+
+bae-title-captcha = Captcha-Prüfung fehlgeschlagen
+bae-title-invalid-booking = Ungültige Buchungsangaben
+bae-title-unavailable = Derzeit nicht verfügbar
+bae-title-cannot-approve = Diese Buchung kann nicht bestätigt werden
+bae-title-invalid-link = Ungültiger Link
+bae-title-invalid-or-expired = Ungültiger oder abgelaufener Link
+bae-title-booking-not-found = Buchung nicht gefunden
+bae-title-already-approved = Bereits bestätigt
+bae-title-already-declined = Bereits abgelehnt
+bae-title-already-cancelled = Bereits storniert
+bae-title-booking-cancelled = Buchung storniert
+bae-title-booking-declined = Buchung abgelehnt
+
+# Booking action error page: bodies
+
+bae-body-go-back = Bitte geh zurück und versuche es erneut.
+bae-body-unavailable = Der Gastgeber nimmt für dieses Datum keine weiteren Buchungen an. Bitte wähle ein anderes Datum oder schau später noch einmal vorbei.
+bae-body-resource-gone = Eine erforderliche Ressource ist zu dieser Zeit nicht mehr verfügbar. Bitte den Gast, einen anderen Termin zu wählen.
+bae-body-no-claim-token = Kein Übernahme-Token angegeben.
+bae-body-claim-invalid = Dieser Übernahme-Link ist nicht mehr gültig.
+bae-body-booking-gone = Diese Buchung existiert nicht mehr.
+bae-body-decline-link-invalid = Dieser Ablehnungslink ist ungültig, abgelaufen, oder die Buchung wurde bereits bearbeitet.
+bae-body-cancel-link-invalid = Dieser Stornierungslink ist ungültig, abgelaufen, oder die Buchung wurde bereits storniert.
+bae-body-cancel-link-invalid-short = Dieser Stornierungslink ist ungültig oder abgelaufen.
+bae-body-reschedule-link-invalid = Dieser Verschiebungslink ist ungültig, abgelaufen, oder die Buchung wurde bereits bearbeitet.
+bae-body-approval-link-invalid = Dieser Bestätigungslink ist ungültig oder abgelaufen.
+bae-body-already-approved = Diese Buchung wurde bereits bestätigt.
+bae-body-already-declined = Diese Buchung wurde bereits abgelehnt.
+bae-body-already-cancelled = Diese Buchung wurde bereits storniert.
+bae-body-was-cancelled = Diese Buchung wurde storniert.
+bae-body-declined-by-host = Diese Buchung wurde vom Gastgeber abgelehnt.
+
+# Booking form validation (src/web/mod.rs)
+
+validate-name-length = Der Name muss zwischen 1 und 255 Zeichen lang sein.
+validate-email-length = Die E-Mail-Adresse muss zwischen 1 und 255 Zeichen lang sein.
+validate-email-invalid = Bitte gib eine gültige E-Mail-Adresse ein.
+validate-notes-length = Die Notizen dürfen höchstens 5000 Zeichen lang sein.
+validate-date-too-far = Es kann nicht mehr als ein Jahr im Voraus gebucht werden.
+
+# Additional guests and dynamic group links (src/web/mod.rs)
+
+guests-not-allowed = Zusätzliche Gäste sind für diese Terminart nicht erlaubt.
+guests-too-many =
+    { $max ->
+        [one] Du kannst höchstens einen zusätzlichen Gast hinzufügen.
+       *[other] Du kannst höchstens { $max } zusätzliche Gäste hinzufügen.
+    }
+guests-invalid-email = Ungültige E-Mail-Adresse eines zusätzlichen Gastes: { $email }
+dynamic-group-min-usernames = Dynamische Gruppenlinks brauchen mindestens zwei Benutzernamen.
+dynamic-group-user-not-found = Benutzer „{ $username }“ nicht gefunden.
+dynamic-group-user-opted-out = Benutzer „{ $username }“ hat dynamische Gruppenlinks nicht aktiviert.

@@ -1257,3 +1257,58 @@ error-too-many-requests = Liiga palju päringuid. Palun proovi hiljem uuesti.
 error-no-members-available = Ükski meeskonnaliige ei ole sel ajal saadaval.
 error-dynamic-group-public-only = Dünaamilised rühmalingid on saadaval ainult avalike sündmuse tüüpide puhul.
 error-user-not-found = Kasutajat ei leitud.
+
+# Booking action error page: titles (templates/booking_action_error.html)
+
+bae-title-captcha = Captcha kontroll ebaõnnestus
+bae-title-invalid-booking = Vigased broneeringu andmed
+bae-title-unavailable = Praegu pole saadaval
+bae-title-cannot-approve = Seda broneeringut ei saa kinnitada
+bae-title-invalid-link = Vigane link
+bae-title-invalid-or-expired = Vigane või aegunud link
+bae-title-booking-not-found = Broneeringut ei leitud
+bae-title-already-approved = Juba kinnitatud
+bae-title-already-declined = Juba tagasi lükatud
+bae-title-already-cancelled = Juba tühistatud
+bae-title-booking-cancelled = Broneering tühistatud
+bae-title-booking-declined = Broneering tagasi lükatud
+
+# Booking action error page: bodies
+
+bae-body-go-back = Palun mine tagasi ja proovi uuesti.
+bae-body-unavailable = Korraldaja ei võta sellele kuupäevale rohkem broneeringuid vastu. Palun vali mõni muu kuupäev või vaata hiljem uuesti.
+bae-body-resource-gone = Vajalik ressurss ei ole sel ajal enam saadaval. Palu külalisel valida mõni muu aeg.
+bae-body-no-claim-token = Ülevõtmise luba ei antud.
+bae-body-claim-invalid = See link ei kehti enam.
+bae-body-booking-gone = Seda broneeringut enam ei ole.
+bae-body-decline-link-invalid = See tagasilükkamise link on vigane, aegunud või on broneering juba menetletud.
+bae-body-cancel-link-invalid = See tühistamise link on vigane, aegunud või on broneering juba tühistatud.
+bae-body-cancel-link-invalid-short = See tühistamise link on vigane või aegunud.
+bae-body-reschedule-link-invalid = See aja muutmise link on vigane, aegunud või on broneering juba menetletud.
+bae-body-approval-link-invalid = See kinnitamise link on vigane või aegunud.
+bae-body-already-approved = See broneering on juba kinnitatud.
+bae-body-already-declined = See broneering on juba tagasi lükatud.
+bae-body-already-cancelled = See broneering on juba tühistatud.
+bae-body-was-cancelled = See broneering tühistati.
+bae-body-declined-by-host = Korraldaja lükkas selle broneeringu tagasi.
+
+# Booking form validation (src/web/mod.rs)
+
+validate-name-length = Nimi peab olema 1 kuni 255 tähemärki pikk.
+validate-email-length = E-posti aadress peab olema 1 kuni 255 tähemärki pikk.
+validate-email-invalid = Palun sisesta kehtiv e-posti aadress.
+validate-notes-length = Märkused ei tohi olla pikemad kui 5000 tähemärki.
+validate-date-too-far = Rohkem kui aasta ette ei saa broneerida.
+
+# Additional guests and dynamic group links (src/web/mod.rs)
+
+guests-not-allowed = See sündmuse tüüp ei luba lisakülalisi.
+guests-too-many =
+    { $max ->
+        [one] Võid lisada kõige rohkem ühe lisakülalise.
+       *[other] Võid lisada kõige rohkem { $max } lisakülalist.
+    }
+guests-invalid-email = Vigane lisakülalise e-posti aadress: { $email }
+dynamic-group-min-usernames = Dünaamilise grupi lingid vajavad vähemalt kahte kasutajanime.
+dynamic-group-user-not-found = Kasutajat „{ $username }“ ei leitud.
+dynamic-group-user-opted-out = Kasutaja „{ $username }“ ei ole dünaamilise grupi linke lubanud.

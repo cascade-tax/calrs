@@ -1257,3 +1257,58 @@ error-too-many-requests = Troppe richieste. Per favore, riprova più tardi.
 error-no-members-available = Nessun membro del team è disponibile per questo slot.
 error-dynamic-group-public-only = I link di gruppo dinamici sono disponibili solo per i tipi di evento pubblici.
 error-user-not-found = Utente non trovato.
+
+# Booking action error page: titles (templates/booking_action_error.html)
+
+bae-title-captcha = Verifica captcha non riuscita
+bae-title-invalid-booking = Dati della prenotazione non validi
+bae-title-unavailable = Non disponibile al momento
+bae-title-cannot-approve = Impossibile approvare questa prenotazione
+bae-title-invalid-link = Link non valido
+bae-title-invalid-or-expired = Link non valido o scaduto
+bae-title-booking-not-found = Prenotazione non trovata
+bae-title-already-approved = Già approvata
+bae-title-already-declined = Già rifiutata
+bae-title-already-cancelled = Già annullata
+bae-title-booking-cancelled = Prenotazione annullata
+bae-title-booking-declined = Prenotazione rifiutata
+
+# Booking action error page: bodies
+
+bae-body-go-back = Per favore, torna indietro e riprova.
+bae-body-unavailable = L'organizzatore non accetta altre prenotazioni per questa data. Per favore, scegli un'altra data o riprova più tardi.
+bae-body-resource-gone = Una risorsa necessaria non è più disponibile a quest'ora. Chiedi all'ospite di scegliere un altro slot.
+bae-body-no-claim-token = Nessun token fornito.
+bae-body-claim-invalid = Questo link non è più valido.
+bae-body-booking-gone = Questa prenotazione non esiste più.
+bae-body-decline-link-invalid = Questo link di rifiuto non è valido, è scaduto, oppure la prenotazione è già stata elaborata.
+bae-body-cancel-link-invalid = Questo link di annullamento non è valido, è scaduto, oppure la prenotazione è già stata annullata.
+bae-body-cancel-link-invalid-short = Questo link di annullamento non è valido o è scaduto.
+bae-body-reschedule-link-invalid = Questo link di spostamento non è valido, è scaduto, oppure la prenotazione è già stata elaborata.
+bae-body-approval-link-invalid = Questo link di approvazione non è valido o è scaduto.
+bae-body-already-approved = Questa prenotazione è già stata approvata.
+bae-body-already-declined = Questa prenotazione è già stata rifiutata.
+bae-body-already-cancelled = Questa prenotazione è già stata annullata.
+bae-body-was-cancelled = Questa prenotazione è stata annullata.
+bae-body-declined-by-host = Questa prenotazione è stata rifiutata dall'organizzatore.
+
+# Booking form validation (src/web/mod.rs)
+
+validate-name-length = Il nome deve essere lungo tra 1 e 255 caratteri.
+validate-email-length = L'e-mail deve essere lunga tra 1 e 255 caratteri.
+validate-email-invalid = Per favore, inserisci un indirizzo e-mail valido.
+validate-notes-length = Le note non possono superare i 5000 caratteri.
+validate-date-too-far = Non è possibile prenotare con più di un anno di anticipo.
+
+# Additional guests and dynamic group links (src/web/mod.rs)
+
+guests-not-allowed = Questo tipo di evento non ammette ospiti aggiuntivi.
+guests-too-many =
+    { $max ->
+        [one] Puoi aggiungere al massimo un ospite aggiuntivo.
+       *[other] Puoi aggiungere al massimo { $max } ospiti aggiuntivi.
+    }
+guests-invalid-email = E-mail dell'ospite aggiuntivo non valida: { $email }
+dynamic-group-min-usernames = I link di gruppo dinamico richiedono almeno due nomi utente.
+dynamic-group-user-not-found = Utente «{ $username }» non trovato.
+dynamic-group-user-opted-out = L'utente «{ $username }» non ha attivato i link di gruppo dinamico.

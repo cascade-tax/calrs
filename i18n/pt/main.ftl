@@ -1257,3 +1257,58 @@ error-too-many-requests = Muitas requisições. Por favor, tente novamente mais 
 error-no-members-available = Nenhum membro da equipe está disponível para este horário.
 error-dynamic-group-public-only = Links de grupo dinâmicos só estão disponíveis para tipos de evento públicos.
 error-user-not-found = Usuário não encontrado.
+
+# Booking action error page: titles (templates/booking_action_error.html)
+
+bae-title-captcha = Falha na verificação do captcha
+bae-title-invalid-booking = Dados do agendamento inválidos
+bae-title-unavailable = Indisponível no momento
+bae-title-cannot-approve = Não é possível aprovar este agendamento
+bae-title-invalid-link = Link inválido
+bae-title-invalid-or-expired = Link inválido ou expirado
+bae-title-booking-not-found = Agendamento não encontrado
+bae-title-already-approved = Já aprovado
+bae-title-already-declined = Já recusado
+bae-title-already-cancelled = Já cancelado
+bae-title-booking-cancelled = Agendamento cancelado
+bae-title-booking-declined = Agendamento recusado
+
+# Booking action error page: bodies
+
+bae-body-go-back = Por favor, volte e tente novamente.
+bae-body-unavailable = O organizador não está aceitando mais agendamentos para esta data. Por favor, escolha outra data ou volte mais tarde.
+bae-body-resource-gone = Um recurso necessário não está mais disponível neste horário. Peça ao convidado para escolher outro horário.
+bae-body-no-claim-token = Nenhum token informado.
+bae-body-claim-invalid = Este link não é mais válido.
+bae-body-booking-gone = Este agendamento não existe mais.
+bae-body-decline-link-invalid = Este link de recusa é inválido, expirou, ou o agendamento já foi processado.
+bae-body-cancel-link-invalid = Este link de cancelamento é inválido, expirou, ou o agendamento já foi cancelado.
+bae-body-cancel-link-invalid-short = Este link de cancelamento é inválido ou expirou.
+bae-body-reschedule-link-invalid = Este link de remarcação é inválido, expirou, ou o agendamento já foi processado.
+bae-body-approval-link-invalid = Este link de aprovação é inválido ou expirou.
+bae-body-already-approved = Este agendamento já foi aprovado.
+bae-body-already-declined = Este agendamento já foi recusado.
+bae-body-already-cancelled = Este agendamento já foi cancelado.
+bae-body-was-cancelled = Este agendamento foi cancelado.
+bae-body-declined-by-host = Este agendamento foi recusado pelo organizador.
+
+# Booking form validation (src/web/mod.rs)
+
+validate-name-length = O nome deve ter entre 1 e 255 caracteres.
+validate-email-length = O e-mail deve ter entre 1 e 255 caracteres.
+validate-email-invalid = Por favor, informe um endereço de e-mail válido.
+validate-notes-length = As observações não podem passar de 5000 caracteres.
+validate-date-too-far = Não é possível agendar com mais de um ano de antecedência.
+
+# Additional guests and dynamic group links (src/web/mod.rs)
+
+guests-not-allowed = Este tipo de evento não aceita convidados adicionais.
+guests-too-many =
+    { $max ->
+        [one] Você pode adicionar no máximo um convidado adicional.
+       *[other] Você pode adicionar no máximo { $max } convidados adicionais.
+    }
+guests-invalid-email = E-mail de convidado adicional inválido: { $email }
+dynamic-group-min-usernames = Os links de grupo dinâmico exigem pelo menos dois nomes de usuário.
+dynamic-group-user-not-found = Usuário “{ $username }” não encontrado.
+dynamic-group-user-opted-out = O usuário “{ $username }” não ativou os links de grupo dinâmico.

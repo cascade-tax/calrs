@@ -2377,7 +2377,7 @@ fn minutes_to_notice_form(min: Option<i32>) -> (i32, &'static str) {
     }
 }
 
-fn parse_dynamic_group_usernames(combined: &str) -> Result<Vec<String>, String> {
+fn parse_dynamic_group_usernames(combined: &str, lang: &str) -> Result<Vec<String>, String> {
     let mut seen = std::collections::HashSet::new();
     let unique: Vec<String> = combined
         .split('+')
@@ -2386,7 +2386,11 @@ fn parse_dynamic_group_usernames(combined: &str) -> Result<Vec<String>, String> 
         .filter(|s| seen.insert(s.clone()))
         .collect();
     if unique.len() < 2 {
-        return Err("Dynamic group links require at least two usernames.".to_string());
+        return Err(crate::i18n::translate(
+            lang,
+            "dynamic-group-min-usernames",
+            None,
+        ));
     }
     Ok(unique)
 }
@@ -2398,6 +2402,7 @@ fn parse_dynamic_group_usernames(combined: &str) -> Result<Vec<String>, String> 
 async fn validate_dynamic_group_users(
     pool: &SqlitePool,
     usernames: &[String],
+    lang: &str,
 ) -> Result<Vec<(String, String, String, String, Option<String>)>, String> {
     let mut users = Vec::with_capacity(usernames.len());
     for uname in usernames {
@@ -2409,12 +2414,9 @@ async fn validate_dynamic_group_users(
         .await
         .unwrap_or(None);
         match row {
-            None => return Err(format!("User '{}' not found.", uname)),
+            None => return Err(tr1(lang, "dynamic-group-user-not-found", "username", uname)),
             Some((_, _, _, _, _, false)) => {
-                return Err(format!(
-                    "User '{}' has not enabled dynamic group links.",
-                    uname
-                ))
+                return Err(tr1(lang, "dynamic-group-user-opted-out", "username", uname))
             }
             Some((id, username, name, email, avatar_path, _)) => {
                 users.push((id, username, name, email, avatar_path));
@@ -10141,11 +10143,11 @@ async fn handle_group_booking(
         .is_err()
     {
         tracing::warn!("captcha failed on group booking");
-        return render_booking_action_error(
+        return render_booking_action_error_keys(
             &state,
             &headers,
-            "Captcha verification failed",
-            "Please go back and try again.",
+            "bae-title-captcha",
+            "bae-body-go-back",
         );
     }
     drop(captcha_cfg);
@@ -10162,7 +10164,7 @@ async fn handle_group_booking(
     }
 
     if let Err(e) = validate_booking_input(&form.name, &form.email, &form.notes) {
-        return render_booking_action_error(&state, &headers, "Invalid booking details", &e);
+        return render_booking_action_error_keys(&state, &headers, "bae-title-invalid-booking", e);
     }
 
     let et: Option<(String, String, String, i32, i32, i32, i32, i32, String, Option<String>, String, Option<i32>, String, i32, String, Option<String>)> = sqlx::query_as(
@@ -10227,9 +10229,17 @@ async fn handle_group_booking(
         &form.additional_guests,
         max_additional_guests,
         &form.email,
+        lang,
     ) {
         Ok(emails) => emails,
-        Err(e) => return Html(e).into_response(),
+        Err(e) => {
+            return render_booking_action_error(
+                &state,
+                &headers,
+                &crate::i18n::translate(lang, "bae-title-invalid-booking", None),
+                &e,
+            )
+        }
     };
 
     // Validate access
@@ -10298,7 +10308,7 @@ async fn handle_group_booking(
         }
     };
     if let Err(e) = validate_date_not_too_far(date) {
-        return Html(e).into_response();
+        return render_booking_action_error_keys(&state, &headers, "bae-title-invalid-booking", e);
     }
     let start_time = match NaiveTime::parse_from_str(&form.time, "%H:%M") {
         Ok(t) => t,
@@ -10458,11 +10468,11 @@ async fn handle_group_booking(
         .await
     {
         let _ = tx.rollback().await;
-        return render_booking_action_error(
+        return render_booking_action_error_keys(
             &state,
             &headers,
-            "Not available right now",
-            "The host isn't accepting more bookings for this date. Please pick a different date, or check back later.",
+            "bae-title-unavailable",
+            "bae-body-unavailable",
         );
     }
 
@@ -10863,13 +10873,27 @@ async fn show_dynamic_group_slots(
     query: &SlotsQuery,
 ) -> Html<String> {
     let lang = crate::i18n::detect_from_headers(headers);
-    let usernames = match parse_dynamic_group_usernames(combined_username) {
+    let usernames = match parse_dynamic_group_usernames(combined_username, lang) {
         Ok(u) => u,
-        Err(e) => return Html(e),
+        Err(e) => {
+            return render_booking_action_error_html(
+                state,
+                headers,
+                &crate::i18n::translate(lang, "bae-title-invalid-link", None),
+                &e,
+            )
+        }
     };
-    let dg_users = match validate_dynamic_group_users(&state.pool, &usernames).await {
+    let dg_users = match validate_dynamic_group_users(&state.pool, &usernames, lang).await {
         Ok(u) => u,
-        Err(e) => return Html(e),
+        Err(e) => {
+            return render_booking_action_error_html(
+                state,
+                headers,
+                &crate::i18n::translate(lang, "bae-title-invalid-link", None),
+                &e,
+            )
+        }
     };
 
     // Load event type from first user (owner)
@@ -11097,13 +11121,27 @@ async fn show_dynamic_group_book_form(
     query: &BookQuery,
 ) -> Html<String> {
     let lang = crate::i18n::detect_from_headers(headers);
-    let usernames = match parse_dynamic_group_usernames(combined_username) {
+    let usernames = match parse_dynamic_group_usernames(combined_username, lang) {
         Ok(u) => u,
-        Err(e) => return Html(e),
+        Err(e) => {
+            return render_booking_action_error_html(
+                state,
+                headers,
+                &crate::i18n::translate(lang, "bae-title-invalid-link", None),
+                &e,
+            )
+        }
     };
-    let dg_users = match validate_dynamic_group_users(&state.pool, &usernames).await {
+    let dg_users = match validate_dynamic_group_users(&state.pool, &usernames, lang).await {
         Ok(u) => u,
-        Err(e) => return Html(e),
+        Err(e) => {
+            return render_booking_action_error_html(
+                state,
+                headers,
+                &crate::i18n::translate(lang, "bae-title-invalid-link", None),
+                &e,
+            )
+        }
     };
 
     let owner_username = &usernames[0];
@@ -11251,16 +11289,30 @@ async fn handle_dynamic_group_booking(
     }
 
     if let Err(e) = validate_booking_input(&form.name, &form.email, &form.notes) {
-        return render_booking_action_error(state, headers, "Invalid booking details", &e);
+        return render_booking_action_error_keys(state, headers, "bae-title-invalid-booking", e);
     }
 
-    let usernames = match parse_dynamic_group_usernames(combined_username) {
+    let usernames = match parse_dynamic_group_usernames(combined_username, lang) {
         Ok(u) => u,
-        Err(e) => return Html(e).into_response(),
+        Err(e) => {
+            return render_booking_action_error(
+                state,
+                headers,
+                &crate::i18n::translate(lang, "bae-title-invalid-link", None),
+                &e,
+            )
+        }
     };
-    let dg_users = match validate_dynamic_group_users(&state.pool, &usernames).await {
+    let dg_users = match validate_dynamic_group_users(&state.pool, &usernames, lang).await {
         Ok(u) => u,
-        Err(e) => return Html(e).into_response(),
+        Err(e) => {
+            return render_booking_action_error(
+                state,
+                headers,
+                &crate::i18n::translate(lang, "bae-title-invalid-link", None),
+                &e,
+            )
+        }
     };
 
     let owner_username = &usernames[0];
@@ -11321,9 +11373,17 @@ async fn handle_dynamic_group_booking(
         &form.additional_guests,
         max_additional_guests,
         &form.email,
+        lang,
     ) {
         Ok(emails) => emails,
-        Err(e) => return Html(e).into_response(),
+        Err(e) => {
+            return render_booking_action_error(
+                state,
+                headers,
+                &crate::i18n::translate(lang, "bae-title-invalid-booking", None),
+                &e,
+            )
+        }
     };
 
     let date = match NaiveDate::parse_from_str(&form.date, "%Y-%m-%d") {
@@ -11333,7 +11393,7 @@ async fn handle_dynamic_group_booking(
         }
     };
     if let Err(e) = validate_date_not_too_far(date) {
-        return Html(e).into_response();
+        return render_booking_action_error_keys(state, headers, "bae-title-invalid-booking", e);
     }
     let start_time = match NaiveTime::parse_from_str(&form.time, "%H:%M") {
         Ok(t) => t,
@@ -11400,11 +11460,11 @@ async fn handle_dynamic_group_booking(
     // single assignee on the booking, so per-member caps fall back to
     // event-type-wide here.
     if would_exceed_frequency_limit(&state.pool, &et_id, slot_start, None).await {
-        return render_booking_action_error(
+        return render_booking_action_error_keys(
             state,
             headers,
-            "Not available right now",
-            "The host isn't accepting more bookings for this date. Please pick a different date, or check back later.",
+            "bae-title-unavailable",
+            "bae-body-unavailable",
         );
     }
 
@@ -12146,11 +12206,11 @@ async fn handle_booking_for_user(
         .is_err()
     {
         tracing::warn!("captcha failed on user booking");
-        return render_booking_action_error(
+        return render_booking_action_error_keys(
             &state,
             &headers,
-            "Captcha verification failed",
-            "Please go back and try again.",
+            "bae-title-captcha",
+            "bae-body-go-back",
         );
     }
     drop(captcha_cfg);
@@ -12172,7 +12232,7 @@ async fn handle_booking_for_user(
     }
 
     if let Err(e) = validate_booking_input(&form.name, &form.email, &form.notes) {
-        return render_booking_action_error(&state, &headers, "Invalid booking details", &e);
+        return render_booking_action_error_keys(&state, &headers, "bae-title-invalid-booking", e);
     }
 
     let et: Option<(String, String, String, i32, i32, i32, i32, i32, String, Option<String>, String, Option<i32>, String, i32, Option<String>, String)> = sqlx::query_as(
@@ -12237,9 +12297,17 @@ async fn handle_booking_for_user(
         &form.additional_guests,
         max_additional_guests,
         &form.email,
+        lang,
     ) {
         Ok(emails) => emails,
-        Err(e) => return Html(e).into_response(),
+        Err(e) => {
+            return render_booking_action_error(
+                &state,
+                &headers,
+                &crate::i18n::translate(lang, "bae-title-invalid-booking", None),
+                &e,
+            )
+        }
     };
 
     // Validate invite token for private event types
@@ -12287,7 +12355,7 @@ async fn handle_booking_for_user(
         }
     };
     if let Err(e) = validate_date_not_too_far(date) {
-        return Html(e).into_response();
+        return render_booking_action_error_keys(&state, &headers, "bae-title-invalid-booking", e);
     }
     let start_time = match NaiveTime::parse_from_str(&form.time, "%H:%M") {
         Ok(t) => t,
@@ -12375,11 +12443,11 @@ async fn handle_booking_for_user(
     // team assignee, so per-member caps degrade to event-type-wide here.
     if would_exceed_frequency_limit(&state.pool, &et_id, slot_start, None).await {
         let _ = tx.rollback().await;
-        return render_booking_action_error(
+        return render_booking_action_error_keys(
             &state,
             &headers,
-            "Not available right now",
-            "The host isn't accepting more bookings for this date. Please pick a different date, or check back later.",
+            "bae-title-unavailable",
+            "bae-body-unavailable",
         );
     }
 
@@ -14553,14 +14621,18 @@ async fn show_book_form(
     Html(rendered)
 }
 
-fn validate_booking_input(name: &str, email: &str, notes: &Option<String>) -> Result<(), String> {
+fn validate_booking_input(
+    name: &str,
+    email: &str,
+    notes: &Option<String>,
+) -> Result<(), &'static str> {
     let name = name.trim();
     if name.is_empty() || name.len() > 255 {
-        return Err("Name must be between 1 and 255 characters.".to_string());
+        return Err("validate-name-length");
     }
     let email = email.trim();
     if email.is_empty() || email.len() > 255 {
-        return Err("Email must be between 1 and 255 characters.".to_string());
+        return Err("validate-email-length");
     }
     if !email.contains('@')
         || email
@@ -14568,20 +14640,20 @@ fn validate_booking_input(name: &str, email: &str, notes: &Option<String>) -> Re
             .next()
             .is_none_or(|domain| !domain.contains('.'))
     {
-        return Err("Please enter a valid email address.".to_string());
+        return Err("validate-email-invalid");
     }
     if let Some(notes) = notes {
         if notes.len() > 5000 {
-            return Err("Notes must be 5000 characters or less.".to_string());
+            return Err("validate-notes-length");
         }
     }
     Ok(())
 }
 
-fn validate_date_not_too_far(date: NaiveDate) -> Result<(), String> {
+fn validate_date_not_too_far(date: NaiveDate) -> Result<(), &'static str> {
     let max_date = Utc::now().naive_utc().date() + Duration::days(366);
     if date > max_date {
-        return Err("Cannot book more than one year in advance.".to_string());
+        return Err("validate-date-too-far");
     }
     Ok(())
 }
@@ -14592,13 +14664,14 @@ fn parse_additional_guests(
     raw: &Option<String>,
     max: i32,
     primary_email: &str,
+    lang: &str,
 ) -> Result<Vec<String>, String> {
     let raw = match raw {
         Some(s) if !s.trim().is_empty() => s,
         _ => return Ok(vec![]),
     };
     if max <= 0 {
-        return Err("Additional guests are not allowed for this event type.".to_string());
+        return Err(crate::i18n::translate(lang, "guests-not-allowed", None));
     }
     let emails: Vec<String> = raw
         .split(',')
@@ -14606,7 +14679,9 @@ fn parse_additional_guests(
         .filter(|s| !s.is_empty())
         .collect();
     if emails.len() > max as usize {
-        return Err(format!("You can add at most {} additional guest(s).", max));
+        let mut args = fluent_bundle::FluentArgs::new();
+        args.set("max", fluent_bundle::FluentValue::from(max as f64));
+        return Err(crate::i18n::translate(lang, "guests-too-many", Some(&args)));
     }
     let primary = primary_email.trim().to_lowercase();
     let mut seen = std::collections::HashSet::new();
@@ -14621,7 +14696,7 @@ fn parse_additional_guests(
                 .next()
                 .is_none_or(|domain| !domain.contains('.'))
         {
-            return Err(format!("Invalid additional guest email: {}", email));
+            return Err(tr1(lang, "guests-invalid-email", "email", email));
         }
         if seen.insert(email.clone()) {
             result.push(email.clone());
@@ -14789,11 +14864,11 @@ async fn handle_booking(
         .is_err()
     {
         tracing::warn!("captcha failed on booking");
-        return render_booking_action_error(
+        return render_booking_action_error_keys(
             &state,
             &headers,
-            "Captcha verification failed",
-            "Please go back and try again.",
+            "bae-title-captcha",
+            "bae-body-go-back",
         );
     }
     drop(captcha_cfg);
@@ -14810,7 +14885,7 @@ async fn handle_booking(
     }
 
     if let Err(e) = validate_booking_input(&form.name, &form.email, &form.notes) {
-        return render_booking_action_error(&state, &headers, "Invalid booking details", &e);
+        return render_booking_action_error_keys(&state, &headers, "bae-title-invalid-booking", e);
     }
 
     #[allow(clippy::type_complexity)]
@@ -14890,9 +14965,17 @@ async fn handle_booking(
         &form.additional_guests,
         max_additional_guests,
         &form.email,
+        lang,
     ) {
         Ok(emails) => emails,
-        Err(e) => return Html(e).into_response(),
+        Err(e) => {
+            return render_booking_action_error(
+                &state,
+                &headers,
+                &crate::i18n::translate(lang, "bae-title-invalid-booking", None),
+                &e,
+            )
+        }
     };
 
     // Get the host user_id for user-scoped busy time check
@@ -14912,7 +14995,7 @@ async fn handle_booking(
         }
     };
     if let Err(e) = validate_date_not_too_far(date) {
-        return Html(e).into_response();
+        return render_booking_action_error_keys(&state, &headers, "bae-title-invalid-booking", e);
     }
     let start_time = match NaiveTime::parse_from_str(&form.time, "%H:%M") {
         Ok(t) => t,
@@ -15004,11 +15087,11 @@ async fn handle_booking(
     // team assignee, so per-member caps degrade to event-type-wide here.
     if would_exceed_frequency_limit(&state.pool, &et_id, slot_start, None).await {
         let _ = tx.rollback().await;
-        return render_booking_action_error(
+        return render_booking_action_error_keys(
             &state,
             &headers,
-            "Not available right now",
-            "The host isn't accepting more bookings for this date. Please pick a different date, or check back later.",
+            "bae-title-unavailable",
+            "bae-body-unavailable",
         );
     }
 
@@ -18679,37 +18762,19 @@ fn render_token_error(
     _token: &str,
     already: Option<(String,)>,
 ) -> axum::response::Response {
-    let lang = crate::i18n::detect_from_headers(headers);
-    let (title, message) = match already {
-        Some((status,)) if status == "confirmed" => (
-            "Already approved",
-            "This booking has already been approved.",
-        ),
-        Some((status,)) if status == "declined" => (
-            "Already declined",
-            "This booking has already been declined.",
-        ),
-        Some((status,)) if status == "cancelled" => {
-            ("Booking cancelled", "This booking was cancelled.")
+    let (title_key, message_key) = match already {
+        Some((status,)) if status == "confirmed" => {
+            ("bae-title-already-approved", "bae-body-already-approved")
         }
-        _ => (
-            "Invalid link",
-            "This approval link is invalid or has expired.",
-        ),
+        Some((status,)) if status == "declined" => {
+            ("bae-title-already-declined", "bae-body-already-declined")
+        }
+        Some((status,)) if status == "cancelled" => {
+            ("bae-title-booking-cancelled", "bae-body-was-cancelled")
+        }
+        _ => ("bae-title-invalid-link", "bae-body-approval-link-invalid"),
     };
-
-    let tmpl = match state.templates.get_template("booking_action_error.html") {
-        Ok(t) => t,
-        Err(e) => return internal_error_response("internal", &e),
-    };
-    let rendered = tmpl
-        .render(context! {
-            title,
-            message,
-            lang => lang,
-        })
-        .unwrap_or_else(|e| internal_error_body("template render", &e));
-    Html(rendered).into_response()
+    render_booking_action_error_keys(state, headers, title_key, message_key)
 }
 
 async fn approve_booking_form(
@@ -18848,11 +18913,11 @@ async fn approve_booking_by_token(
             {
                 crate::resources::ResourceCheck::Busy => {
                     tracing::warn!(booking_id = %bid, "approval refused: required resource no longer available");
-                    return render_booking_action_error(
+                    return render_booking_action_error_keys(
                         &state,
                         &headers,
-                        "Cannot approve this booking",
-                        "A required resource is no longer available for this time. Ask the guest to pick another slot.",
+                        "bae-title-cannot-approve",
+                        "bae-body-resource-gone",
                     );
                 }
                 crate::resources::ResourceCheck::Free { assigned } => {
@@ -19062,16 +19127,12 @@ async fn decline_booking_form(
     let (guest_name, guest_email, start_at, end_at, event_title) = match booking {
         Some(b) => b,
         None => {
-            let tmpl = match state.templates.get_template("booking_action_error.html") {
-                Ok(t) => t,
-                Err(e) => return internal_error_response("internal", &e),
-            };
-            let rendered = tmpl.render(context! {
-                title => "Invalid link",
-                message => "This decline link is invalid, has expired, or the booking has already been processed.",
-                lang => lang,
-            }).unwrap_or_else(|e| internal_error_body("template render", &e));
-            return Html(rendered).into_response();
+            return render_booking_action_error_keys(
+                &state,
+                &headers,
+                "bae-title-invalid-link",
+                "bae-body-decline-link-invalid",
+            );
         }
     };
 
@@ -19148,16 +19209,12 @@ async fn decline_booking_by_token(
     ) = match booking {
         Some(b) => b,
         None => {
-            let tmpl = match state.templates.get_template("booking_action_error.html") {
-                Ok(t) => t,
-                Err(e) => return internal_error_response("internal", &e),
-            };
-            let rendered = tmpl.render(context! {
-                    title => "Invalid link",
-                    message => "This decline link is invalid, has expired, or the booking has already been processed.",
-                    lang => lang,
-                }).unwrap_or_else(|e| internal_error_body("template render", &e));
-            return Html(rendered).into_response();
+            return render_booking_action_error_keys(
+                &state,
+                &headers,
+                "bae-title-invalid-link",
+                "bae-body-decline-link-invalid",
+            );
         }
     };
 
@@ -19453,33 +19510,20 @@ async fn guest_cancel_form(
                     .await
                     .unwrap_or(None);
 
-            let (title, message) = match status_row {
-                Some((status,)) if status == "cancelled" => (
-                    "Already cancelled",
-                    "This booking has already been cancelled.",
-                ),
-                Some((status,)) if status == "declined" => (
-                    "Booking declined",
-                    "This booking has been declined by the host.",
-                ),
+            let (title_key, message_key) = match status_row {
+                Some((status,)) if status == "cancelled" => {
+                    ("bae-title-already-cancelled", "bae-body-already-cancelled")
+                }
+                Some((status,)) if status == "declined" => {
+                    ("bae-title-booking-declined", "bae-body-declined-by-host")
+                }
                 _ => (
-                    "Invalid link",
-                    "This cancellation link is invalid or has expired.",
+                    "bae-title-invalid-link",
+                    "bae-body-cancel-link-invalid-short",
                 ),
             };
 
-            let tmpl = match state.templates.get_template("booking_action_error.html") {
-                Ok(t) => t,
-                Err(e) => return internal_error_response("internal", &e),
-            };
-            let rendered = tmpl
-                .render(context! {
-                    title,
-                    message,
-                    lang => lang,
-                })
-                .unwrap_or_else(|e| internal_error_body("template render", &e));
-            return Html(rendered).into_response();
+            return render_booking_action_error_keys(&state, &headers, title_key, message_key);
         }
     };
 
@@ -19564,18 +19608,12 @@ async fn guest_cancel_booking(
     ) = match booking {
         Some(b) => b,
         None => {
-            let tmpl = match state.templates.get_template("booking_action_error.html") {
-                Ok(t) => t,
-                Err(e) => return internal_error_response("internal", &e),
-            };
-            let rendered = tmpl
-                    .render(context! {
-                        title => "Invalid link",
-                        message => "This cancellation link is invalid, has expired, or the booking has already been cancelled.",
-                        lang => lang,
-                    })
-                    .unwrap_or_else(|e| internal_error_body("template render", &e));
-            return Html(rendered).into_response();
+            return render_booking_action_error_keys(
+                &state,
+                &headers,
+                "bae-title-invalid-link",
+                "bae-body-cancel-link-invalid",
+            );
         }
     };
 
@@ -19739,16 +19777,12 @@ async fn guest_reschedule_slots(
     let (booking_id, _guest_name, start_at, end_at, et_id_raw, uid) = match booking {
         Some(b) => b,
         None => {
-            let tmpl = match state.templates.get_template("booking_action_error.html") {
-                Ok(t) => t,
-                Err(e) => return internal_error_response("internal", &e),
-            };
-            let rendered = tmpl.render(context! {
-                title => "Invalid link",
-                message => "This reschedule link is invalid, has expired, or the booking has already been processed.",
-                lang => lang,
-            }).unwrap_or_else(|e| internal_error_body("template render", &e));
-            return Html(rendered).into_response();
+            return render_booking_action_error_keys(
+                &state,
+                &headers,
+                "bae-title-invalid-link",
+                "bae-body-reschedule-link-invalid",
+            );
         }
     };
 
@@ -20118,16 +20152,12 @@ async fn guest_reschedule_booking(
     ) = match booking {
         Some(b) => b,
         None => {
-            let tmpl = match state.templates.get_template("booking_action_error.html") {
-                Ok(t) => t,
-                Err(e) => return internal_error_response("internal", &e),
-            };
-            let rendered = tmpl.render(context! {
-                title => "Invalid link",
-                message => "This reschedule link is invalid, has expired, or the booking has already been processed.",
-                lang => lang,
-            }).unwrap_or_else(|e| internal_error_body("template render", &e));
-            return Html(rendered).into_response();
+            return render_booking_action_error_keys(
+                &state,
+                &headers,
+                "bae-title-invalid-link",
+                "bae-body-reschedule-link-invalid",
+            );
         }
     };
 
@@ -20166,7 +20196,7 @@ async fn guest_reschedule_booking(
         }
     };
     if let Err(e) = validate_date_not_too_far(date) {
-        return Html(e).into_response();
+        return render_booking_action_error_keys(&state, &headers, "bae-title-invalid-booking", e);
     }
     let start_time = match NaiveTime::parse_from_str(&form.time, "%H:%M") {
         Ok(t) => t,
@@ -21989,11 +22019,11 @@ async fn claim_booking_form(
     let token = match params.get("token") {
         Some(t) => t,
         None => {
-            return render_booking_action_error(
+            return render_booking_action_error_keys(
                 &state,
                 &headers,
-                "Invalid link",
-                "No claim token provided.",
+                "bae-title-invalid-link",
+                "bae-body-no-claim-token",
             );
         }
     };
@@ -22037,11 +22067,11 @@ async fn claim_booking_form(
             .into_response();
         }
 
-        return render_booking_action_error(
+        return render_booking_action_error_keys(
             &state,
             &headers,
-            "Invalid or expired link",
-            "This claim link is no longer valid.",
+            "bae-title-invalid-or-expired",
+            "bae-body-claim-invalid",
         );
     }
 
@@ -22061,11 +22091,11 @@ async fn claim_booking_form(
     let (event_title, guest_name, guest_email, start_at, end_at, assigned_to) = match booking {
         Some(b) => b,
         None => {
-            return render_booking_action_error(
+            return render_booking_action_error_keys(
                 &state,
                 &headers,
-                "Booking not found",
-                "This booking no longer exists.",
+                "bae-title-booking-not-found",
+                "bae-body-booking-gone",
             )
         }
     };
@@ -22154,11 +22184,11 @@ async fn claim_booking(
                 .into_response();
             }
 
-            return render_booking_action_error(
+            return render_booking_action_error_keys(
                 &state,
                 &headers,
-                "Invalid or expired link",
-                "This claim link is no longer valid.",
+                "bae-title-invalid-or-expired",
+                "bae-body-claim-invalid",
             )
             .into_response();
         }
@@ -22264,11 +22294,11 @@ async fn claim_booking(
     ) = match booking {
         Some(b) => b,
         None => {
-            return render_booking_action_error(
+            return render_booking_action_error_keys(
                 &state,
                 &headers,
-                "Booking not found",
-                "This booking no longer exists.",
+                "bae-title-booking-not-found",
+                "bae-body-booking-gone",
             )
             .into_response()
         }
@@ -22396,16 +22426,47 @@ async fn claim_booking(
     .into_response()
 }
 
+/// Same as [`render_booking_action_error`], but takes Fluent message ids.
+///
+/// Almost every caller has a fixed pair of ids rather than a sentence. The
+/// string-taking form stays for `resolve_guest_phone`, which picks its own
+/// wording and hands back a pair that is already translated.
+fn render_booking_action_error_keys(
+    state: &AppState,
+    headers: &HeaderMap,
+    title_key: &str,
+    message_key: &str,
+) -> axum::response::Response {
+    let lang = crate::i18n::detect_from_headers(headers);
+    render_booking_action_error(
+        state,
+        headers,
+        &crate::i18n::translate(lang, title_key, None),
+        &crate::i18n::translate(lang, message_key, None),
+    )
+}
+
 fn render_booking_action_error(
     state: &AppState,
     headers: &HeaderMap,
     title: &str,
     message: &str,
 ) -> axum::response::Response {
+    render_booking_action_error_html(state, headers, title, message).into_response()
+}
+
+/// Same page as `render_booking_action_error`, for handlers whose signature is
+/// `Html<String>` rather than `Response`.
+fn render_booking_action_error_html(
+    state: &AppState,
+    headers: &HeaderMap,
+    title: &str,
+    message: &str,
+) -> Html<String> {
     let lang = crate::i18n::detect_from_headers(headers);
     let tmpl = match state.templates.get_template("booking_action_error.html") {
         Ok(t) => t,
-        Err(e) => return internal_error_response("internal", &e),
+        Err(e) => return internal_error_html("internal", &e),
     };
     Html(
         tmpl.render(context! {
@@ -22415,7 +22476,6 @@ fn render_booking_action_error(
         })
         .unwrap_or_else(|e| internal_error_body("template render", &e)),
     )
-    .into_response()
 }
 
 #[cfg(test)]
@@ -26284,16 +26344,14 @@ mod tests {
     #[test]
     fn validate_booking_input_empty_name() {
         let result = validate_booking_input("", "user@example.com", &None);
-        assert!(result.is_err());
-        assert!(result.unwrap_err().contains("Name"));
+        assert_eq!(result, Err("validate-name-length"));
     }
 
     #[test]
     fn validate_booking_input_name_too_long() {
         let long_name = "a".repeat(256);
         let result = validate_booking_input(&long_name, "user@example.com", &None);
-        assert!(result.is_err());
-        assert!(result.unwrap_err().contains("Name"));
+        assert_eq!(result, Err("validate-name-length"));
     }
 
     #[test]
@@ -26305,23 +26363,19 @@ mod tests {
     #[test]
     fn validate_booking_input_empty_email() {
         let result = validate_booking_input("Jane", "", &None);
-        assert!(result.is_err());
-        let err = result.unwrap_err();
-        assert!(err.contains("Email") || err.contains("email"));
+        assert_eq!(result, Err("validate-email-length"));
     }
 
     #[test]
     fn validate_booking_input_email_no_at() {
         let result = validate_booking_input("Jane", "userexample.com", &None);
-        assert!(result.is_err());
-        assert!(result.unwrap_err().contains("email"));
+        assert_eq!(result, Err("validate-email-invalid"));
     }
 
     #[test]
     fn validate_booking_input_email_no_domain_dot() {
         let result = validate_booking_input("Jane", "user@localhost", &None);
-        assert!(result.is_err());
-        assert!(result.unwrap_err().contains("email"));
+        assert_eq!(result, Err("validate-email-invalid"));
     }
 
     #[test]
@@ -26334,8 +26388,7 @@ mod tests {
     fn validate_booking_input_notes_too_long() {
         let long_notes = Some("x".repeat(5001));
         let result = validate_booking_input("Jane", "jane@example.com", &long_notes);
-        assert!(result.is_err());
-        assert!(result.unwrap_err().contains("Notes"));
+        assert_eq!(result, Err("validate-notes-length"));
     }
 
     #[test]
@@ -32892,6 +32945,75 @@ mod tests {
 
     const XSS_PAYLOAD: &str = r#"\\'));alert(1);//"#;
 
+    /// The booking error page is the one screen a guest sees when something
+    /// goes wrong, so it must never fall back to English. Every argument to
+    /// the render helpers has to arrive already translated (or as a Fluent
+    /// key), which means no call site may pass a bare English sentence.
+    /// Fluent keys are kebab-case and contain no spaces; an English sentence
+    /// does. That is the whole check.
+    #[test]
+    fn booking_action_error_call_sites_pass_no_english() {
+        const HELPERS: &[&str] = &[
+            "render_booking_action_error(",
+            "render_booking_action_error_html(",
+            "render_booking_action_error_keys(",
+        ];
+
+        let src = std::fs::read_to_string("src/web/mod.rs").expect("read source");
+        let src = src
+            .split("\nmod tests {")
+            .next()
+            .unwrap_or(&src)
+            .to_string();
+
+        let mut offenders = Vec::new();
+        let mut checked = 0usize;
+        for helper in HELPERS {
+            let mut from = 0usize;
+            while let Some(off) = src[from..].find(helper) {
+                let at = from + off;
+                from = at + helper.len();
+                // Skip the definitions themselves.
+                let line_start = src[..at].rfind('\n').map(|i| i + 1).unwrap_or(0);
+                if src[line_start..at].contains("fn ") {
+                    continue;
+                }
+                // Collect the argument list up to the balancing paren.
+                let mut depth = 0i32;
+                let mut args = String::new();
+                for c in src[at + helper.len() - 1..].chars() {
+                    args.push(c);
+                    match c {
+                        '(' => depth += 1,
+                        ')' => {
+                            depth -= 1;
+                            if depth == 0 {
+                                break;
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                checked += 1;
+                for literal in args.split('"').skip(1).step_by(2) {
+                    if literal.contains(' ') {
+                        offenders.push(format!("{helper} … {literal:?}"));
+                    }
+                }
+            }
+        }
+
+        assert!(
+            checked >= 20,
+            "expected to find the error-page call sites, found {checked} — the scan broke"
+        );
+        assert!(
+            offenders.is_empty(),
+            "booking error page rendered from untranslated English:\n  {}",
+            offenders.join("\n  ")
+        );
+    }
+
     /// Every host-facing page must pass `lang` into its render context. A
     /// handler that forgets renders English regardless of the viewer's saved
     /// preference, and nothing fails: the page still looks fine, just in the
@@ -33618,6 +33740,64 @@ mod tests {
             csrf,
             far_future_monday()
         )
+    }
+
+    /// End-to-end proof that a rejected booking speaks the guest's language.
+    /// The validator returns a Fluent key, the handler resolves it against
+    /// `Accept-Language`, and the error page renders the result: three steps,
+    /// each of which has shipped broken at least once, and none of which the
+    /// static guards can see through.
+    #[tokio::test]
+    async fn rejected_booking_error_page_follows_accept_language() {
+        let (app, pool, _, et_id) = setup_test_app().await;
+        let csrf = "csrf-bad-email-fr";
+        let body = format!(
+            "_csrf={}&date={}&time=10:00&name=Guest&email=not-an-email&tz=UTC",
+            csrf,
+            far_future_monday()
+        );
+        let request = axum::http::Request::builder()
+            .method("POST")
+            .uri("/u/testuser/test-meeting/book")
+            .header("cookie", format!("__Host-calrs_csrf={}", csrf))
+            .header("content-type", "application/x-www-form-urlencoded")
+            .header("accept-language", "fr-FR,fr;q=0.9")
+            .body(Body::from(body))
+            .unwrap();
+
+        let response = app.oneshot(request).await.unwrap();
+        assert_eq!(response.status(), 200);
+        let html = body_string(response).await;
+
+        assert_eq!(
+            booking_count(&pool, &et_id).await,
+            0,
+            "an invalid email must not create a booking"
+        );
+        assert!(
+            html.contains(&crate::i18n::translate(
+                "fr",
+                "validate-email-invalid",
+                None
+            )),
+            "expected the French validation message, got:\n{html}"
+        );
+        assert!(
+            html.contains(&crate::i18n::translate(
+                "fr",
+                "bae-title-invalid-booking",
+                None
+            )),
+            "expected the French error title, got:\n{html}"
+        );
+        assert!(
+            !html.contains("Please enter a valid email address"),
+            "the English string leaked into a French response"
+        );
+        assert!(
+            !html.contains("validate-email-invalid"),
+            "the raw Fluent key reached the page"
+        );
     }
 
     async fn set_horizon(pool: &SqlitePool, et_id: &str, days: i32) {

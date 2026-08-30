@@ -1277,3 +1277,60 @@ error-too-many-requests = Zbyt wiele żądań. Proszę spróbować ponownie pó�
 error-no-members-available = Żaden członek zespołu nie jest dostępny w tym terminie.
 error-dynamic-group-public-only = Dynamiczne linki grupowe są dostępne tylko dla publicznych typów wydarzeń.
 error-user-not-found = Nie znaleziono użytkownika.
+
+# Booking action error page: titles (templates/booking_action_error.html)
+
+bae-title-captcha = Weryfikacja captcha nie powiodła się
+bae-title-invalid-booking = Nieprawidłowe dane rezerwacji
+bae-title-unavailable = Obecnie niedostępne
+bae-title-cannot-approve = Nie można zatwierdzić tej rezerwacji
+bae-title-invalid-link = Nieprawidłowy link
+bae-title-invalid-or-expired = Nieprawidłowy lub wygasły link
+bae-title-booking-not-found = Nie znaleziono rezerwacji
+bae-title-already-approved = Już zatwierdzona
+bae-title-already-declined = Już odrzucona
+bae-title-already-cancelled = Już odwołana
+bae-title-booking-cancelled = Rezerwacja odwołana
+bae-title-booking-declined = Rezerwacja odrzucona
+
+# Booking action error page: bodies
+
+bae-body-go-back = Proszę wrócić i spróbować ponownie.
+bae-body-unavailable = Gospodarz nie przyjmuje już rezerwacji na ten dzień. Proszę wybrać inną datę albo zajrzeć później.
+bae-body-resource-gone = Wymagany zasób nie jest już dostępny o tej porze. Poproś gościa o wybranie innego terminu.
+bae-body-no-claim-token = Nie podano tokenu.
+bae-body-claim-invalid = Ten link nie jest już ważny.
+bae-body-booking-gone = Ta rezerwacja już nie istnieje.
+bae-body-decline-link-invalid = Ten link odrzucenia jest nieprawidłowy, wygasł albo rezerwacja została już obsłużona.
+bae-body-cancel-link-invalid = Ten link odwołania jest nieprawidłowy, wygasł albo rezerwacja została już odwołana.
+bae-body-cancel-link-invalid-short = Ten link odwołania jest nieprawidłowy albo wygasł.
+bae-body-reschedule-link-invalid = Ten link przeniesienia jest nieprawidłowy, wygasł albo rezerwacja została już obsłużona.
+bae-body-approval-link-invalid = Ten link zatwierdzenia jest nieprawidłowy albo wygasł.
+bae-body-already-approved = Ta rezerwacja została już zatwierdzona.
+bae-body-already-declined = Ta rezerwacja została już odrzucona.
+bae-body-already-cancelled = Ta rezerwacja została już odwołana.
+bae-body-was-cancelled = Ta rezerwacja została odwołana.
+bae-body-declined-by-host = Ta rezerwacja została odrzucona przez gospodarza.
+
+# Booking form validation (src/web/mod.rs)
+
+validate-name-length = Imię i nazwisko muszą mieć od 1 do 255 znaków.
+validate-email-length = Adres e-mail musi mieć od 1 do 255 znaków.
+validate-email-invalid = Proszę podać prawidłowy adres e-mail.
+validate-notes-length = Notatki nie mogą przekraczać 5000 znaków.
+validate-date-too-far = Nie można rezerwować z wyprzedzeniem większym niż rok.
+
+# Additional guests and dynamic group links (src/web/mod.rs)
+
+guests-not-allowed = Ten typ wydarzenia nie dopuszcza dodatkowych gości.
+guests-too-many =
+    { $max ->
+        [one] Można dodać najwyżej jednego dodatkowego gościa.
+        [few] Można dodać najwyżej { $max } dodatkowych gości.
+        [many] Można dodać najwyżej { $max } dodatkowych gości.
+       *[other] Można dodać najwyżej { $max } dodatkowych gości.
+    }
+guests-invalid-email = Nieprawidłowy adres e-mail dodatkowego gościa: { $email }
+dynamic-group-min-usernames = Linki grupy dynamicznej wymagają co najmniej dwóch nazw użytkowników.
+dynamic-group-user-not-found = Nie znaleziono użytkownika „{ $username }”.
+dynamic-group-user-opted-out = Użytkownik „{ $username }” nie włączył linków grupy dynamicznej.

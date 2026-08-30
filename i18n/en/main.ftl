@@ -1257,3 +1257,58 @@ error-too-many-requests = Too many requests. Please try again later.
 error-no-members-available = No team members are available for this slot.
 error-dynamic-group-public-only = Dynamic group links are only available for public event types.
 error-user-not-found = User not found.
+
+# Booking action error page: titles (templates/booking_action_error.html)
+
+bae-title-captcha = Captcha verification failed
+bae-title-invalid-booking = Invalid booking details
+bae-title-unavailable = Not available right now
+bae-title-cannot-approve = Cannot approve this booking
+bae-title-invalid-link = Invalid link
+bae-title-invalid-or-expired = Invalid or expired link
+bae-title-booking-not-found = Booking not found
+bae-title-already-approved = Already approved
+bae-title-already-declined = Already declined
+bae-title-already-cancelled = Already cancelled
+bae-title-booking-cancelled = Booking cancelled
+bae-title-booking-declined = Booking declined
+
+# Booking action error page: bodies
+
+bae-body-go-back = Please go back and try again.
+bae-body-unavailable = The host isn't accepting more bookings for this date. Please pick a different date, or check back later.
+bae-body-resource-gone = A required resource is no longer available for this time. Ask the guest to pick another slot.
+bae-body-no-claim-token = No claim token provided.
+bae-body-claim-invalid = This claim link is no longer valid.
+bae-body-booking-gone = This booking no longer exists.
+bae-body-decline-link-invalid = This decline link is invalid, has expired, or the booking has already been processed.
+bae-body-cancel-link-invalid = This cancellation link is invalid, has expired, or the booking has already been cancelled.
+bae-body-cancel-link-invalid-short = This cancellation link is invalid or has expired.
+bae-body-reschedule-link-invalid = This reschedule link is invalid, has expired, or the booking has already been processed.
+bae-body-approval-link-invalid = This approval link is invalid or has expired.
+bae-body-already-approved = This booking has already been approved.
+bae-body-already-declined = This booking has already been declined.
+bae-body-already-cancelled = This booking has already been cancelled.
+bae-body-was-cancelled = This booking was cancelled.
+bae-body-declined-by-host = This booking has been declined by the host.
+
+# Booking form validation (src/web/mod.rs)
+
+validate-name-length = Name must be between 1 and 255 characters.
+validate-email-length = Email must be between 1 and 255 characters.
+validate-email-invalid = Please enter a valid email address.
+validate-notes-length = Notes must be 5000 characters or less.
+validate-date-too-far = Cannot book more than one year in advance.
+
+# Additional guests and dynamic group links (src/web/mod.rs)
+
+guests-not-allowed = Additional guests are not allowed for this event type.
+guests-too-many =
+    { $max ->
+        [one] You can add at most one additional guest.
+       *[other] You can add at most { $max } additional guests.
+    }
+guests-invalid-email = Invalid additional guest email: { $email }
+dynamic-group-min-usernames = Dynamic group links require at least two usernames.
+dynamic-group-user-not-found = User "{ $username }" not found.
+dynamic-group-user-opted-out = User "{ $username }" has not enabled dynamic group links.
