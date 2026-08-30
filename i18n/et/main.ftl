@@ -1278,7 +1278,7 @@ bae-title-booking-declined = Broneering tagasi lükatud
 bae-body-go-back = Palun mine tagasi ja proovi uuesti.
 bae-body-unavailable = Korraldaja ei võta sellele kuupäevale rohkem broneeringuid vastu. Palun vali mõni muu kuupäev või vaata hiljem uuesti.
 bae-body-resource-gone = Vajalik ressurss ei ole sel ajal enam saadaval. Palu külalisel valida mõni muu aeg.
-bae-body-no-claim-token = Ülevõtmise luba ei antud.
+bae-body-no-claim-token = Ülevõtmistokenit ei antud.
 bae-body-claim-invalid = See link ei kehti enam.
 bae-body-booking-gone = Seda broneeringut enam ei ole.
 bae-body-decline-link-invalid = See tagasilükkamise link on vigane, aegunud või on broneering juba menetletud.
@@ -1312,3 +1312,5 @@ guests-invalid-email = Vigane lisakülalise e-posti aadress: { $email }
 dynamic-group-min-usernames = Dünaamilise grupi lingid vajavad vähemalt kahte kasutajanime.
 dynamic-group-user-not-found = Kasutajat „{ $username }“ ei leitud.
 dynamic-group-user-opted-out = Kasutaja „{ $username }“ ei ole dünaamilise grupi linke lubanud.
+
+error-slot-unavailable-member = See aeg ei ole enam saadaval ({ $username } on hõivatud).

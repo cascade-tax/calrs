@@ -1312,3 +1312,5 @@ guests-invalid-email = Invalid additional guest email: { $email }
 dynamic-group-min-usernames = Dynamic group links require at least two usernames.
 dynamic-group-user-not-found = User "{ $username }" not found.
 dynamic-group-user-opted-out = User "{ $username }" has not enabled dynamic group links.
+
+error-slot-unavailable-member = This slot is no longer available ({ $username } has a conflict).

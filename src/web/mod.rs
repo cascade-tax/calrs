@@ -11448,9 +11448,11 @@ async fn handle_dynamic_group_booking(
             busy.extend(user_avail_as_busy(&state.pool, uid, buf_start, buf_end, host_tz).await);
         }
         if has_conflict(&busy, buf_start, buf_end) {
-            return Html(format!(
-                "This slot is no longer available ({} has a conflict).",
-                uname
+            return Html(tr1(
+                lang,
+                "error-slot-unavailable-member",
+                "username",
+                uname,
             ))
             .into_response();
         }

@@ -1312,3 +1312,5 @@ guests-invalid-email = E-mail de convidado adicional inválido: { $email }
 dynamic-group-min-usernames = Os links de grupo dinâmico exigem pelo menos dois nomes de usuário.
 dynamic-group-user-not-found = Usuário “{ $username }” não encontrado.
 dynamic-group-user-opted-out = O usuário “{ $username }” não ativou os links de grupo dinâmico.
+
+error-slot-unavailable-member = Este horário não está mais disponível ({ $username } tem um conflito).

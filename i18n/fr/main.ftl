@@ -1312,3 +1312,5 @@ guests-invalid-email = Adresse e-mail d'invité supplémentaire invalide : { $em
 dynamic-group-min-usernames = Les liens de groupe dynamique nécessitent au moins deux noms d'utilisateur.
 dynamic-group-user-not-found = Utilisateur « { $username } » introuvable.
 dynamic-group-user-opted-out = L'utilisateur « { $username } » n'a pas activé les liens de groupe dynamique.
+
+error-slot-unavailable-member = Ce créneau n'est plus disponible ({ $username } a un conflit).
