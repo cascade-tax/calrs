@@ -577,6 +577,8 @@ The following `dead_code` warnings are expected and should **not** be suppressed
 - **`auth.rs` `cleanup_expired_sessions()`** — Session cleanup utility not yet wired into a scheduled task. Will be used when adding periodic maintenance (e.g. on startup or via a background task).
 - **`caldav/mod.rs` `RawEvent.href` field** — Set during CalDAV fetch but not yet read. Kept for potential future use in delta sync.
 
+**Tests that touch `CALRS_*` environment variables** must take `crate::test_support::ENV_LOCK` and hold a `crate::test_support::EnvGuard`. Environment variables are process-global and Rust runs tests in parallel threads inside one process, so a module-local lock is not enough. `config_general_set_and_clear` failed intermittently for exactly that reason: `commands::config` had its own lock while `caldav` set the same variable from another module.
+
 When adding a new migration:
 1. Create `migrations/NNN_description.sql` with the DDL.
 2. **CRITICAL: Register it in `src/db.rs`** in the `migrations` array inside `migrate()`. Forgetting this step means the migration never runs on existing deployments, and any queries referencing the new table/column will fail silently (due to `unwrap_or_default()`). This has caused production bugs before — always verify the migration is registered.
@@ -585,7 +587,9 @@ When adding a new migration:
 
 calrs ships with translations for English, French, Spanish, Polish, German, Italian, Estonian and Brazilian Portuguese. Source files live under `i18n/{lang}/main.ftl` and are embedded in the binary via `include_str!` (no runtime files). The loader, language detection, and minijinja `t()` global are in `src/i18n.rs`. Templates use `{{ t("message-id", arg=value) }}` and the active language is injected into the rendering context as `lang` by the calling handler.
 
-Both the guest side and the host side (dashboard, settings, forms, admin panel, auth pages) render through Fluent. **All eight locales are complete at 987 keys**, held there by a test; the per-key English fallback still exists but nothing currently uses it.
+Both the guest side and the host side (dashboard, settings, forms, admin panel, auth pages) render through Fluent, including the bare error responses the booking flow returns without page chrome. **All eight locales are complete at 1003 keys**, held there by a test; the per-key English fallback still exists but nothing currently uses it.
+
+Four strings stay English on purpose: the CSRF rejection, the 500 page, and the OIDC failure. They live in helpers called from ~240 sites with no `lang` in scope, and they are diagnostics rather than flow messages.
 
 All locales address the reader informally, matching what the earliest translations chose: du, tu, tú, ty, você, sa. The captcha strings in German are the one leftover in the formal register.
 

@@ -1238,3 +1238,22 @@ error-oauth-not-configured = Google OAuth2 no está configurado.
 error-no-scheduling-account = No se ha encontrado ningún perfil de agenda.
 error-private-event-type-not-found = No se ha encontrado el tipo de evento privado.
 error-access-denied = Acceso denegado.
+
+# Guest booking-flow errors (src/web/mod.rs)
+
+error-slot-unavailable = Este hueco ya no está disponible.
+error-slot-too-soon = Este hueco ya no está disponible (demasiado pronto).
+error-slot-beyond-horizon = Este hueco queda fuera del periodo de reserva.
+error-invite-required = Este tipo de evento requiere un enlace de invitación.
+error-invite-invalid = Enlace de invitación no válido.
+error-invite-expired = Este enlace de invitación ha caducado.
+error-invite-used = Este enlace de invitación ya se ha usado.
+error-invalid-date = Fecha no válida.
+error-invalid-time = Hora no válida.
+error-invalid-date-format = Formato de fecha no válido.
+error-invalid-time-format = Formato de hora no válido.
+error-too-many-bookings = Demasiados intentos de reserva. Por favor, inténtalo de nuevo en unos minutos.
+error-too-many-requests = Demasiadas peticiones. Por favor, inténtalo de nuevo más tarde.
+error-no-members-available = Ningún miembro del equipo está disponible para este hueco.
+error-dynamic-group-public-only = Los enlaces de grupo dinámicos solo están disponibles para tipos de evento públicos.
+error-user-not-found = Usuario no encontrado.
