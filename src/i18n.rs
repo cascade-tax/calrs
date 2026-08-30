@@ -472,7 +472,10 @@ mod tests {
         }
         assert!(
             missing.is_empty(),
-            "missing English keys:\n{}",
+            "missing English keys:\n{}\n\nA kebab-case `Err(\"...\")` is read as a \
+             message id, because that is how the booking-form validators hand one \
+             back. If yours is an internal error code rather than a sentence a \
+             guest reads, name it something that is not kebab-case.",
             missing.join("\n")
         );
     }
@@ -493,7 +496,10 @@ mod tests {
     /// through a variable, so without this pass a typo renders the raw id.
     fn find_rust_keys(src: &str) -> Vec<String> {
         let mut keys = Vec::new();
-        for call in ["render_booking_action_error_keys("] {
+        // Helpers that take message ids as arguments instead of resolving them
+        // inline. Add one here when you add one to the code.
+        const KEY_TAKING_HELPERS: &[&str] = &["render_booking_action_error_keys("];
+        for call in KEY_TAKING_HELPERS {
             let mut i = 0;
             while let Some(pos) = src[i..].find(call) {
                 let at = i + pos;
