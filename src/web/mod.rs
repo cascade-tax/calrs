@@ -24307,7 +24307,11 @@ pub(crate) fn render_error_page(
     title: &str,
     message: &str,
 ) -> axum::response::Response {
-    render_booking_action_error_html(state, headers, title, message).into_response()
+    (
+        status,
+        render_booking_action_error_html(state, headers, title, message),
+    )
+        .into_response()
 }
 
 /// Same page as `render_booking_action_error`, for handlers whose signature is
@@ -24323,14 +24327,14 @@ fn render_booking_action_error_html(
         Ok(t) => t,
         Err(e) => return internal_error_html("internal", &e),
     };
-    let body = tmpl
-        .render(context! {
+    Html(
+        tmpl.render(context! {
             title => title,
             message => message,
             lang => lang,
         })
-        .unwrap_or_else(|e| internal_error_body("template render", &e));
-    (status, Html(body)).into_response()
+        .unwrap_or_else(|e| internal_error_body("template render", &e)),
+    )
 }
 
 /// `render_error_page` for handlers that have no `HeaderMap` in scope (the
