@@ -40,3 +40,8 @@ committing; the pre-commit hook enforces canonical `rustfmt` output.
 - Translation changes follow the long-lived `i18n` branch workflow in
   `MAINTAINERS.md`; do not add untranslated inline strings to localized
   templates.
+
+## Durable memory
+
+- [Upstream review status](memory/topics/upstream-review.md) records reviewed
+  release gaps, porting constraints, defect status, and approval gates.
