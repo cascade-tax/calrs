@@ -160,6 +160,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 | Guest "Add to calendar" | 1.16.0 | The confirmation page serves the booking as `.ics`, so a guest can add it even on an instance with no SMTP |
 | Brazilian Portuguese locale | 1.16.0 | Eighth shipped language, contributed by @RafaelGrochoska |
 | Unauthenticated SMTP relays | 1.16.0 | Leave the username empty to relay through a local MTA; new `none` TLS mode for a relay with no STARTTLS or a private-CA certificate |
+| Localized dashboard | 1.17.0 | The host side — dashboard, settings, every form, admin panel, sign-in — renders through Fluent, so an operator can run calrs in their own language |
+| Eight complete locales | 1.17.0 | English, French, German, Spanish, Italian, Polish, Brazilian Portuguese and Estonian at 100%, held there by a test |
+
+## [1.17.0] - 2026-08-30
+
+Minor release. The headline is that **calrs speaks your language on both sides of the booking link**: the host-facing interface is localized, and all eight shipped locales are complete rather than partial. No migrations, no configuration change, and no visible difference for English users.
+
+### Added
+
+- **The host-facing interface is localized** (closes #195, PR #196, reported by @typovrak) - The dashboard, settings, every form, the availability troubleshooter, date overrides, invite management, the admin panel and the sign-in and registration pages now render through Fluent. Before this, someone could offer guests a booking page in their own language but had to administer it in English. The language resolves once in the `AuthUser` / `AdminUser` / `OptionalAuthUser` extractors, where the user row and the request headers are both already in hand — saved preference first, then `Accept-Language` — so the language dropdown that shipped in #59 as "foundation for the dashboard translation pass" finally does something. Validation errors and the bare responses the booking flow returns without page chrome are localized too, including the ones the guest side had never covered despite #195 assuming otherwise.
+- **All eight locales complete** (PR #197) - German, Spanish, Italian, Polish and Brazilian Portuguese each gained 821 keys, Estonian all 987 from an empty file, and every locale now carries 1003. Each follows the register its earliest translations chose — du, tu, tú, ty, você, sa — rather than a formal one, and matches the English voice on the details that usually drift: the same ellipsis character per string, the same softening on validation errors, and one rendering per English sentence where the same sentence appears under two keys. Polish carries the three plural categories its grammar needs rather than English's two, so "2 członkowie" and "5 członków" are both right. Native review is still welcome on Weblate, Estonian most of all.
+
+### Fixed
+
+- **A host could inject markup into a guest-facing page through their own booking address** - The "booking can no longer be cancelled" page put the host's email into a `mailto:` href and into the link text through a filter that turns off escaping, so an address containing quotes and angle brackets reached the guest's browser as markup. Found by a structural test added while localizing: in any translated sentence that carries markup, every value spliced in must be escaped, and the rule now fails the build rather than relying on review.
+- **French phone hint agreed with the wrong gender** - `{ $country } est supposé` cannot agree with an interpolated country name — *la France est supposée*, *le Portugal est supposé*. Rephrased to avoid agreeing with the placeholder, as the other six locales already did.
+
+### Internal
+
+- Six guard tests, each mutation-checked: every `t()` key referenced from a template or from Rust exists in English; every template still loads; every locale covers every English key; plural messages carry the categories their language needs; every host-facing page passes a `lang` into its render context; and no value is spliced into a markup-bearing translation without escaping. The last two exist because both failures shipped inside the branch and neither made anything look broken — a page in the wrong language still renders, and an unescaped value still displays.
+- `t()` hands integers to Fluent as numbers rather than strings, so plural selectors select. A stringified `1` never matches the `one` variant and falls through to `other`, which is how "1 members" reaches a page. Grouping is off, so an integer still renders as it always did — 1440, not 1,440.
+- A test race is fixed (PR #198). `config_general_set_and_clear` failed intermittently because `caldav`'s allowlist test set `CALRS_ALLOW_PRIVATE_HOSTS` process-wide from a module that `commands::config`'s own lock could not reach. The lock and its restore guard moved to `crate::test_support` so every module shares them; measured at 5 failures in 12 runs before and 0 in 12 after.
+- 910 tests, all green.
 
 ## [1.16.0] - 2026-08-21
 
