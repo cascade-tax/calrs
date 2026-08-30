@@ -173,7 +173,7 @@ base-powered-by = Propulsé par
 
 # Profile (templates/profile.html)
 
-profile-pick-event-type-invite = Choisissez un type d'événement pour réserver un créneau horaire.
+profile-pick-event-type-invite = Choisissez un type d'événement pour réserver un créneau.
 profile-no-event-type = Aucun type d'événement disponible pour le moment.
 
 # Month and weekday names + per-locale date format patterns.
@@ -488,7 +488,7 @@ register-name-placeholder = Votre nom
 register-email = E-mail
 register-password = Mot de passe
 register-password-hint = (12 caractères minimum)
-register-submit = Créer le compte
+register-submit = Créer un compte
 register-have-account = Vous avez déjà un compte ? { $link }
 register-signin-link = Connectez-vous
 
@@ -1136,7 +1136,7 @@ book-phone-help = Les numéros locaux fonctionnent ; { $country } est supposé s
 book-phone-optional-consequence = Laissez vide si vous préférez ne pas recevoir de SMS au sujet de cette réservation.
 book-phone-required = Un numéro de téléphone est obligatoire pour cette réservation.
 book-phone-invalid-title = Numéro de téléphone invalide
-book-phone-invalid = Saisissez un numéro joignable par SMS, ou laissez le champ vide.
+book-phone-invalid = Veuillez saisir un numéro joignable par SMS, ou laisser le champ vide.
 book-phone-country-search = Rechercher
 book-phone-country-label = Choisir le pays
 book-phone-country-none = Aucun pays sélectionné
@@ -1181,14 +1181,14 @@ form-error-team-name-slug-required = Le nom et l'identifiant sont obligatoires.
 form-error-team-name-length = Le nom ne doit pas dépasser 255 caractères.
 form-error-team-description-length = La description ne doit pas dépasser 5000 caractères.
 form-error-slug-charset = L'identifiant ne peut contenir que des minuscules, des chiffres et des tirets.
-form-error-slug-reserved = Cet identifiant est réservé. Choisissez-en un autre.
+form-error-slug-reserved = Cet identifiant est réservé. Veuillez en choisir un autre.
 form-error-team-slug-taken = Une équipe utilise déjà cet identifiant.
 form-error-title-required = Le titre est obligatoire pour générer un identifiant.
 form-error-event-type-slug-taken = Un type d'événement utilise déjà cet identifiant.
 form-error-event-type-slug-taken-team = Un type d'événement de cette équipe utilise déjà cet identifiant.
 form-error-location-required = Les détails du lieu sont obligatoires (lien de visioconférence, numéro de téléphone ou adresse).
 form-error-not-team-admin = Vous n'êtes pas administrateur de cette équipe.
-form-error-no-account = Aucun profil de planification trouvé. Contactez un administrateur.
+form-error-no-account = Aucun profil de planification trouvé. Veuillez contacter un administrateur.
 form-error-all-fields-required = Tous les champs sont obligatoires.
 form-error-encryption = Erreur de chiffrement.
 form-error-connection-failed = Échec de la connexion : { $error }. Vérifiez l'URL et les identifiants, ou cochez « Ignorer le test de connexion » pour enregistrer malgré tout.
@@ -1202,7 +1202,7 @@ settings-saved = Paramètres enregistrés.
 settings-error-name-length = Le nom doit contenir entre 1 et 255 caractères.
 settings-error-username-length = Le nom d'utilisateur doit contenir au moins 2 caractères.
 settings-error-username-taken = Ce nom d'utilisateur est déjà pris.
-settings-error-booking-email = Saisissez une adresse e-mail de réservation valide.
+settings-error-booking-email = Veuillez saisir une adresse e-mail de réservation valide.
 settings-error-save-failed = Échec de l'enregistrement des paramètres.
 
 # Host-facing error responses (src/web/mod.rs)

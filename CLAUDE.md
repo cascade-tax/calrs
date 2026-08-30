@@ -585,11 +585,13 @@ When adding a new migration:
 
 calrs ships with translations for English, French, Spanish, Polish, German, Italian, Estonian and Brazilian Portuguese. Source files live under `i18n/{lang}/main.ftl` and are embedded in the binary via `include_str!` (no runtime files). The loader, language detection, and minijinja `t()` global are in `src/i18n.rs`. Templates use `{{ t("message-id", arg=value) }}` and the active language is injected into the rendering context as `lang` by the calling handler.
 
-Both the guest side and the host side (dashboard, settings, forms, admin panel, auth pages) render through Fluent. English and French are complete; the other locales fall back to English per missing key.
+Both the guest side and the host side (dashboard, settings, forms, admin panel, auth pages) render through Fluent. **All eight locales are complete at 987 keys**, held there by a test; the per-key English fallback still exists but nothing currently uses it.
+
+All locales address the reader informally, matching what the earliest translations chose: du, tu, tú, ty, você, sa. The captcha strings in German are the one leftover in the formal register.
 
 **Where `lang` comes from on host pages.** The `AuthUser`, `AdminUser` and `OptionalAuthUser` extractors resolve it once, in `src/auth.rs`, from the user's saved preference then `Accept-Language`. A dashboard handler passes `lang => auth_user.lang` and nothing else. Pre-login pages (login, register) have no user row, so they call `i18n::detect_from_headers` directly.
 
-**Three guard tests** in `src/i18n.rs`: every `t()` key referenced from a template exists in the English bundle; every template still loads; and French covers every English key. The last one is what keeps a French dashboard from sprouting an English sentence when someone adds a key.
+**Guard tests** in `src/i18n.rs`: every `t()` key referenced from a template exists in the English bundle; the same for keys used from Rust; every template still loads; every locale covers every English key; and plural messages carry the categories the locale's grammar needs. That last one matters because Polish selects one/few/many for integers, so a translation that copies English's one/other reads wrong at 2 and at 5. A further guard in `src/web/mod.rs` fails if a host-facing template is rendered without a `lang` in its context.
 
 **Numbers passed to `t()`** reach Fluent as numbers, not strings, so `{ $count -> [one] ... }` plural selectors work. Grouping is switched off, so an integer renders as it always did ("1440", not "1,440").
 
@@ -601,9 +603,11 @@ Both the guest side and the host side (dashboard, settings, forms, admin panel, 
 
 **When you add or change a translatable string:**
 1. Land it on the `i18n` branch first, not `main`. This avoids half-translated UI on `main` and gives Weblate translators time to catch up before the next merge.
-2. Add the new key to `i18n/en/main.ftl` (the source of truth). Stub languages don't need entries: missing keys fall back to English at runtime.
+2. Add the new key to `i18n/en/main.ftl` (the source of truth), then to every other locale. The runtime still falls back to English per missing key, but the coverage test does not let you rely on it.
 3. If the change touches a template that wasn't translated yet, convert its hard-coded strings to `{{ t("...") }}` calls in the same commit, and add render-site context entries (`lang => crate::i18n::detect_from_headers(&headers)` for guest pages, `lang => auth_user.lang` for authenticated dashboard pages).
-4. Add the French value too, or the parity test fails. Every other locale may lag.
+4. Run `cargo test i18n::` before pushing: it checks coverage across all eight locales and the plural categories each language needs.
+
+**Adding a key now costs eight translations, not one.** The coverage test fails until every locale has a value. That is deliberate: a half-translated page is worse than an English one because nobody notices it is wrong. If you cannot supply all eight, land the key on `i18n` and let Weblate fill the rest before merging to `main`.
 
 **When you add a new locale:**
 1. Create `i18n/{code}/main.ftl` (start empty, runtime falls back to English).
