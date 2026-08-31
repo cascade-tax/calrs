@@ -622,3 +622,4 @@ When adding a new subcommand:
 |---|---|
 | Cascade-branded production branch, releases, SMTP sender identity, and error-response follow-up | `memory/topics/cascade-production.md` |
 | Collective troubleshooting and per-member team conflict-calendar behavior | `memory/topics/team-availability.md` |
+| Cascade organization GitHub Actions usage and repository attribution | `memory/topics/github-actions-billing.md` |
