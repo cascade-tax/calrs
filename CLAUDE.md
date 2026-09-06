@@ -24,8 +24,8 @@ cargo clippy -- -D warnings
 mdbook build docs
 ```
 
-Run the narrowest checks that prove a change. Format modified Rust before
-committing; the pre-commit hook enforces canonical `rustfmt` output.
+Run the narrowest checks that prove a change. Run `cargo fmt` on modified Rust
+before committing; no hook enforces it in this checkout.
 
 ## Repository Rules
 
