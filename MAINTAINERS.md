@@ -41,8 +41,9 @@ We don't promise that integrations without a dedicated maintainer keep working a
 ## Development workflows
 
 Run `cargo fmt --check`, `cargo check`, `cargo test`, and
-`cargo clippy -- -D warnings` as appropriate for the changed Rust surface. The
-pre-commit hook enforces canonical `rustfmt` output.
+`cargo clippy -- -D warnings` as appropriate for the changed Rust surface. Run
+`cargo fmt` on modified Rust before committing; no hook enforces it in this
+checkout.
 
 When adding a migration, create `migrations/NNN_description.sql` and register it
 in the migration array inside `src/db.rs::migrate()`. Verify both paths together;
