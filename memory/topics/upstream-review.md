@@ -1,5 +1,27 @@
 # Cal.rs upstream review and production baseline
 
+## Sep 6, 2026
+
+Upstream review watermark moved to `70f25ac0b1cdecb7169f6d20cd507cea33e18a8d`
+(`upstream/main`). Since the previously reviewed `0f0a0d31`, upstream added
+three unreleased post-1.17.1 fixes, all confined to `src/web/mod.rs` settings
+handling: PR #205 confirms a dashboard language change in the newly saved
+language (#204), and PR #207 keeps submitted values on a rejected settings
+field (#206) and makes the avatar preview follow the edited name.
+
+Not ported. `cascade-main` tracks the pinned production release, and these
+commits are unreleased upstream `main`; they arrive with the next upstream
+release under the normal production-approval gate. They were verified to apply
+cleanly: all three cherry-pick onto `cascade-main` with no conflict, and
+`cargo fmt --check` plus `cargo check --all-targets` pass with them applied.
+The scratch branch used for that check was deleted.
+
+None of the three touches a Cascade customization. Forced 12-hour display,
+Sunday-first weeks, the exact light/dark palettes, branding, and the Microsoft
+read-only guard live in other regions of `src/web/mod.rs` and in templates;
+the fork has no changes in `settings_page`, `settings_render`, or
+`settings_save`. Production remains `1.17.1-cascade.1`.
+
 ## Aug 30, 2026
 
 Production runs `1.17.1-cascade.1`, built from exact Cascade fork revision
