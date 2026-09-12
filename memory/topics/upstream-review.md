@@ -1,5 +1,32 @@
 # Cal.rs upstream review and production baseline
 
+## Archived follow-up saved September 12, 2026
+
+The read-only review reported upstream `olivierlambert/calrs` main at
+`d1b458e02b5dff7de231c0971e448984a6bf0f69`, compared with the September 6
+watermark `70f25ac0b1cdecb7169f6d20cd507cea33e18a8d`.
+
+The reported **12-commit range** is Google Meet auto-links, **PR #182 / issue
+#45 phase 3**, including its feature branch, review fixes, and merge commit:
+
+- A feature commit adds `src/google_meet.rs` (reported about 2,100 lines) and wiring.
+- Four review/bugfix commits cover times/persistence/authentication, write-back
+  href, reschedule PATCH retry with host-email fallback, and a workaround for
+  sqlx's 16-column tuple limit introduced by the feature.
+- OAuth hardening adds a **10-second reqwest timeout** to the Google token endpoint.
+- Two i18n commits begin the next item in the visible report; the remainder is
+  truncated, so the full 12-commit inventory cannot be reconstructed here.
+
+This supersedes the old statement that PR #182 remained open **upstream**; it
+is not evidence that Cascade has ported or deployed the feature. The visible
+slice supplies no final compatibility verdict, new cherry-pick/compile/test
+proof, new release status, deployment, or production approval. Do not transfer
+the September 6 three-settings-fix validation to this Google Meet range. The
+last confirmed production baseline is still `1.17.1-cascade.1`; the existing
+release/production-approval gate remains. The original research was explicitly
+read-only. This memory entry does not advance a review watermark in runtime
+configuration or perform any code change.
+
 ## Sep 6, 2026
 
 Upstream review watermark moved to `70f25ac0b1cdecb7169f6d20cd507cea33e18a8d`

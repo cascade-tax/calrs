@@ -44,4 +44,5 @@ before committing; no hook enforces it in this checkout.
 ## Durable memory
 
 - [Upstream review status](memory/topics/upstream-review.md) records reviewed
-  release gaps, porting constraints, defect status, and approval gates.
+  release gaps, the archived Google Meet PR #182 merge and incomplete review
+  checkpoint, porting constraints, defect status, and approval gates.
