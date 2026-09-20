@@ -47,3 +47,4 @@ before committing; no hook enforces it in this checkout.
   release gaps, porting constraints, defect status, the confirmed production
   baseline, and approval gates. Read it before porting upstream work or
   changing release status.
+- [Instruction audit history](memory/topics/instruction-audits.md) records dated guidance-review outcomes and no-op checkpoints.
