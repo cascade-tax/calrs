@@ -5,7 +5,7 @@ on:
   push:
     branches: [cascade-main, i18n]
   pull_request:
-    # i18n is a permanent branch, and CLAUDE.md tells contributors to target it
+    # i18n is a permanent branch, and AGENTS.md tells contributors to target it
     # for anything touching UI text. Without it here those PRs get no CI at all.
     branches: [cascade-main, i18n]
 
