@@ -1,5 +1,27 @@
 # Cal.rs upstream review and production baseline
 
+## September 25, 2026 — upstream 1.18.0 reviewed, not ported
+
+Upstream `main` reached `fd9c2593502b4288934ddcab55279e4134b169f6`
+with the 1.18.0 release. Since the prior reviewed revision `d1b458e02b`,
+the release added UTC storage for new bookings, Google Meet auto-links,
+settings fixes, and a personal-booking trailing-slash redirect. The UTC change
+touches booking creation, rescheduling, reminders, cancellation, email/ICS,
+frequency limits, and the dashboard. Existing booking timestamps remain in
+their legacy form. Upstream's release notes require a pre-upgrade database
+backup: after a new UTC booking is created, rolling back also requires
+restoring the old database.
+
+Upstream registers `064_booking_time_version`. Cascade already registers
+`064_microsoft_graph`, including adoption of the older upstream migration
+name, so the release cannot be ported as an unchanged migration sequence.
+The booking-time change also needs compatibility testing against Cascade's
+Microsoft read-only behavior and its 12-hour and Sunday-first presentation.
+No code was ported, built, deployed, or approved during this hygiene review.
+`cascade-main` and production remain on the pinned 1.17.1 line. A separate
+upgrade must resolve the migration sequence, test the changed booking paths,
+rehearse backup and rollback, and pass the existing production-approval gate.
+
 ## Archived follow-up saved September 12, 2026
 
 The read-only review reported upstream `olivierlambert/calrs` main at
