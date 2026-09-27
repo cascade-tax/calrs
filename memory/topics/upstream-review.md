@@ -1,5 +1,9 @@
 # Cal.rs upstream review and production baseline
 
+## September 27, 2026 — weekly review
+
+[Full review and all 43 fork-only commit dispositions](../recent/2026-09-27-upstream-review.md). Upstream remains at the reviewed 1.18.0 revision. An update is warranted for UTC booking correctness, but needs conflict resolution, migration rehearsal, artifact verification and human production approval. The pinned 1.17.1 artifact and all 285 packaged source files were reverified. Production was unchanged.
+
 ## September 25, 2026 — upstream 1.18.0 reviewed, not ported
 
 Upstream `main` reached `fd9c2593502b4288934ddcab55279e4134b169f6`
