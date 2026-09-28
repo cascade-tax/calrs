@@ -520,7 +520,9 @@ async fn dynamic_group_google_meet_error_page(
     let lang = crate::i18n::detect_from_headers(headers);
     let title = crate::i18n::translate(lang, "google-meet-unavailable-title", None);
     let message = crate::i18n::translate(lang, "google-meet-dynamic-group-unavailable", None);
-    Some(render_booking_action_error(state, headers, &title, &message))
+    Some(render_booking_action_error(
+        state, headers, &title, &message,
+    ))
 }
 
 type DueReminder = (
@@ -11094,7 +11096,13 @@ async fn handle_group_booking(
     let Some((encoded_start, encoded_end)) =
         crate::booking_time::encode(guest_local_start, guest_tz, duration)
     else {
-        return Html(crate::i18n::translate(lang, "error-invalid-time", None)).into_response();
+        return render_error_page(
+            &state,
+            &headers,
+            axum::http::StatusCode::BAD_REQUEST,
+            "Invalid time",
+            &crate::i18n::translate(lang, "error-invalid-time", None),
+        );
     };
     let guest_local_end = crate::booking_time::local(&encoded_end, guest_tz, guest_tz).unwrap();
     let slot_start = crate::booking_time::local(&encoded_start, host_tz, host_tz).unwrap();
@@ -11327,8 +11335,13 @@ async fn handle_group_booking(
     {
         Ok(false) => {}
         Ok(true) => {
-            return Html(crate::i18n::translate(lang, "error-slot-unavailable", None))
-                .into_response()
+            return render_error_page(
+                &state,
+                &headers,
+                axum::http::StatusCode::CONFLICT,
+                "Slot no longer available",
+                &crate::i18n::translate(lang, "error-slot-unavailable", None),
+            )
         }
         Err(e) => return internal_error_response("booking conflict check", &e),
     }
@@ -12309,7 +12322,13 @@ async fn handle_dynamic_group_booking(
     let Some((encoded_start, encoded_end)) =
         crate::booking_time::encode(guest_local_start, guest_tz, duration)
     else {
-        return Html(crate::i18n::translate(lang, "error-invalid-time", None)).into_response();
+        return render_error_page(
+            state,
+            headers,
+            axum::http::StatusCode::BAD_REQUEST,
+            "Invalid time",
+            &crate::i18n::translate(lang, "error-invalid-time", None),
+        );
     };
     let guest_local_end = crate::booking_time::local(&encoded_end, guest_tz, guest_tz).unwrap();
     let slot_start = crate::booking_time::local(&encoded_start, host_tz, host_tz).unwrap();
@@ -12459,8 +12478,13 @@ async fn handle_dynamic_group_booking(
     match crate::booking_time::legacy_slot_taken(&state.pool, &et_id, None, &start_at, "").await {
         Ok(false) => {}
         Ok(true) => {
-            return Html(crate::i18n::translate(lang, "error-slot-unavailable", None))
-                .into_response()
+            return render_error_page(
+                state,
+                headers,
+                axum::http::StatusCode::CONFLICT,
+                "Slot no longer available",
+                &crate::i18n::translate(lang, "error-slot-unavailable", None),
+            )
         }
         Err(e) => return internal_error_response("booking conflict check", &e),
     }
@@ -13407,7 +13431,13 @@ async fn handle_booking_for_user(
     let Some((encoded_start, encoded_end)) =
         crate::booking_time::encode(guest_local_start, guest_tz, duration)
     else {
-        return Html(crate::i18n::translate(lang, "error-invalid-time", None)).into_response();
+        return render_error_page(
+            &state,
+            &headers,
+            axum::http::StatusCode::BAD_REQUEST,
+            "Invalid time",
+            &crate::i18n::translate(lang, "error-invalid-time", None),
+        );
     };
     let guest_local_end = crate::booking_time::local(&encoded_end, guest_tz, guest_tz).unwrap();
     let slot_start = crate::booking_time::local(&encoded_start, host_tz, host_tz).unwrap();
@@ -13547,8 +13577,13 @@ async fn handle_booking_for_user(
     match crate::booking_time::legacy_slot_taken(&state.pool, &et_id, None, &start_at, "").await {
         Ok(false) => {}
         Ok(true) => {
-            return Html(crate::i18n::translate(lang, "error-slot-unavailable", None))
-                .into_response()
+            return render_error_page(
+                &state,
+                &headers,
+                axum::http::StatusCode::CONFLICT,
+                "Slot no longer available",
+                &crate::i18n::translate(lang, "error-slot-unavailable", None),
+            )
         }
         Err(e) => return internal_error_response("booking conflict check", &e),
     }
@@ -16216,7 +16251,13 @@ async fn handle_booking(
     let Some((encoded_start, encoded_end)) =
         crate::booking_time::encode(guest_local_start, guest_tz, duration)
     else {
-        return Html(crate::i18n::translate(lang, "error-invalid-time", None)).into_response();
+        return render_error_page(
+            &state,
+            &headers,
+            axum::http::StatusCode::BAD_REQUEST,
+            "Invalid time",
+            &crate::i18n::translate(lang, "error-invalid-time", None),
+        );
     };
     let guest_local_end = crate::booking_time::local(&encoded_end, guest_tz, guest_tz).unwrap();
     let slot_start = crate::booking_time::local(&encoded_start, host_tz, host_tz).unwrap();
@@ -16360,8 +16401,13 @@ async fn handle_booking(
     match crate::booking_time::legacy_slot_taken(&state.pool, &et_id, None, &start_at, "").await {
         Ok(false) => {}
         Ok(true) => {
-            return Html(crate::i18n::translate(lang, "error-slot-unavailable", None))
-                .into_response()
+            return render_error_page(
+                &state,
+                &headers,
+                axum::http::StatusCode::CONFLICT,
+                "Slot no longer available",
+                &crate::i18n::translate(lang, "error-slot-unavailable", None),
+            )
         }
         Err(e) => return internal_error_response("booking conflict check", &e),
     }
@@ -22287,7 +22333,13 @@ async fn guest_reschedule_booking(
     let Some((encoded_start, encoded_end)) =
         crate::booking_time::encode(guest_local_start, guest_tz, duration)
     else {
-        return Html(crate::i18n::translate(lang, "error-invalid-time", None)).into_response();
+        return render_error_page(
+            &state,
+            &headers,
+            axum::http::StatusCode::BAD_REQUEST,
+            "Invalid time",
+            &crate::i18n::translate(lang, "error-invalid-time", None),
+        );
     };
     let guest_local_end = crate::booking_time::local(&encoded_end, guest_tz, guest_tz).unwrap();
     let slot_start = crate::booking_time::local(&encoded_start, host_tz, host_tz).unwrap();
@@ -22454,8 +22506,13 @@ async fn guest_reschedule_booking(
     {
         Ok(false) => {}
         Ok(true) => {
-            return Html(crate::i18n::translate(lang, "error-slot-unavailable", None))
-                .into_response()
+            return render_error_page(
+                &state,
+                &headers,
+                axum::http::StatusCode::CONFLICT,
+                "Slot no longer available",
+                &crate::i18n::translate(lang, "error-slot-unavailable", None),
+            )
         }
         Err(e) => return internal_error_response("booking conflict check", &e),
     }
@@ -33267,10 +33324,10 @@ mod tests {
             "the submitted name should survive the error"
         );
         let avatar = resp_body
-            .split(r#"flex-shrink: 0; overflow: hidden;">"#)
+            .split(r#"<span class="avatar-circle avatar-xl">"#)
             .nth(1)
             .expect("the avatar preview should render")
-            .split("</div>")
+            .split("</span>")
             .next()
             .unwrap_or("");
         assert!(
@@ -37636,6 +37693,66 @@ mod tests {
         assert_eq!(parse_optional_day_count("14"), Some(14));
         assert_eq!(parse_optional_day_count("-1"), None);
         assert_eq!(parse_optional_day_count("abc"), None);
+    }
+
+    // Cascade: UTC-stored bookings still render 12-hour times after the
+    // UTC-to-local conversion, and new time-validation failures keep the
+    // styled error page with a truthful status.
+    #[tokio::test]
+    async fn cascade_utc_booking_pages_keep_twelve_hour_and_styled_errors() {
+        let (app, pool, _session, et) = setup_test_app().await;
+        sqlx::query(
+            "UPDATE event_types SET timezone='America/Los_Angeles', min_notice_min=0 WHERE id=?",
+        )
+        .bind(&et)
+        .execute(&pool)
+        .await
+        .unwrap();
+        let mut day = Utc::now().date_naive() + Duration::days(8);
+        while day.weekday() != chrono::Weekday::Mon {
+            day += Duration::days(1);
+        }
+        let response = app
+            .clone()
+            .oneshot(post_form_unauthed(
+                "/u/testuser/test-meeting/book",
+                "c12",
+                &format!(
+                    "_csrf=c12&date={day}&time=14:00&tz=America%2FNew_York&name=Twelve+Guest&email=twelve%40test.com"
+                ),
+            ))
+            .await
+            .unwrap();
+        let response_body = body_string(response).await;
+        let (start, cancel): (String, String) = sqlx::query_as(
+            "SELECT start_at, cancel_token FROM bookings WHERE guest_email='twelve@test.com'",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap_or_else(|e| panic!("{e}: {response_body}"));
+        assert!(start.ends_with('Z'), "new bookings store UTC: {start}");
+        let body = body_string(
+            app.clone()
+                .oneshot(get(&format!("/booking/cancel/{cancel}")))
+                .await
+                .unwrap(),
+        )
+        .await;
+        assert!(body.contains("2:00 PM"), "guest-local 12-hour time: {body}");
+        assert!(!body.contains("14:00"), "no 24-hour display: {body}");
+
+        // 2:30 AM on the US spring-forward Sunday does not exist.
+        let response = app
+            .oneshot(post_form_unauthed(
+                "/u/testuser/test-meeting/book",
+                "c12",
+                "_csrf=c12&date=2027-03-14&time=02:30&tz=America%2FNew_York&name=Gap&email=gap%40test.com",
+            ))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), axum::http::StatusCode::BAD_REQUEST);
+        let body = body_string(response).await;
+        assert!(body.contains("<h1>Invalid time</h1>"), "{body}");
     }
     include!("booking_time_tests.rs");
 }

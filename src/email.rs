@@ -3274,7 +3274,7 @@ mod tests {
     fn redteam_host_email_keeps_exact_end_across_rollback_and_midnight() {
         let times = ("20261024T233000Z".into(), "20261025T010000Z".into());
         let legacy = host_time_display("2026-10-25", "01:30", "02:00", "Europe/Paris", "UTC");
-        assert_eq!(legacy.1, "23:30 – 00:00 (UTC)");
+        assert_eq!(legacy.1, "11:30 PM – 12:00 AM (UTC)");
         let exact = host_time_display_exact(
             "2026-10-25",
             "01:30",
@@ -3283,7 +3283,10 @@ mod tests {
             "UTC",
             Some(&times),
         );
-        assert_eq!(exact, ("2026-10-24".into(), "23:30 – 01:00 (UTC)".into()));
+        assert_eq!(
+            exact,
+            ("2026-10-24".into(), "11:30 PM – 1:00 AM (UTC)".into())
+        );
         assert_eq!(
             host_time_display_exact("2026-10-25", "01:30", "02:00", "Europe/Paris", "UTC", None),
             legacy
