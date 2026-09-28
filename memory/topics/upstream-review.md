@@ -1,5 +1,38 @@
 # Cal.rs upstream review and production baseline
 
+## September 28, 2026 — 1.18.0 production baseline
+
+Production now runs `1.18.0-cascade.1`, built from exact fork revision
+`d4c55994eec7df187d69132398937cc1ae8bdf3c` (the port merged into `cascade-main`
+by fast-forward and pushed), pinned to immutable Artifact Registry digest
+`sha256:2d9e45364e0ce4fec937231d87c83153d2aeae7b797676f005fff1a723485b07`.
+Cloud Build `fc8ba077-9836-4309-91c7-7f327fb4e8b6` succeeded, and its
+generation-pinned source archive matched all 296 tracked files exactly (the
+only differences were gcloud's documented default exclusion of `.git`/`.gitignore`
+and two pre-existing empty untracked local directories with no files).
+
+Migration rehearsal against a copy of the live database confirmed the
+64→65 sequence — `064_microsoft_graph` (the legacy upstream `062_microsoft_graph`
+adopted under that name, no ALTER replay) and `065_booking_time_version` — with
+no `062_microsoft_graph` row, the three `microsoft_oauth2_*` columns present
+exactly once, existing bookings' `start_at`/`end_at` unchanged (hash-verified),
+all existing bookings staying at `time_version=0`, a clean `PRAGMA
+integrity_check`, and an idempotent second run.
+
+Production approval `288310edb3cb49fa9da2a2f4aa9f5dcd` was approved, bound to
+the digest above, source `d4c55994`, and pre-deploy backup
+`gs://cascade-calendar-backups-cascade-calendar-prod/cascade-calendar-20260928T035755Z.tar.gz`.
+Deployed via the documented `ops/install-host.sh` restart path. Live
+verification passed: migrations table at 65 with both new rows on the live
+database, booking count and integrity unchanged, no errors in any container
+log since restart, public slots pages render Sunday-first calendars, 12-hour
+slot formatting, and the exact Cascade Ocean/Coral tokens in both light and
+dark media queries, a bad URL returns the styled Cascade error page, the OIDC
+and Google calendar-source callback routes are reachable, the Teams bridge
+health check returns ok, and `ops/smoke-test-teams.py` run inside the live
+`teams-bridge` container reported "Teams meeting creation and cleanup
+succeeded."
+
 ## September 27, 2026 — weekly review
 
 [Full review and all 43 fork-only commit dispositions](../recent/2026-09-27-upstream-review.md). Upstream remains at the reviewed 1.18.0 revision. An update is warranted for UTC booking correctness, but needs conflict resolution, migration rehearsal, artifact verification and human production approval. The pinned 1.17.1 artifact and all 285 packaged source files were reverified. Production was unchanged.
