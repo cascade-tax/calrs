@@ -162,6 +162,34 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 | Unauthenticated SMTP relays | 1.16.0 | Leave the username empty to relay through a local MTA; new `none` TLS mode for a relay with no STARTTLS or a private-CA certificate |
 | Localized dashboard | 1.17.0 | The host side — dashboard, settings, every form, admin panel, sign-in — renders through Fluent, so an operator can run calrs in their own language |
 | Eight complete locales | 1.17.0 | English, French, German, Spanish, Italian, Polish, Brazilian Portuguese and Estonian at 100%, held there by a test |
+| Google Meet auto-links | 1.18.0 | Host-owned Google Meet conference per confirmed booking, using existing Google Calendar OAuth2 tokens (#45 phase 3) |
+| UTC booking storage | 1.18.0 | New bookings are stored in UTC, so reminders, cancellations and the dashboard no longer depend on the server's OS timezone |
+
+## [1.18.0] - 2026-09-23
+
+Minor release. The headline is a **timezone fix for bookings**: on a server whose OS timezone differed from the event type's, reminders could arrive at the start time or after the meeting had ended, and cancellation notices showed the wrong time. New bookings are now stored in UTC. It also adds **Google Meet auto-generated links**, contributed by @gsmachado, and fixes three smaller issues on the settings and profile pages. One migration (064), no configuration change. **Back up your database before upgrading**: see the upgrade notes below.
+
+### Added
+
+- **Google Meet auto-generated links** (issue #45 phase 3) - Event types can use location `google_meet`. On confirmation, calrs attaches a Meet conference to the host's Google Calendar event via Calendar API `conferenceData` (same OAuth tokens as Google CalDAV, no extra scope). The Meet URL flows through emails, ICS, and other calendar write-backs. Team event types require every eligible member to have Google Calendar connected with write-back before the location can be saved. Round-robin assigns Meet to `assigned_user_id`; collective uses the same host as ORGANIZER. Contributed by @gsmachado (PR #182).
+
+### Changed
+
+- **No translation platform** (#200, PR #203) - The Hosted Weblate project advertised since 1.8.0 was never approved and its links had been returning 404, including a broken badge at the top of the README's Localization section. calrs no longer references a translation platform: every community translation has always arrived as a pull request against the `i18n` branch, and the README now documents that flow, how to add a locale, and what to double-check when an LLM seeds one. Thanks to @typovrak for reporting it.
+
+### Upgrade notes
+
+- **Back up the database before upgrading.** Migration 064 marks how each booking's time is stored. New bookings are written in UTC; existing rows are left exactly as they were and keep being read the old way, so historical bookings that were already shifted are not repaired. Once this version has created a booking, an older binary misreads it: to roll back, restore the pre-upgrade backup along with the old binary.
+
+### Fixed
+
+- **Booking times drifted with the server timezone** (#212, #215) - Bookings were stored as naive local times and read back under whatever timezone the process happened to run in, so on a host whose OS timezone differed from the event type's, reminders fired at the start time or after the meeting had ended, cancellation notices showed a time two hours off, and the dashboard could disagree with the confirmation. New bookings are now stored in UTC and converted at the edges, including across DST transitions. `TZ=UTC` is no longer needed as a workaround. Field-tested by @tobeana on Europe/Paris event types with a Europe/Berlin host: dashboard, reminder lead time, cancellation and reschedule all correct.
+- **Google Meet reschedule left the host on the old time** - The Calendar API time patch is the host's only copy of a Meet booking, and one transient failure used to leave their calendar on the old time with nothing but a log line to say so. It is now retried three times, and if it still fails the host is emailed to move the event by hand.
+- **Approval-path meeting host** - Dashboard and email-token approval now pass `COALESCE(assigned_user_id, owner)` into meeting URL generation, so a team admin approving a round-robin booking no longer stamps their own username into a Jitsi room (or owns the Google Meet) instead of the assigned member.
+- **Google token refresh could hang a booking** (PR #182) - Confirming a Google Meet booking refreshes the host's access token first, and that request had no timeout, so a stalled Google token endpoint held the guest's booking request open indefinitely. It is now bounded.
+- **Personal booking pages 404ed with a trailing slash** (#211, PR #216) - `/u/{username}/` now redirects (308) to `/u/{username}`, keeping the query string, so a link pasted with a trailing slash reaches the profile. Thanks to @k00b0ld for the report.
+- **A language change was confirmed in the old language** (#204, PR #205) - Saving a new language on Profile & Settings answered "Settings saved" in the previous one until the next page load. The confirmation now renders in the language just saved. Contributed by @typovrak.
+- **A settings validation error discarded the rest of the form** (#206, PR #207) - One rejected field reverted every other edit on Profile & Settings to the stored values, and after a bad booking email the page even showed the old username although the new one had already been saved. Every field now comes back as submitted, and the avatar initials follow the name being shown.
 
 ## [1.17.1] - 2026-08-30
 

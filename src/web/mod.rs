@@ -419,8 +419,8 @@ async fn meeting_provider_labels(state: &AppState) -> (String, String) {
 
 /// Pick the location URL to expose on a freshly-created booking.
 ///
-/// When the event type uses an auto provider (`jitsi_auto`, `webhook_auto`)
-/// **and** the booking is going straight to confirmed, we generate a fresh
+/// When the event type uses an auto provider (`jitsi_auto`, `webhook_auto`,
+/// `google_meet`) **and** the booking is going straight to confirmed, we generate a fresh
 /// URL via `meeting::generate_and_persist` and store it on the booking row.
 /// Otherwise we fall back to the event type's static `location_value`. The
 /// returned value is what gets piped into the email + ICS + CalDAV write.
@@ -453,9 +453,106 @@ async fn resolve_booking_location(
             return Some(generated);
         }
     }
-    static_location_value
+    if let Some(v) = static_location_value
         .map(str::to_string)
         .filter(|s| !s.is_empty())
+    {
+        return Some(v);
+    }
+    // Meet mint failed: still show a label so confirmation and email are
+    // not missing the location the booking page promised.
+    if confirmed {
+        let loc_type: Option<String> =
+            sqlx::query_scalar("SELECT location_type FROM event_types WHERE id = ?")
+                .bind(event_type_id)
+                .fetch_optional(&state.pool)
+                .await
+                .ok()
+                .flatten();
+        if loc_type.as_deref() == Some(meeting::LOCATION_TYPE_GOOGLE_MEET) {
+            let lang: Option<Option<String>> =
+                sqlx::query_scalar("SELECT language FROM bookings WHERE id = ?")
+                    .bind(booking_id)
+                    .fetch_optional(&state.pool)
+                    .await
+                    .ok()
+                    .flatten();
+            return Some(crate::google_meet::failed_mint_location_label(
+                lang.flatten().as_deref().unwrap_or("en"),
+            ));
+        }
+    }
+    None
+}
+
+/// Reject `google_meet` unless every scheduling-relevant host has Google
+/// Calendar OAuth2 connected with a write-back calendar selected.
+async fn google_meet_location_error(
+    pool: &SqlitePool,
+    location_type: &str,
+    personal_user_id: Option<&str>,
+    team_id: Option<&str>,
+    event_type_id: Option<&str>,
+) -> Option<String> {
+    if location_type != meeting::LOCATION_TYPE_GOOGLE_MEET {
+        return None;
+    }
+    crate::google_meet::google_meet_prereq_error(pool, personal_user_id, team_id, event_type_id)
+        .await
+}
+
+/// Dynamic-group Google Meet gate: only the event type owner (first
+/// username) matters for minting. Checked on the slots and booking pages
+/// so the guest is not asked to fill the form first. Does not list host
+/// names.
+async fn dynamic_group_google_meet_error_page(
+    state: &AppState,
+    headers: &HeaderMap,
+    location_type: &str,
+    owner_user_id: &str,
+) -> Option<axum::response::Response> {
+    if location_type != meeting::LOCATION_TYPE_GOOGLE_MEET {
+        return None;
+    }
+    if crate::google_meet::user_has_google_writeback(&state.pool, owner_user_id).await {
+        return None;
+    }
+    let lang = crate::i18n::detect_from_headers(headers);
+    let title = crate::i18n::translate(lang, "google-meet-unavailable-title", None);
+    let message = crate::i18n::translate(lang, "google-meet-dynamic-group-unavailable", None);
+    Some(render_booking_action_error(state, headers, &title, &message))
+}
+
+type DueReminder = (
+    String,
+    String,
+    String,
+    String,
+    String,
+    String,
+    String,
+    String,
+    String,
+    Option<String>,
+    Option<String>,
+    String,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+);
+
+async fn due_reminders(pool: &SqlitePool, now: chrono::DateTime<Utc>) -> Vec<DueReminder> {
+    sqlx::query_as("SELECT b.id, b.guest_name, b.guest_email, b.guest_timezone, CASE b.time_version WHEN 1 THEN b.start_at ELSE rtrim(b.start_at, 'Z') END AS start_at, CASE b.time_version WHEN 1 THEN b.end_at ELSE rtrim(b.end_at, 'Z') END AS end_at, et.title, u.name, COALESCE(u.booking_email, u.email), COALESCE(NULLIF(b.meeting_url, ''), et.location_value), b.cancel_token, b.uid, b.language, u.language, COALESCE(NULLIF(et.timezone, ''), u.timezone)
+             FROM bookings b
+             JOIN event_types et ON et.id = b.event_type_id
+             JOIN accounts a ON a.id = et.account_id
+             JOIN users u ON u.id = COALESCE(b.assigned_user_id, a.user_id)
+             WHERE b.status = 'confirmed'
+               AND b.reminder_sent_at IS NULL
+               AND et.reminder_minutes IS NOT NULL
+               AND et.reminder_minutes > 0
+               AND datetime(b.start_at, '-' || et.reminder_minutes || ' minutes') <= datetime(?1)
+               AND datetime(b.start_at) > datetime(?1)",).bind(now.to_rfc3339()).fetch_all(pool).await.unwrap_or_default()
 }
 
 /// Background task that sends booking reminders on a 60-second tick. Also
@@ -487,22 +584,7 @@ pub async fn run_reminder_loop(pool: SqlitePool, secret_key: [u8; 32]) {
         // `host_timezone` resolves like `get_host_tz`: prefer the explicit
         // event-type tz, fall back to the host user's tz. NULL falls through
         // to UTC at parse time.
-        let due: Vec<(String, String, String, String, String, String, String, String, String, Option<String>, Option<String>, String, Option<String>, Option<String>, Option<String>)> = sqlx::query_as(
-            "SELECT b.id, b.guest_name, b.guest_email, b.guest_timezone, b.start_at, b.end_at, et.title, u.name, COALESCE(u.booking_email, u.email), COALESCE(NULLIF(b.meeting_url, ''), et.location_value), b.cancel_token, b.uid, b.language, u.language, COALESCE(NULLIF(et.timezone, ''), u.timezone)
-             FROM bookings b
-             JOIN event_types et ON et.id = b.event_type_id
-             JOIN accounts a ON a.id = et.account_id
-             JOIN users u ON u.id = COALESCE(b.assigned_user_id, a.user_id)
-             WHERE b.status = 'confirmed'
-               AND b.reminder_sent_at IS NULL
-               AND et.reminder_minutes IS NOT NULL
-               AND et.reminder_minutes > 0
-               AND datetime(b.start_at, '-' || et.reminder_minutes || ' minutes') <= datetime('now')
-               AND datetime(b.start_at) > datetime('now')",
-        )
-        .fetch_all(&pool)
-        .await
-        .unwrap_or_default();
+        let due = due_reminders(&pool, Utc::now()).await;
 
         let base_url = crate::settings::base_url();
 
@@ -544,7 +626,7 @@ pub async fn run_reminder_loop(pool: SqlitePool, secret_key: [u8; 32]) {
             host_timezone,
         ) in &due
         {
-            // start_at/end_at are stored in the event-type tz (see #101). Convert
+            // Legacy times use the event timezone; version 1 timestamps are UTC. Convert
             // to the guest's tz so `BookingDetails` carries guest-local wall-clock —
             // matches the contract used by cancel/confirm handlers, and lets
             // `host_time_display` convert back into the host's tz correctly for
@@ -558,6 +640,7 @@ pub async fn run_reminder_loop(pool: SqlitePool, secret_key: [u8; 32]) {
             let location = location_value.as_ref().filter(|v| !v.is_empty()).cloned();
 
             let details = crate::email::BookingDetails {
+                utc_times: crate::booking_time::ics_times(start_at, end_at),
                 event_title: event_title.clone(),
                 date,
                 start_time,
@@ -747,12 +830,12 @@ fn booking_strings_in_guest_tz(
     guest_tz: Tz,
 ) -> (String, String, String) {
     match (
-        parse_booking_datetime(start_at),
-        parse_booking_datetime(end_at),
+        crate::booking_time::local(start_at, stored_tz, guest_tz),
+        crate::booking_time::local(end_at, stored_tz, guest_tz),
     ) {
         (Some(s), Some(e)) => {
-            let gs = convert_naive_between_tz(s, stored_tz, guest_tz);
-            let ge = convert_naive_between_tz(e, stored_tz, guest_tz);
+            let gs = s;
+            let ge = e;
             (
                 gs.date().format("%Y-%m-%d").to_string(),
                 gs.time().format("%H:%M").to_string(),
@@ -801,15 +884,15 @@ fn format_booking_for_dashboard(
     let guest = guest_tz.parse::<Tz>().unwrap_or(Tz::UTC);
 
     let (start, end) = match (
-        parse_booking_datetime(start_str),
-        parse_booking_datetime(end_str),
+        crate::booking_time::local(start_str, stored, host),
+        crate::booking_time::local(end_str, stored, host),
     ) {
         (Some(s), Some(e)) => (s, e),
         _ => return (format_booking_range(start_str, end_str), None),
     };
 
-    let host_start = convert_naive_between_tz(start, stored, host);
-    let host_end = convert_naive_between_tz(end, stored, host);
+    let host_start = start;
+    let host_end = end;
     let today_host = Utc::now().with_timezone(&host).date_naive();
     let primary = format_dashboard_range(
         host_start,
@@ -819,8 +902,8 @@ fn format_booking_for_dashboard(
     );
 
     let secondary = if guest != host {
-        let g_start = convert_naive_between_tz(start, stored, guest);
-        let g_end = convert_naive_between_tz(end, stored, guest);
+        let g_start = crate::booking_time::local(start_str, stored, guest).unwrap();
+        let g_end = crate::booking_time::local(end_str, stored, guest).unwrap();
         let g_time_start = g_start.time().format("%-I:%M %p").to_string();
         let g_time_end = g_end.time().format("%-I:%M %p").to_string();
         Some(format!(
@@ -1652,6 +1735,7 @@ pub async fn create_router(pool: SqlitePool, data_dir: PathBuf, secret_key: [u8;
             get(host_reschedule_slots).post(host_reschedule_booking),
         )
         .route("/u/{username}", get(user_profile))
+        .route("/u/{username}/", get(redirect_user_profile_trailing_slash))
         .route("/u/{username}/{slug}", get(show_slots_for_user))
         .route(
             "/u/{username}/{slug}/book",
@@ -1821,7 +1905,7 @@ async fn dashboard(
         String,
         String,
     )> = sqlx::query_as(
-        "SELECT b.id, b.guest_name, b.guest_email, b.start_at, b.end_at, et.title,
+        "SELECT b.id, b.guest_name, b.guest_email, CASE b.time_version WHEN 1 THEN b.start_at ELSE rtrim(b.start_at, 'Z') END AS start_at, CASE b.time_version WHEN 1 THEN b.end_at ELSE rtrim(b.end_at, 'Z') END AS end_at, et.title,
                 COALESCE(NULLIF(et.timezone, ''), u.timezone) AS stored_tz,
                 COALESCE(NULLIF(b.guest_timezone, ''), 'UTC') AS guest_tz
          FROM bookings b
@@ -1837,7 +1921,7 @@ async fn dashboard(
     .unwrap_or_default();
 
     let upcoming_count: i64 =
-        sqlx::query_scalar("SELECT COUNT(*) FROM bookings b JOIN event_types et ON et.id = b.event_type_id JOIN accounts a ON a.id = et.account_id WHERE a.user_id = ? AND b.status = 'confirmed' AND b.start_at >= datetime('now')")
+        sqlx::query_scalar("SELECT COUNT(*) FROM bookings b JOIN event_types et ON et.id = b.event_type_id JOIN accounts a ON a.id = et.account_id WHERE a.user_id = ? AND b.status = 'confirmed' AND datetime(b.start_at) >= datetime('now')")
             .bind(&user.id)
             .fetch_one(&state.pool)
             .await
@@ -2126,7 +2210,7 @@ async fn dashboard_bookings(
         String,
         String,
     )> = sqlx::query_as(
-        "SELECT b.id, b.guest_name, b.guest_email, b.start_at, b.end_at, et.title,
+        "SELECT b.id, b.guest_name, b.guest_email, CASE b.time_version WHEN 1 THEN b.start_at ELSE rtrim(b.start_at, 'Z') END AS start_at, CASE b.time_version WHEN 1 THEN b.end_at ELSE rtrim(b.end_at, 'Z') END AS end_at, et.title,
                 COALESCE(NULLIF(et.timezone, ''), u.timezone) AS stored_tz,
                 COALESCE(NULLIF(b.guest_timezone, ''), 'UTC') AS guest_tz,
                 COALESCE(r.name, '') AS resource_name
@@ -2145,7 +2229,7 @@ async fn dashboard_bookings(
 
     let upcoming_bookings: Vec<(String, String, String, Option<String>, String, String, String, i32, String, String, String, String)> =
         sqlx::query_as(
-            "SELECT b.id, b.guest_name, b.guest_email, b.guest_phone, b.start_at, b.end_at, et.title, b.reschedule_by_host,
+            "SELECT b.id, b.guest_name, b.guest_email, b.guest_phone, CASE b.time_version WHEN 1 THEN b.start_at ELSE rtrim(b.start_at, 'Z') END AS start_at, CASE b.time_version WHEN 1 THEN b.end_at ELSE rtrim(b.end_at, 'Z') END AS end_at, et.title, b.reschedule_by_host,
                     COALESCE(NULLIF(et.timezone, ''), u.timezone) AS stored_tz,
                     COALESCE(NULLIF(b.guest_timezone, ''), 'UTC') AS guest_tz,
                     COALESCE(r.name, '') AS resource_name,
@@ -2155,7 +2239,7 @@ async fn dashboard_bookings(
          JOIN accounts a ON a.id = et.account_id
          JOIN users u ON u.id = a.user_id
          LEFT JOIN resources r ON r.id = b.assigned_resource_id
-         WHERE a.user_id = ? AND b.status = 'confirmed' AND b.start_at >= datetime('now')
+         WHERE a.user_id = ? AND b.status = 'confirmed' AND datetime(b.start_at) >= datetime('now')
          ORDER BY b.start_at
          LIMIT 50",
         )
@@ -2169,7 +2253,7 @@ async fn dashboard_bookings(
     // event type's own tz column (always set since migration 046's backfill).
     let claimable_bookings: Vec<(String, String, String, String, String, String, String, String, String, String)> =
         sqlx::query_as(
-            "SELECT b.id, b.guest_name, b.guest_email, b.start_at, b.end_at, et.title, t.name, bct.token, \
+            "SELECT b.id, b.guest_name, b.guest_email, CASE b.time_version WHEN 1 THEN b.start_at ELSE rtrim(b.start_at, 'Z') END AS start_at, CASE b.time_version WHEN 1 THEN b.end_at ELSE rtrim(b.end_at, 'Z') END AS end_at, et.title, t.name, bct.token, \
                     COALESCE(NULLIF(et.timezone, ''), 'UTC') AS stored_tz, \
                     COALESCE(NULLIF(b.guest_timezone, ''), 'UTC') AS guest_tz \
              FROM bookings b \
@@ -2179,7 +2263,7 @@ async fn dashboard_bookings(
              JOIN teams t ON t.id = ew.team_id \
              JOIN booking_claim_tokens bct ON bct.booking_id = b.id AND bct.user_id = tm.user_id AND bct.used_at IS NULL \
              WHERE tm.user_id = ? AND b.status = 'confirmed' AND b.claimed_by_user_id IS NULL \
-             AND b.start_at >= datetime('now') AND bct.expires_at > datetime('now') \
+             AND datetime(b.start_at) >= datetime('now') AND bct.expires_at > datetime('now') \
              ORDER BY b.start_at \
              LIMIT 50",
         )
@@ -3063,17 +3147,17 @@ async fn settings_page(
             .fetch_one(&state.pool)
             .await
             .unwrap_or(0);
+    let values = SettingsValues::from_user(&auth_user.user, &avail, lend_resource_write != 0);
     settings_render(
         &state,
         &auth_user.user,
+        &values,
         auth_user.lang,
         None,
         None,
         sidebar,
         impersonating,
         &impersonating_name,
-        &avail,
-        lend_resource_write != 0,
     )
 }
 
@@ -3291,17 +3375,57 @@ async fn dashboard_availability_default(
     axum::Json(serde_json::json!({ "schedule": schedule }))
 }
 
+/// The editable half of the settings form, as it should be rendered back.
+///
+/// The GET and the success path fill this from the stored row; the error paths
+/// fill it from what was just submitted, so a rejected field does not discard
+/// the rest of the edits (#206).
+struct SettingsValues<'a> {
+    name: &'a str,
+    username: &'a str,
+    title: &'a str,
+    bio: &'a str,
+    booking_email: &'a str,
+    timezone: &'a str,
+    language: &'a str,
+    allow_dynamic_group: bool,
+    lend_resource_write: bool,
+    avail_schedule: &'a str,
+}
+
+impl<'a> SettingsValues<'a> {
+    /// The availability schedule and `lend_resource_write` are not on the user
+    /// row, so they are passed in.
+    fn from_user(
+        user: &'a crate::models::User,
+        avail_schedule: &'a str,
+        lend_resource_write: bool,
+    ) -> Self {
+        Self {
+            name: &user.name,
+            username: user.username.as_deref().unwrap_or(""),
+            title: user.title.as_deref().unwrap_or(""),
+            bio: user.bio.as_deref().unwrap_or(""),
+            booking_email: user.booking_email.as_deref().unwrap_or(""),
+            timezone: &user.timezone,
+            language: user.language.as_deref().unwrap_or(""),
+            allow_dynamic_group: user.allow_dynamic_group,
+            lend_resource_write,
+            avail_schedule,
+        }
+    }
+}
+
 fn settings_render(
     state: &AppState,
     user: &crate::models::User,
+    values: &SettingsValues<'_>,
     lang: &str,
     success: Option<&str>,
     error: Option<&str>,
     sidebar: minijinja::Value,
     impersonating: bool,
     impersonating_name: &str,
-    avail_schedule: &str,
-    lend_resource_write: bool,
 ) -> Html<String> {
     let tmpl = match state.templates.get_template("settings.html") {
         Ok(t) => t,
@@ -3320,22 +3444,29 @@ fn settings_render(
         tmpl.render(context! {
             lang => lang,
             sidebar => sidebar,
-            form_name => user.name,
-            form_initials => compute_initials(&user.name),
-            form_title => user.title.as_deref().unwrap_or(""),
-            form_bio => user.bio.as_deref().unwrap_or(""),
-            form_booking_email => user.booking_email.as_deref().unwrap_or(""),
-            form_timezone => user.timezone,
+            form_name => values.name,
+            // Follows the name being shown, so an edited name updates the
+            // avatar preview too. A rejected empty name falls back to the
+            // stored one rather than rendering the "?" placeholder.
+            form_initials => compute_initials(if values.name.trim().is_empty() {
+                &user.name
+            } else {
+                values.name
+            }),
+            form_title => values.title,
+            form_bio => values.bio,
+            form_booking_email => values.booking_email,
+            form_timezone => values.timezone,
             tz_options => tz_options,
-            form_language => user.language.as_deref().unwrap_or(""),
+            form_language => values.language,
             lang_options => lang_options,
             user_email => user.email,
             user_id => user.id,
             has_avatar => user.avatar_path.is_some(),
-            username => user.username.as_deref().unwrap_or(""),
-            allow_dynamic_group => user.allow_dynamic_group,
-            lend_resource_write => lend_resource_write,
-            form_avail_schedule => avail_schedule,
+            username => values.username,
+            allow_dynamic_group => values.allow_dynamic_group,
+            lend_resource_write => values.lend_resource_write,
+            form_avail_schedule => values.avail_schedule,
             success => success.unwrap_or(""),
             error => error.unwrap_or(""),
             impersonating => impersonating,
@@ -3359,27 +3490,6 @@ async fn settings_save(
     let sidebar = sidebar_context(&auth_user, "settings");
     let (imp, imp_name, _) = impersonation_ctx(&auth_user);
 
-    if name.is_empty() || name.len() > 255 {
-        return settings_render(
-            &state,
-            user,
-            auth_user.lang,
-            None,
-            Some(&crate::i18n::translate(
-                auth_user.lang,
-                "settings-error-name-length",
-                None,
-            )),
-            sidebar,
-            imp,
-            &imp_name,
-            &form.avail_schedule,
-            form.lend_resource_write.as_deref() == Some("on"),
-        )
-        .into_response();
-    }
-
-    // Validate and update username if provided
     let new_username = form
         .username
         .as_deref()
@@ -3392,62 +3502,6 @@ async fn settings_save(
                 .collect::<String>()
         })
         .filter(|s| !s.is_empty());
-
-    if let Some(ref uname) = new_username {
-        if uname.len() < 2 {
-            return settings_render(
-                &state,
-                user,
-                auth_user.lang,
-                None,
-                Some(&crate::i18n::translate(
-                    auth_user.lang,
-                    "settings-error-username-length",
-                    None,
-                )),
-                sidebar,
-                imp,
-                &imp_name,
-                &form.avail_schedule,
-                form.lend_resource_write.as_deref() == Some("on"),
-            )
-            .into_response();
-        }
-        // Check uniqueness (only if different from current)
-        if user.username.as_deref() != Some(uname.as_str()) {
-            let taken: Option<(String,)> =
-                sqlx::query_as("SELECT id FROM users WHERE username = ? AND id != ?")
-                    .bind(uname)
-                    .bind(&user.id)
-                    .fetch_optional(&state.pool)
-                    .await
-                    .unwrap_or(None);
-            if taken.is_some() {
-                return settings_render(
-                    &state,
-                    user,
-                    auth_user.lang,
-                    None,
-                    Some(&crate::i18n::translate(
-                        auth_user.lang,
-                        "settings-error-username-taken",
-                        None,
-                    )),
-                    sidebar,
-                    imp,
-                    &imp_name,
-                    &form.avail_schedule,
-                    form.lend_resource_write.as_deref() == Some("on"),
-                )
-                .into_response();
-            }
-            let _ = sqlx::query("UPDATE users SET username = ? WHERE id = ?")
-                .bind(uname)
-                .bind(&user.id)
-                .execute(&state.pool)
-                .await;
-        }
-    }
 
     let title = form
         .title
@@ -3470,34 +3524,6 @@ async fn settings_save(
         .filter(|s| !s.is_empty())
         .map(|s| s.to_string());
 
-    if let Some(ref be) = booking_email {
-        if be.len() > 255
-            || !be.contains('@')
-            || be
-                .rsplit('@')
-                .next()
-                .is_none_or(|domain| !domain.contains('.'))
-        {
-            return settings_render(
-                &state,
-                user,
-                auth_user.lang,
-                None,
-                Some(&crate::i18n::translate(
-                    auth_user.lang,
-                    "settings-error-booking-email",
-                    None,
-                )),
-                sidebar,
-                imp,
-                &imp_name,
-                &form.avail_schedule,
-                form.lend_resource_write.as_deref() == Some("on"),
-            )
-            .into_response();
-        }
-    }
-
     let timezone = form
         .timezone
         .as_deref()
@@ -3517,6 +3543,90 @@ async fn settings_save(
 
     let allow_dynamic_group = form.allow_dynamic_group.as_deref() == Some("on");
     let lend_resource_write = form.lend_resource_write.as_deref() == Some("on");
+
+    // Every field is normalised before the first check, so a rejected one can be
+    // sent back alongside the others instead of the whole form reverting to the
+    // stored row. An empty username field means "keep the current one", and that
+    // is what the form shows back.
+    let submitted = SettingsValues {
+        name: &name,
+        username: new_username
+            .as_deref()
+            .or(user.username.as_deref())
+            .unwrap_or(""),
+        title: title.as_deref().unwrap_or(""),
+        bio: bio.as_deref().unwrap_or(""),
+        booking_email: booking_email.as_deref().unwrap_or(""),
+        timezone: &timezone,
+        language: language.as_deref().unwrap_or(""),
+        allow_dynamic_group,
+        lend_resource_write,
+        avail_schedule: &form.avail_schedule,
+    };
+    // The sidebar is a parameter rather than a capture, so it can be moved into
+    // whichever branch ends up rendering. An error path never saves, so it keeps
+    // the language the request came in with.
+    let render_error = |error: &str, sidebar: minijinja::Value| {
+        settings_render(
+            &state,
+            user,
+            &submitted,
+            auth_user.lang,
+            None,
+            Some(error),
+            sidebar,
+            imp,
+            &imp_name,
+        )
+        .into_response()
+    };
+
+    if name.is_empty() || name.len() > 255 {
+        let msg = crate::i18n::translate(auth_user.lang, "settings-error-name-length", None);
+        return render_error(&msg, sidebar);
+    }
+
+    // Validate and update username if provided
+    if let Some(ref uname) = new_username {
+        if uname.len() < 2 {
+            let msg =
+                crate::i18n::translate(auth_user.lang, "settings-error-username-length", None);
+            return render_error(&msg, sidebar);
+        }
+        // Check uniqueness (only if different from current)
+        if user.username.as_deref() != Some(uname.as_str()) {
+            let taken: Option<(String,)> =
+                sqlx::query_as("SELECT id FROM users WHERE username = ? AND id != ?")
+                    .bind(uname)
+                    .bind(&user.id)
+                    .fetch_optional(&state.pool)
+                    .await
+                    .unwrap_or(None);
+            if taken.is_some() {
+                let msg =
+                    crate::i18n::translate(auth_user.lang, "settings-error-username-taken", None);
+                return render_error(&msg, sidebar);
+            }
+            let _ = sqlx::query("UPDATE users SET username = ? WHERE id = ?")
+                .bind(uname)
+                .bind(&user.id)
+                .execute(&state.pool)
+                .await;
+        }
+    }
+
+    if let Some(ref be) = booking_email {
+        if be.len() > 255
+            || !be.contains('@')
+            || be
+                .rsplit('@')
+                .next()
+                .is_none_or(|domain| !domain.contains('.'))
+        {
+            let msg = crate::i18n::translate(auth_user.lang, "settings-error-booking-email", None);
+            return render_error(&msg, sidebar);
+        }
+    }
 
     let result = sqlx::query(
         "UPDATE users SET name = ?, title = ?, bio = ?, booking_email = ?, timezone = ?, language = ?, allow_dynamic_group = ?, lend_resource_write = ?, updated_at = datetime('now') WHERE id = ?",
@@ -3549,42 +3659,28 @@ async fn settings_save(
             let updated_user = crate::auth::get_user_by_id(&state.pool, &user.id)
                 .await
                 .unwrap_or_else(|| user.clone());
-            let sidebar = sidebar_context(&auth_user, "settings");
+            // auth_user.lang was resolved before the UPDATE, so a language
+            // change would confirm in the old language without this.
+            let lang = crate::i18n::resolve(updated_user.language.as_deref(), &headers);
+            let saved =
+                SettingsValues::from_user(&updated_user, &form.avail_schedule, lend_resource_write);
             settings_render(
                 &state,
                 &updated_user,
-                auth_user.lang,
-                Some(&crate::i18n::translate(
-                    auth_user.lang,
-                    "settings-saved",
-                    None,
-                )),
+                &saved,
+                lang,
+                Some(&crate::i18n::translate(lang, "settings-saved", None)),
                 None,
                 sidebar,
                 imp,
                 &imp_name,
-                &form.avail_schedule,
-                form.lend_resource_write.as_deref() == Some("on"),
             )
             .into_response()
         }
-        Err(_) => settings_render(
-            &state,
-            user,
-            auth_user.lang,
-            None,
-            Some(&crate::i18n::translate(
-                auth_user.lang,
-                "settings-error-save-failed",
-                None,
-            )),
-            sidebar,
-            imp,
-            &imp_name,
-            &form.avail_schedule,
-            form.lend_resource_write.as_deref() == Some("on"),
-        )
-        .into_response(),
+        Err(_) => {
+            let msg = crate::i18n::translate(auth_user.lang, "settings-error-save-failed", None);
+            render_error(&msg, sidebar)
+        }
     }
 }
 
@@ -4455,7 +4551,7 @@ async fn cancel_booking(
         String,
         Option<String>,
     )> = sqlx::query_as(
-        "SELECT b.id, b.uid, b.guest_name, b.guest_email, b.start_at, b.end_at, et.title, et.id, COALESCE(b.guest_timezone, 'UTC'), b.status, b.guest_phone, et.sms_phone_mode, b.language
+        "SELECT b.id, b.uid, b.guest_name, b.guest_email, CASE b.time_version WHEN 1 THEN b.start_at ELSE rtrim(b.start_at, 'Z') END AS start_at, CASE b.time_version WHEN 1 THEN b.end_at ELSE rtrim(b.end_at, 'Z') END AS end_at, et.title, et.id, COALESCE(b.guest_timezone, 'UTC'), b.status, b.guest_phone, et.sms_phone_mode, b.language
              FROM bookings b
              JOIN event_types et ON et.id = b.event_type_id
              JOIN accounts a ON a.id = et.account_id
@@ -4513,6 +4609,7 @@ async fn cancel_booking(
     // Built before the SMTP block so the SMS path can borrow the same strings:
     // an SMS must never disagree with the email it accompanies.
     let details = crate::email::CancellationDetails {
+        utc_times: crate::booking_time::ics_times(&start_at, &end_at),
         event_title,
         date,
         start_time,
@@ -4593,8 +4690,9 @@ async fn confirm_booking(
         String,
         Option<String>,
         String,
+        Option<String>,
     )> = sqlx::query_as(
-        "SELECT b.id, b.uid, b.guest_name, b.guest_email, b.start_at, b.end_at, et.title, COALESCE(NULLIF(b.meeting_url, ''), et.location_value), b.cancel_token, COALESCE(b.guest_timezone, 'UTC'), b.reschedule_token, et.id
+        "SELECT b.id, b.uid, b.guest_name, b.guest_email, CASE b.time_version WHEN 1 THEN b.start_at ELSE rtrim(b.start_at, 'Z') END AS start_at, CASE b.time_version WHEN 1 THEN b.end_at ELSE rtrim(b.end_at, 'Z') END AS end_at, et.title, COALESCE(NULLIF(b.meeting_url, ''), et.location_value), b.cancel_token, COALESCE(b.guest_timezone, 'UTC'), b.reschedule_token, et.id, b.assigned_user_id
              FROM bookings b
              JOIN event_types et ON et.id = b.event_type_id
              JOIN accounts a ON a.id = et.account_id
@@ -4619,6 +4717,7 @@ async fn confirm_booking(
         guest_timezone,
         reschedule_token,
         et_id,
+        assigned_user_id,
     ) = match booking {
         Some(b) => b,
         None => return Redirect::to("/dashboard/bookings").into_response(),
@@ -4643,6 +4742,8 @@ async fn confirm_booking(
     if resource_guard.is_some() {
         if let (Some(s), Some(e)) = (parse_ical_datetime(&start_at), parse_ical_datetime(&end_at)) {
             let tz_check = get_host_tz(&state.pool, &et_id).await;
+            let (s, e) =
+                crate::booking_time::busy_range(&start_at, &end_at, tz_check).unwrap_or((s, e));
             match crate::resources::check_and_pick(&state.pool, &et_id, s, e, tz_check, Some(&bid))
                 .await
             {
@@ -4681,7 +4782,10 @@ async fn confirm_booking(
         &state,
         &bid,
         &et_id,
-        Some(&user.id),
+        Some(meeting::confirm_host_user_id(
+            assigned_user_id.as_deref(),
+            user.id.as_str(),
+        )),
         location_value.as_deref(),
         &guest_name,
         &guest_email,
@@ -4716,6 +4820,7 @@ async fn confirm_booking(
         booking_attendee_groups(&state.pool, &bid, &uid, &host_email, &guest_email).await;
 
     let details = crate::email::BookingDetails {
+        utc_times: crate::booking_time::ics_times(&start_at, &end_at),
         event_title,
         date,
         start_time,
@@ -4797,7 +4902,7 @@ struct EventTypeForm {
     requires_confirmation: Option<String>, // checkbox: "on" or absent
     sms_phone_mode: Option<String>,        // checkbox: "on" or absent
     visibility: Option<String>,            // "public", "internal", or "private"
-    location_type: Option<String>, // "link", "phone", "in_person", "custom", "jitsi_auto", "webhook_auto"
+    location_type: Option<String>, // "link", "phone", "in_person", "custom", "jitsi_auto", "webhook_auto", "google_meet"
     location_value: Option<String>,
     // Optional per-event-type pattern override for the jitsi_auto provider.
     // NULL/empty falls back to the org-wide default pattern from auth_config.
@@ -5275,10 +5380,7 @@ async fn create_event_type(
         .as_deref()
         .filter(|s| !s.trim().is_empty());
 
-    let location_required = !matches!(
-        location_type,
-        meeting::LOCATION_TYPE_JITSI | meeting::LOCATION_TYPE_WEBHOOK
-    );
+    let location_required = !meeting::is_auto_location(location_type);
     if location_required && location_value.is_none() {
         return render_event_type_form_error(
             &state,
@@ -5292,6 +5394,8 @@ async fn create_event_type(
     }
 
     // Only team admins (or global admins) can create team event types.
+    // Run this before the Google Meet prerequisite check so a non-admin
+    // cannot probe whether a team has Google write-back configured.
     if let Some(tid) = team_id {
         let is_global_admin = user.role == "admin";
         if !is_global_admin && !is_team_admin(&state.pool, &user.id, tid).await {
@@ -5305,6 +5409,14 @@ async fn create_event_type(
             .await
             .into_response();
         }
+    }
+
+    if let Some(err) =
+        google_meet_location_error(&state.pool, location_type, Some(&user.id), team_id, None).await
+    {
+        return render_event_type_form_error(&state, &auth_user, &err, &form, false)
+            .await
+            .into_response();
     }
 
     let visibility = match form.visibility.as_deref().unwrap_or("public") {
@@ -5919,10 +6031,7 @@ async fn update_event_type(
         .as_deref()
         .filter(|s| !s.trim().is_empty());
 
-    let location_required = !matches!(
-        location_type,
-        meeting::LOCATION_TYPE_JITSI | meeting::LOCATION_TYPE_WEBHOOK
-    );
+    let location_required = !meeting::is_auto_location(location_type);
     if location_required && location_value.is_none() {
         return render_event_type_form_error(
             &state,
@@ -5933,6 +6042,20 @@ async fn update_event_type(
         )
         .await
         .into_response();
+    }
+
+    if let Some(err) = google_meet_location_error(
+        &state.pool,
+        location_type,
+        Some(&user.id),
+        None,
+        Some(&et_id),
+    )
+    .await
+    {
+        return render_event_type_form_error(&state, &auth_user, &err, &form, true)
+            .await
+            .into_response();
     }
 
     let reminder_minutes = {
@@ -8847,10 +8970,7 @@ async fn create_group_event_type(
 
     // Auto-meeting providers compute their own URL per booking; the static
     // location_value field is not used and may be empty.
-    let location_required = !matches!(
-        location_type,
-        meeting::LOCATION_TYPE_JITSI | meeting::LOCATION_TYPE_WEBHOOK
-    );
+    let location_required = !meeting::is_auto_location(location_type);
     if location_required && location_value.is_none() {
         return render_event_type_form_error(
             &state,
@@ -8861,6 +8981,14 @@ async fn create_group_event_type(
         )
         .await
         .into_response();
+    }
+
+    if let Some(err) =
+        google_meet_location_error(&state.pool, location_type, None, Some(&team_id), None).await
+    {
+        return render_event_type_form_error(&state, &auth_user, &err, &form, false)
+            .await
+            .into_response();
     }
 
     let default_calendar_view = match form.default_calendar_view.as_deref().unwrap_or("month") {
@@ -9619,10 +9747,7 @@ async fn update_group_event_type(
         .as_deref()
         .filter(|s| !s.trim().is_empty());
 
-    let location_required = !matches!(
-        location_type,
-        meeting::LOCATION_TYPE_JITSI | meeting::LOCATION_TYPE_WEBHOOK
-    );
+    let location_required = !meeting::is_auto_location(location_type);
     if location_required && location_value.is_none() {
         return render_event_type_form_error(
             &state,
@@ -9633,6 +9758,20 @@ async fn update_group_event_type(
         )
         .await
         .into_response();
+    }
+
+    if let Some(err) = google_meet_location_error(
+        &state.pool,
+        location_type,
+        None,
+        Some(&team_id),
+        Some(&et_id),
+    )
+    .await
+    {
+        return render_event_type_form_error(&state, &auth_user, &err, &form, true)
+            .await
+            .into_response();
     }
 
     let reminder_minutes = {
@@ -10950,14 +11089,23 @@ async fn handle_group_booking(
     let host_tz = get_host_tz(&state.pool, &et_id).await;
 
     // The URL carries the guest's local date/time. Convert to host-local
-    // for availability checks and storage (existing semantics).
+    // for availability checks; storage uses the exact UTC endpoints.
     let guest_local_start = date.and_time(start_time);
-    let guest_local_end = guest_local_start + Duration::minutes(duration as i64);
-    let slot_start = guest_to_host_local(guest_local_start, guest_tz, host_tz);
-    let slot_end = slot_start + Duration::minutes(duration as i64);
+    let Some((encoded_start, encoded_end)) =
+        crate::booking_time::encode(guest_local_start, guest_tz, duration)
+    else {
+        return Html(crate::i18n::translate(lang, "error-invalid-time", None)).into_response();
+    };
+    let guest_local_end = crate::booking_time::local(&encoded_end, guest_tz, guest_tz).unwrap();
+    let slot_start = crate::booking_time::local(&encoded_start, host_tz, host_tz).unwrap();
+    let (check_start, check_end) =
+        crate::booking_time::busy_range(&encoded_start, &encoded_end, host_tz).unwrap();
 
-    let now = Local::now().naive_local();
-    if slot_start < now + Duration::minutes(min_notice as i64) {
+    if chrono::DateTime::parse_from_rfc3339(&encoded_start)
+        .unwrap()
+        .with_timezone(&Utc)
+        < Utc::now() + Duration::minutes(min_notice as i64)
+    {
         return render_error_page(
             &state,
             &headers,
@@ -10983,8 +11131,7 @@ async fn handle_group_booking(
     let uid = format!("{}@calrs", uuid::Uuid::new_v4());
     let cancel_token = uuid::Uuid::new_v4().to_string();
     let reschedule_token = uuid::Uuid::new_v4().to_string();
-    let start_at = slot_start.format("%Y-%m-%dT%H:%M:%S").to_string();
-    let end_at = slot_end.format("%Y-%m-%dT%H:%M:%S").to_string();
+    let (start_at, end_at) = (encoded_start, encoded_end);
     let guest_end_time = guest_local_end.time().format("%H:%M").to_string();
 
     let initial_status = if needs_approval {
@@ -11011,8 +11158,8 @@ async fn handle_group_booking(
     // the whole team — every eligible member must be free, assigned_user_id
     // stays NULL (whole-slot exclusive under idx_bookings_no_overlap), and
     // write-back + host emails fan out to every member.
-    let buf_start = slot_start - Duration::minutes(buffer_before as i64);
-    let buf_end = slot_end + Duration::minutes(buffer_after as i64);
+    let buf_start = check_start - Duration::minutes(buffer_before as i64);
+    let buf_end = check_end + Duration::minutes(buffer_after as i64);
     let (assigned_user_id, host_name, host_email, member_contacts) = if is_collective {
         let members: Vec<(String, String, String)> = sqlx::query_as(
             "SELECT u.id, u.name, COALESCE(u.booking_email, u.email) FROM users u
@@ -11077,8 +11224,9 @@ async fn handle_group_booking(
             &state.pool,
             &team_id,
             &et_id,
+            check_start,
+            check_end,
             slot_start,
-            slot_end,
             buffer_before,
             buffer_after,
             host_tz,
@@ -11133,8 +11281,8 @@ async fn handle_group_booking(
     let assigned_resource_id = match crate::resources::check_and_pick(
         &state.pool,
         &et_id,
-        slot_start,
-        slot_end,
+        check_start,
+        check_end,
         host_tz,
         None,
     )
@@ -11168,9 +11316,25 @@ async fn handle_group_booking(
         }
     };
 
+    match crate::booking_time::legacy_slot_taken(
+        &state.pool,
+        &et_id,
+        assigned_user_id.as_deref(),
+        &start_at,
+        "",
+    )
+    .await
+    {
+        Ok(false) => {}
+        Ok(true) => {
+            return Html(crate::i18n::translate(lang, "error-slot-unavailable", None))
+                .into_response()
+        }
+        Err(e) => return internal_error_response("booking conflict check", &e),
+    }
     let insert_result = sqlx::query(
-        "INSERT INTO bookings (id, event_type_id, uid, guest_name, guest_email, guest_timezone, notes, start_at, end_at, status, cancel_token, reschedule_token, assigned_user_id, confirm_token, language, assigned_resource_id, guest_phone)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO bookings (time_version, id, event_type_id, uid, guest_name, guest_email, guest_timezone, notes, start_at, end_at, status, cancel_token, reschedule_token, assigned_user_id, confirm_token, language, assigned_resource_id, guest_phone)
+         VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     )
     .bind(&id)
     .bind(&et_id)
@@ -11266,6 +11430,7 @@ async fn handle_group_booking(
     let attendee_groups =
         booking_attendee_groups(&state.pool, &id, &uid, &host_email, &form.email).await;
     let details = crate::email::BookingDetails {
+        utc_times: crate::booking_time::ics_times(&start_at, &end_at),
         event_title: et_title.clone(),
         date: form.date.clone(),
         start_time: form.time.clone(),
@@ -11447,6 +11612,17 @@ async fn handle_group_booking(
 
 // --- User profile page ---
 
+async fn redirect_user_profile_trailing_slash(uri: axum::http::Uri) -> Redirect {
+    // Keep the encoded path and query intact; only remove the route's final slash.
+    // Building from the path also keeps the redirect local to this application.
+    let mut canonical = uri.path().trim_end_matches('/').to_owned();
+    if let Some(query) = uri.query() {
+        canonical.push('?');
+        canonical.push_str(query);
+    }
+    Redirect::permanent(&canonical)
+}
+
 async fn user_profile(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
@@ -11585,7 +11761,7 @@ async fn show_dynamic_group_slots(
         min_notice,
         loc_type,
         loc_value,
-        _owner_user_id,
+        owner_user_id,
         _owner_name,
         _owner_title,
         _owner_avatar_path,
@@ -11613,6 +11789,12 @@ async fn show_dynamic_group_slots(
             "Not available",
             "Dynamic group links are only available for public event types.",
         );
+    }
+
+    if let Some(html) =
+        dynamic_group_google_meet_error_page(state, headers, &loc_type, &owner_user_id).await
+    {
+        return html;
     }
 
     // Build combined host display name
@@ -11862,6 +12044,12 @@ async fn show_dynamic_group_book_form(
         );
     }
 
+    if let Some(html) =
+        dynamic_group_google_meet_error_page(state, headers, &loc_type, &dg_users[0].0).await
+    {
+        return html;
+    }
+
     let host_name = dg_users
         .iter()
         .map(|(_, _, name, _, _)| name.as_str())
@@ -12053,6 +12241,14 @@ async fn handle_dynamic_group_booking(
         .into_response();
     }
 
+    if loc_type == meeting::LOCATION_TYPE_GOOGLE_MEET
+        && !crate::google_meet::user_has_google_writeback(&state.pool, &owner_user_id).await
+    {
+        let title = crate::i18n::translate(lang, "google-meet-unavailable-title", None);
+        let message = crate::i18n::translate(lang, "google-meet-dynamic-group-unavailable", None);
+        return render_booking_action_error(state, headers, &title, &message);
+    }
+
     let needs_approval = requires_confirmation != 0;
 
     // Parse additional guests
@@ -12110,13 +12306,22 @@ async fn handle_dynamic_group_booking(
     // The URL carries guest-local date/time; convert to host-local for storage
     // and availability checks (existing semantics).
     let guest_local_start = date.and_time(start_time);
-    let guest_local_end = guest_local_start + Duration::minutes(duration as i64);
-    let slot_start = guest_to_host_local(guest_local_start, guest_tz, host_tz);
-    let slot_end = slot_start + Duration::minutes(duration as i64);
+    let Some((encoded_start, encoded_end)) =
+        crate::booking_time::encode(guest_local_start, guest_tz, duration)
+    else {
+        return Html(crate::i18n::translate(lang, "error-invalid-time", None)).into_response();
+    };
+    let guest_local_end = crate::booking_time::local(&encoded_end, guest_tz, guest_tz).unwrap();
+    let slot_start = crate::booking_time::local(&encoded_start, host_tz, host_tz).unwrap();
+    let (check_start, check_end) =
+        crate::booking_time::busy_range(&encoded_start, &encoded_end, host_tz).unwrap();
     let guest_end_time = guest_local_end.time().format("%H:%M").to_string();
 
-    let now = Local::now().naive_local();
-    if slot_start < now + Duration::minutes(min_notice as i64) {
+    if chrono::DateTime::parse_from_rfc3339(&encoded_start)
+        .unwrap()
+        .with_timezone(&Utc)
+        < Utc::now() + Duration::minutes(min_notice as i64)
+    {
         return render_error_page(
             state,
             headers,
@@ -12138,8 +12343,8 @@ async fn handle_dynamic_group_booking(
         .into_response();
     }
 
-    let buf_start = slot_start - Duration::minutes(buffer_before as i64);
-    let buf_end = slot_end + Duration::minutes(buffer_after as i64);
+    let buf_start = check_start - Duration::minutes(buffer_before as i64);
+    let buf_end = check_end + Duration::minutes(buffer_after as i64);
 
     // Check availability for ALL participants
     for (i, (uid, uname, _, _, _)) in dg_users.iter().enumerate() {
@@ -12178,8 +12383,7 @@ async fn handle_dynamic_group_booking(
     let uid = format!("{}@calrs", uuid::Uuid::new_v4());
     let cancel_token = uuid::Uuid::new_v4().to_string();
     let reschedule_token = uuid::Uuid::new_v4().to_string();
-    let start_at = slot_start.format("%Y-%m-%dT%H:%M:%S").to_string();
-    let end_at = slot_end.format("%Y-%m-%dT%H:%M:%S").to_string();
+    let (start_at, end_at) = (encoded_start, encoded_end);
 
     let initial_status = if needs_approval {
         "pending"
@@ -12217,8 +12421,8 @@ async fn handle_dynamic_group_booking(
     let assigned_resource_id = match crate::resources::check_and_pick(
         &state.pool,
         &et_id,
-        slot_start,
-        slot_end,
+        check_start,
+        check_end,
         host_tz,
         None,
     )
@@ -12252,9 +12456,17 @@ async fn handle_dynamic_group_booking(
         }
     };
 
+    match crate::booking_time::legacy_slot_taken(&state.pool, &et_id, None, &start_at, "").await {
+        Ok(false) => {}
+        Ok(true) => {
+            return Html(crate::i18n::translate(lang, "error-slot-unavailable", None))
+                .into_response()
+        }
+        Err(e) => return internal_error_response("booking conflict check", &e),
+    }
     let insert_result = sqlx::query(
-        "INSERT INTO bookings (id, event_type_id, uid, guest_name, guest_email, guest_timezone, notes, start_at, end_at, status, cancel_token, reschedule_token, confirm_token, language, assigned_resource_id, guest_phone)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO bookings (time_version, id, event_type_id, uid, guest_name, guest_email, guest_timezone, notes, start_at, end_at, status, cancel_token, reschedule_token, confirm_token, language, assigned_resource_id, guest_phone)
+         VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     )
     .bind(&id)
     .bind(&et_id)
@@ -12355,6 +12567,7 @@ async fn handle_dynamic_group_booking(
     )
     .await;
     let details = crate::email::BookingDetails {
+        utc_times: crate::booking_time::ics_times(&start_at, &end_at),
         event_title: et_title.clone(),
         date: form.date.clone(),
         start_time: form.time.clone(),
@@ -13191,13 +13404,22 @@ async fn handle_booking_for_user(
     // The URL carries guest-local date/time; convert to host-local for storage
     // and availability checks (existing semantics).
     let guest_local_start = date.and_time(start_time);
-    let guest_local_end = guest_local_start + Duration::minutes(duration as i64);
-    let slot_start = guest_to_host_local(guest_local_start, guest_tz, host_tz);
-    let slot_end = slot_start + Duration::minutes(duration as i64);
+    let Some((encoded_start, encoded_end)) =
+        crate::booking_time::encode(guest_local_start, guest_tz, duration)
+    else {
+        return Html(crate::i18n::translate(lang, "error-invalid-time", None)).into_response();
+    };
+    let guest_local_end = crate::booking_time::local(&encoded_end, guest_tz, guest_tz).unwrap();
+    let slot_start = crate::booking_time::local(&encoded_start, host_tz, host_tz).unwrap();
+    let (check_start, check_end) =
+        crate::booking_time::busy_range(&encoded_start, &encoded_end, host_tz).unwrap();
     let guest_end_time = guest_local_end.time().format("%H:%M").to_string();
 
-    let now = Local::now().naive_local();
-    if slot_start < now + Duration::minutes(min_notice as i64) {
+    if chrono::DateTime::parse_from_rfc3339(&encoded_start)
+        .unwrap()
+        .with_timezone(&Utc)
+        < Utc::now() + Duration::minutes(min_notice as i64)
+    {
         return render_error_page(
             &state,
             &headers,
@@ -13219,15 +13441,14 @@ async fn handle_booking_for_user(
         .into_response();
     }
 
-    let buf_start = slot_start - Duration::minutes(buffer_before as i64);
-    let buf_end = slot_end + Duration::minutes(buffer_after as i64);
+    let buf_start = check_start - Duration::minutes(buffer_before as i64);
+    let buf_end = check_end + Duration::minutes(buffer_after as i64);
 
     let id = uuid::Uuid::new_v4().to_string();
     let uid = format!("{}@calrs", uuid::Uuid::new_v4());
     let cancel_token = uuid::Uuid::new_v4().to_string();
     let reschedule_token = uuid::Uuid::new_v4().to_string();
-    let start_at = slot_start.format("%Y-%m-%dT%H:%M:%S").to_string();
-    let end_at = slot_end.format("%Y-%m-%dT%H:%M:%S").to_string();
+    let (start_at, end_at) = (encoded_start, encoded_end);
 
     let initial_status = if needs_approval {
         "pending"
@@ -13301,8 +13522,8 @@ async fn handle_booking_for_user(
     let assigned_resource_id = match crate::resources::check_and_pick(
         &state.pool,
         &et_id,
-        slot_start,
-        slot_end,
+        check_start,
+        check_end,
         host_tz,
         None,
     )
@@ -13323,9 +13544,17 @@ async fn handle_booking_for_user(
         crate::resources::ResourceCheck::NoResources => None,
     };
 
+    match crate::booking_time::legacy_slot_taken(&state.pool, &et_id, None, &start_at, "").await {
+        Ok(false) => {}
+        Ok(true) => {
+            return Html(crate::i18n::translate(lang, "error-slot-unavailable", None))
+                .into_response()
+        }
+        Err(e) => return internal_error_response("booking conflict check", &e),
+    }
     let insert_result = sqlx::query(
-        "INSERT INTO bookings (id, event_type_id, uid, guest_name, guest_email, guest_timezone, notes, start_at, end_at, status, cancel_token, reschedule_token, confirm_token, language, assigned_resource_id, guest_phone)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO bookings (time_version, id, event_type_id, uid, guest_name, guest_email, guest_timezone, notes, start_at, end_at, status, cancel_token, reschedule_token, confirm_token, language, assigned_resource_id, guest_phone)
+         VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     )
     .bind(&id)
     .bind(&et_id)
@@ -13434,6 +13663,7 @@ async fn handle_booking_for_user(
 
     if let Some((host_name, host_email)) = host {
         let details = crate::email::BookingDetails {
+            utc_times: crate::booking_time::ics_times(&start_at, &end_at),
             event_title: et_title.clone(),
             date: form.date.clone(),
             start_time: form.time.clone(),
@@ -13585,6 +13815,7 @@ async fn pick_group_member(
     event_type_id: &str,
     slot_start: NaiveDateTime,
     slot_end: NaiveDateTime,
+    actual_start: NaiveDateTime,
     buffer_before: i32,
     buffer_after: i32,
     host_tz: Tz,
@@ -13611,14 +13842,20 @@ async fn pick_group_member(
     // Per-member booking-frequency caps. We exclude any member already at
     // (or over) their per-period cap so the picker doesn't pick them just to
     // have the submit-time check reject the booking.
-    let per_member_limits: Vec<(i32, String)> = sqlx::query_as(
+    let per_member_limits: Result<Vec<(i32, String)>, sqlx::Error> = sqlx::query_as(
         "SELECT max_bookings, period FROM booking_frequency_limits \
          WHERE event_type_id = ? AND per_member = 1",
     )
     .bind(event_type_id)
     .fetch_all(pool)
-    .await
-    .unwrap_or_default();
+    .await;
+    let per_member_limits = match per_member_limits {
+        Ok(limits) => limits,
+        Err(error) => {
+            tracing::error!(%error, %event_type_id, "cannot load member booking frequency limits");
+            return None;
+        }
+    };
 
     let mut available_members = Vec::new();
 
@@ -13648,39 +13885,35 @@ async fn pick_group_member(
         // the index (any event type, buffered window): a member with an
         // overlapping pending commitment anywhere is a bad pick — if both
         // get approved they would be double-booked in real life.
-        let assigned_overlap: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM bookings \
-             WHERE assigned_user_id = ? AND status IN ('confirmed', 'pending') \
-               AND start_at < ? AND end_at > ?",
-        )
-        .bind(user_id)
-        .bind(buf_end.format("%Y-%m-%dT%H:%M:%S").to_string())
-        .bind(buf_start.format("%Y-%m-%dT%H:%M:%S").to_string())
-        .fetch_one(pool)
-        .await
-        .unwrap_or(0);
-        if assigned_overlap > 0 {
+        let assigned: Vec<(String, String)> = sqlx::query_as(
+            "SELECT CASE time_version WHEN 1 THEN start_at ELSE rtrim(start_at, 'Z') END AS start_at, CASE time_version WHEN 1 THEN end_at ELSE rtrim(end_at, 'Z') END AS end_at FROM bookings WHERE assigned_user_id = ? AND status IN ('confirmed', 'pending') AND start_at < strftime('%Y-%m-%dT%H:%M:%S', ?, '+2 days') AND end_at > strftime('%Y-%m-%dT%H:%M:%S', ?, '-2 days')")
+            .bind(user_id).bind(buf_end.to_string()).bind(buf_start.to_string())
+            .fetch_all(pool).await.unwrap_or_default();
+        if assigned.iter().any(
+            |(s, e)| match crate::booking_time::busy_range(s, e, host_tz) {
+                Some((s, e)) => s < buf_end && e > buf_start,
+                _ => false,
+            },
+        ) {
             continue;
         }
 
         let mut at_per_member_cap = false;
         for (max, period) in &per_member_limits {
-            let (rs, re) = frequency_period_range(slot_start, period);
-            let rs_str = rs.format("%Y-%m-%dT%H:%M:%S").to_string();
-            let re_str = re.format("%Y-%m-%dT%H:%M:%S").to_string();
-            let count: i64 = sqlx::query_scalar(
-                "SELECT COUNT(*) FROM bookings \
-                 WHERE event_type_id = ? AND assigned_user_id = ? \
-                 AND status IN ('confirmed', 'pending') \
-                 AND start_at >= ? AND start_at < ?",
-            )
-            .bind(event_type_id)
-            .bind(user_id)
-            .bind(&rs_str)
-            .bind(&re_str)
-            .fetch_one(pool)
-            .await
-            .unwrap_or(0);
+            let (rs, re) = frequency_period_range(actual_start, period);
+            let counts = match crate::booking_time::period_counts(pool, event_type_id, rs, re).await
+            {
+                Ok(counts) => counts,
+                Err(error) => {
+                    tracing::error!(%error, %event_type_id, "cannot check member booking frequency");
+                    return None;
+                }
+            };
+            let count: i64 = counts
+                .into_iter()
+                .filter(|(uid, _)| uid.as_deref() == Some(user_id))
+                .map(|(_, n)| n)
+                .sum();
             if count >= *max as i64 {
                 at_per_member_cap = true;
                 break;
@@ -13917,7 +14150,7 @@ async fn fetch_busy_times_for_user_ex(
     // type owner busy: on a round-robin team the owner stays free when
     // another member took the booking (#146).
     let bookings: Vec<(String, String)> = sqlx::query_as(
-        "SELECT b.start_at, b.end_at FROM bookings b
+        "SELECT CASE b.time_version WHEN 1 THEN b.start_at ELSE rtrim(b.start_at, 'Z') END AS start_at, CASE b.time_version WHEN 1 THEN b.end_at ELSE rtrim(b.end_at, 'Z') END AS end_at FROM bookings b
          JOIN event_types et ON et.id = b.event_type_id
          JOIN accounts a ON a.id = et.account_id
          WHERE (b.assigned_user_id = ?
@@ -13926,7 +14159,7 @@ async fn fetch_busy_times_for_user_ex(
                       SELECT 1 FROM team_members tm
                       WHERE tm.team_id = et.team_id AND tm.user_id = ?)))
            AND b.status = 'confirmed'
-           AND b.start_at <= ? AND b.end_at >= ?
+           AND b.start_at <= strftime('%Y-%m-%dT%H:%M:%S', ?, '+2 days') AND b.end_at >= strftime('%Y-%m-%dT%H:%M:%S', ?, '-2 days')
            AND (? = '' OR b.id != ?)",
     )
     .bind(user_id)
@@ -13941,7 +14174,7 @@ async fn fetch_busy_times_for_user_ex(
     .unwrap_or_default();
 
     for (s, e) in &bookings {
-        if let (Some(start), Some(end)) = (parse_ical_datetime(s), parse_ical_datetime(e)) {
+        if let Some((start, end)) = crate::booking_time::busy_range(s, e, host_tz) {
             busy.push((start, end));
         }
     }
@@ -14120,15 +14353,25 @@ async fn compute_slots(
 /// already at their cap for the slot's period; if any one of them still has
 /// headroom, the slot stays available and the round-robin picker will route
 /// to that member. On personal event types (no team), per-member limits
-/// degrade to event-type-wide behaviour.
+/// degrade to event-type-wide behaviour. Query failures hide the slots and
+/// are logged, so unavailable counts never look like spare capacity.
 async fn apply_frequency_limit_filter(pool: &SqlitePool, et_id: &str, days: &mut [SlotDay]) {
-    let limits: Vec<(i32, String, i32)> = sqlx::query_as(
+    let limits: Result<Vec<(i32, String, i32)>, sqlx::Error> = sqlx::query_as(
         "SELECT max_bookings, period, per_member FROM booking_frequency_limits WHERE event_type_id = ?",
     )
     .bind(et_id)
     .fetch_all(pool)
-    .await
-    .unwrap_or_default();
+    .await;
+    let limits = match limits {
+        Ok(limits) => limits,
+        Err(error) => {
+            tracing::error!(%error, "cannot load booking frequency limits");
+            for day in days {
+                day.slots.clear();
+            }
+            return;
+        }
+    };
 
     if limits.is_empty() {
         return;
@@ -14171,35 +14414,19 @@ async fn apply_frequency_limit_filter(pool: &SqlitePool, et_id: &str, days: &mut
 
     for ((period, ps), wide) in wide_counts.iter_mut() {
         let (rs, re) = frequency_period_range(*ps, period);
-        let rs_str = rs.format("%Y-%m-%dT%H:%M:%S").to_string();
-        let re_str = re.format("%Y-%m-%dT%H:%M:%S").to_string();
-
-        let c: (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM bookings WHERE event_type_id = ? AND status IN ('confirmed', 'pending') AND start_at >= ? AND start_at < ?",
-        )
-        .bind(et_id)
-        .bind(&rs_str)
-        .bind(&re_str)
-        .fetch_one(pool)
-        .await
-        .unwrap_or((0,));
-        *wide = c.0;
-
-        if has_per_member && !team_members.is_empty() {
-            let rows: Vec<(String, i64)> = sqlx::query_as(
-                "SELECT assigned_user_id, COUNT(*) FROM bookings \
-                 WHERE event_type_id = ? AND assigned_user_id IS NOT NULL \
-                 AND status IN ('confirmed', 'pending') \
-                 AND start_at >= ? AND start_at < ? \
-                 GROUP BY assigned_user_id",
-            )
-            .bind(et_id)
-            .bind(&rs_str)
-            .bind(&re_str)
-            .fetch_all(pool)
-            .await
-            .unwrap_or_default();
-            for (uid, n) in rows {
+        let counts = match crate::booking_time::period_counts(pool, et_id, rs, re).await {
+            Ok(counts) => counts,
+            Err(error) => {
+                tracing::error!(%error, %et_id, "cannot check slot booking frequency");
+                for day in days {
+                    day.slots.clear();
+                }
+                return;
+            }
+        };
+        *wide = counts.iter().map(|(_, n)| n).sum();
+        for (uid, n) in counts {
+            if let Some(uid) = uid {
                 member_counts.insert((period.clone(), *ps, uid), n);
             }
         }
@@ -14327,19 +14554,26 @@ fn frequency_period_range(dt: NaiveDateTime, period: &str) -> (NaiveDateTime, Na
 /// configured on the event type. `assigned_user_id` is the team member the
 /// booking would land on — required for per-member caps; ignored by
 /// event-type-wide caps. Pass `None` for personal event types (no assignee).
+/// Returns true on query failure to reject the booking; the error is logged.
 async fn would_exceed_frequency_limit(
     pool: &SqlitePool,
     event_type_id: &str,
     proposed_start: NaiveDateTime,
     assigned_user_id: Option<&str>,
 ) -> bool {
-    let limits: Vec<(i32, String, i32)> = sqlx::query_as(
+    let limits: Result<Vec<(i32, String, i32)>, sqlx::Error> = sqlx::query_as(
         "SELECT max_bookings, period, per_member FROM booking_frequency_limits WHERE event_type_id = ?",
     )
     .bind(event_type_id)
     .fetch_all(pool)
-    .await
-    .unwrap_or_default();
+    .await;
+    let limits = match limits {
+        Ok(limits) => limits,
+        Err(error) => {
+            tracing::error!(%error, "cannot load booking frequency limits");
+            return true;
+        }
+    };
 
     if limits.is_empty() {
         return false;
@@ -14347,44 +14581,27 @@ async fn would_exceed_frequency_limit(
 
     for (max_bookings, period, per_member) in &limits {
         let (range_start, range_end) = frequency_period_range(proposed_start, period);
-        let range_start_str = range_start.format("%Y-%m-%dT%H:%M:%S").to_string();
-        let range_end_str = range_end.format("%Y-%m-%dT%H:%M:%S").to_string();
-
-        let count: (i64,) = if *per_member != 0 {
-            // A per-member cap on a personal event type (no assignee) is
-            // meaningless — treat it as event-type-wide for those cases.
-            match assigned_user_id {
-                Some(uid) => sqlx::query_as(
-                    "SELECT COUNT(*) FROM bookings WHERE event_type_id = ? AND assigned_user_id = ? AND status IN ('confirmed', 'pending') AND start_at >= ? AND start_at < ?",
-                )
-                .bind(event_type_id)
-                .bind(uid)
-                .bind(&range_start_str)
-                .bind(&range_end_str)
-                .fetch_one(pool)
-                .await
-                .unwrap_or((0,)),
-                None => sqlx::query_as(
-                    "SELECT COUNT(*) FROM bookings WHERE event_type_id = ? AND status IN ('confirmed', 'pending') AND start_at >= ? AND start_at < ?",
-                )
-                .bind(event_type_id)
-                .bind(&range_start_str)
-                .bind(&range_end_str)
-                .fetch_one(pool)
-                .await
-                .unwrap_or((0,)),
+        let counts = match crate::booking_time::period_counts(
+            pool,
+            event_type_id,
+            range_start,
+            range_end,
+        )
+        .await
+        {
+            Ok(counts) => counts,
+            Err(error) => {
+                tracing::error!(%error, %event_type_id, "cannot check booking frequency; rejecting booking");
+                return true;
             }
-        } else {
-            sqlx::query_as(
-                "SELECT COUNT(*) FROM bookings WHERE event_type_id = ? AND status IN ('confirmed', 'pending') AND start_at >= ? AND start_at < ?",
-            )
-            .bind(event_type_id)
-            .bind(&range_start_str)
-            .bind(&range_end_str)
-            .fetch_one(pool)
-            .await
-            .unwrap_or((0,))
         };
+        let count = (counts
+            .into_iter()
+            .filter(|(uid, _)| {
+                *per_member == 0 || assigned_user_id.is_none() || uid.as_deref() == assigned_user_id
+            })
+            .map(|(_, n)| n)
+            .sum::<i64>(),);
 
         if count.0 >= *max_bookings as i64 {
             return true;
@@ -14410,7 +14627,7 @@ fn compute_slots_from_rules(
     overrides: &[(String, Option<String>, Option<String>, i32)],
 ) -> Vec<SlotDay> {
     let now_host = Utc::now().with_timezone(&host_tz).naive_local();
-    let min_start = now_host + Duration::minutes(min_notice as i64);
+    let min_start = Utc::now() + Duration::minutes(min_notice as i64);
 
     let slot_duration = Duration::minutes(duration as i64);
     let slot_step = Duration::minutes(interval.max(1) as i64);
@@ -14480,32 +14697,41 @@ fn compute_slots_from_rules(
             // slot every step forever until OOM).
             let window_end = date.and_time(window_end_time);
             let mut cursor = date.and_time(window_start_time);
-            while cursor + slot_duration <= window_end {
-                let slot_start = cursor;
-                let slot_end = slot_start + slot_duration;
-
-                if slot_start < min_start {
+            while cursor < window_end {
+                let Some(slot_start_utc) = host_tz
+                    .from_local_datetime(&cursor)
+                    .single()
+                    .map(|t| t.with_timezone(&Utc))
+                else {
+                    cursor += slot_step;
+                    continue;
+                };
+                let slot_end_utc = slot_start_utc + slot_duration;
+                let guest_start = slot_start_utc.with_timezone(&guest_tz);
+                let guest_end = slot_end_utc.with_timezone(&guest_tz);
+                let (check_start, check_end) = crate::booking_time::busy_range(
+                    &slot_start_utc.to_rfc3339(),
+                    &slot_end_utc.to_rfc3339(),
+                    host_tz,
+                )
+                .unwrap();
+                // The submission carries wall time only: do not advertise a
+                // guest time that cannot identify a unique instant on POST.
+                if slot_start_utc < min_start
+                    || check_start < date.and_time(window_start_time)
+                    || check_end > window_end
+                    || guest_tz
+                        .from_local_datetime(&guest_start.naive_local())
+                        .single()
+                        .is_none()
+                {
                     cursor += slot_step;
                     continue;
                 }
-
-                let buf_start = slot_start - Duration::minutes(buffer_before as i64);
-                let buf_end = slot_end + Duration::minutes(buffer_after as i64);
+                let buf_start = check_start - Duration::minutes(buffer_before as i64);
+                let buf_end = check_end + Duration::minutes(buffer_after as i64);
 
                 if busy_source_is_free(&busy, buf_start, buf_end) {
-                    let slot_start_utc = host_tz
-                        .from_local_datetime(&slot_start)
-                        .earliest()
-                        .unwrap_or_else(|| host_tz.from_utc_datetime(&slot_start))
-                        .with_timezone(&Utc);
-                    let slot_end_utc = host_tz
-                        .from_local_datetime(&slot_end)
-                        .earliest()
-                        .unwrap_or_else(|| host_tz.from_utc_datetime(&slot_end))
-                        .with_timezone(&Utc);
-                    let guest_start = slot_start_utc.with_timezone(&guest_tz);
-                    let guest_end = slot_end_utc.with_timezone(&guest_tz);
-
                     day_slots.push(SlotTime {
                         start: guest_start.format("%H:%M").to_string(),
                         end: guest_end.format("%H:%M").to_string(),
@@ -14690,15 +14916,9 @@ fn build_month_params(
     )
 }
 
-/// Parse a timezone string into a Tz, falling back to server local.
+/// Parse a guest timezone, using UTC when none is supplied.
 fn parse_guest_tz(tz: Option<&str>) -> Tz {
-    tz.and_then(|s| s.parse::<Tz>().ok()).unwrap_or_else(|| {
-        // Fall back to server's local timezone
-        iana_time_zone::get_timezone()
-            .ok()
-            .and_then(|s| s.parse::<Tz>().ok())
-            .unwrap_or(Tz::UTC)
-    })
+    tz.and_then(|s| s.parse().ok()).unwrap_or(Tz::UTC)
 }
 
 /// Normalize a timezone value submitted via an event-type form. Accepts the
@@ -14714,7 +14934,7 @@ fn normalize_event_type_tz(input: Option<&str>, fallback: &str) -> String {
 }
 
 /// Get the host's timezone from the event type owner's profile.
-/// Falls back to the server's local timezone, then UTC.
+/// Falls back to UTC when no valid timezone is configured.
 /// Convert a naive datetime in the guest's timezone to the equivalent naive
 /// datetime in the host's timezone. Used when accepting a booking: the URL
 /// carries the time the guest clicked (their local time), but availability
@@ -14803,7 +15023,7 @@ async fn get_host_tz(pool: &SqlitePool, et_id: &str) -> Tz {
     server_tz()
 }
 
-/// Get a user's timezone from their profile. Falls back to server TZ.
+/// Get a user's timezone from their profile. Falls back to UTC.
 async fn get_user_tz(pool: &SqlitePool, user_id: &str) -> Tz {
     if let Some(tz_str) = sqlx::query_scalar::<_, String>("SELECT timezone FROM users WHERE id = ?")
         .bind(user_id)
@@ -14819,12 +15039,9 @@ async fn get_user_tz(pool: &SqlitePool, user_id: &str) -> Tz {
     server_tz()
 }
 
-/// Server's local timezone as fallback.
+/// Deterministic default for missing timezone configuration.
 fn server_tz() -> Tz {
-    iana_time_zone::get_timezone()
-        .ok()
-        .and_then(|s| s.parse::<Tz>().ok())
-        .unwrap_or(Tz::UTC)
+    Tz::UTC
 }
 
 /// Common IANA timezones for the selector (most used ones).
@@ -15996,14 +16213,23 @@ async fn handle_booking(
     // The URL carries guest-local date/time; convert to host-local for storage
     // and availability checks (existing semantics).
     let guest_local_start = date.and_time(start_time);
-    let guest_local_end = guest_local_start + Duration::minutes(duration as i64);
-    let slot_start = guest_to_host_local(guest_local_start, guest_tz, host_tz);
-    let slot_end = slot_start + Duration::minutes(duration as i64);
+    let Some((encoded_start, encoded_end)) =
+        crate::booking_time::encode(guest_local_start, guest_tz, duration)
+    else {
+        return Html(crate::i18n::translate(lang, "error-invalid-time", None)).into_response();
+    };
+    let guest_local_end = crate::booking_time::local(&encoded_end, guest_tz, guest_tz).unwrap();
+    let slot_start = crate::booking_time::local(&encoded_start, host_tz, host_tz).unwrap();
+    let (check_start, check_end) =
+        crate::booking_time::busy_range(&encoded_start, &encoded_end, host_tz).unwrap();
     let guest_end_time = guest_local_end.time().format("%H:%M").to_string();
 
     // Validate minimum notice
-    let now = Local::now().naive_local();
-    if slot_start < now + Duration::minutes(min_notice as i64) {
+    if chrono::DateTime::parse_from_rfc3339(&encoded_start)
+        .unwrap()
+        .with_timezone(&Utc)
+        < Utc::now() + Duration::minutes(min_notice as i64)
+    {
         return render_error_page(
             &state,
             &headers,
@@ -16026,16 +16252,15 @@ async fn handle_booking(
     }
 
     // Validate conflicts
-    let buf_start = slot_start - Duration::minutes(buffer_before as i64);
-    let buf_end = slot_end + Duration::minutes(buffer_after as i64);
+    let buf_start = check_start - Duration::minutes(buffer_before as i64);
+    let buf_end = check_end + Duration::minutes(buffer_after as i64);
 
     // Create booking
     let id = uuid::Uuid::new_v4().to_string();
     let uid = format!("{}@calrs", uuid::Uuid::new_v4());
     let cancel_token = uuid::Uuid::new_v4().to_string();
     let reschedule_token = uuid::Uuid::new_v4().to_string();
-    let start_at = slot_start.format("%Y-%m-%dT%H:%M:%S").to_string();
-    let end_at = slot_end.format("%Y-%m-%dT%H:%M:%S").to_string();
+    let (start_at, end_at) = (encoded_start, encoded_end);
 
     let initial_status = if needs_approval {
         "pending"
@@ -16110,8 +16335,8 @@ async fn handle_booking(
     let assigned_resource_id = match crate::resources::check_and_pick(
         &state.pool,
         &et_id,
-        slot_start,
-        slot_end,
+        check_start,
+        check_end,
         host_tz,
         None,
     )
@@ -16132,9 +16357,17 @@ async fn handle_booking(
         crate::resources::ResourceCheck::NoResources => None,
     };
 
+    match crate::booking_time::legacy_slot_taken(&state.pool, &et_id, None, &start_at, "").await {
+        Ok(false) => {}
+        Ok(true) => {
+            return Html(crate::i18n::translate(lang, "error-slot-unavailable", None))
+                .into_response()
+        }
+        Err(e) => return internal_error_response("booking conflict check", &e),
+    }
     let insert_result = sqlx::query(
-        "INSERT INTO bookings (id, event_type_id, uid, guest_name, guest_email, guest_timezone, notes, start_at, end_at, status, cancel_token, reschedule_token, confirm_token, language, assigned_resource_id, guest_phone)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO bookings (time_version, id, event_type_id, uid, guest_name, guest_email, guest_timezone, notes, start_at, end_at, status, cancel_token, reschedule_token, confirm_token, language, assigned_resource_id, guest_phone)
+         VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     )
     .bind(&id)
     .bind(&et_id)
@@ -16232,6 +16465,7 @@ async fn handle_booking(
         )
         .await;
         let details = crate::email::BookingDetails {
+            utc_times: crate::booking_time::ics_times(&start_at, &end_at),
             event_title: et_title.clone(),
             date: form.date.clone(),
             start_time: form.time.clone(),
@@ -16763,7 +16997,7 @@ async fn troubleshoot(
     if is_collective {
         for (member_id, member_name) in &availability_users {
             let member_bookings: Vec<(String, String, String, String)> = sqlx::query_as(
-                "SELECT b.start_at, b.end_at, b.guest_name, et2.title
+                "SELECT CASE b.time_version WHEN 1 THEN b.start_at ELSE rtrim(b.start_at, 'Z') END AS start_at, CASE b.time_version WHEN 1 THEN b.end_at ELSE rtrim(b.end_at, 'Z') END AS end_at, b.guest_name, et2.title
                  FROM bookings b
                  JOIN event_types et2 ON et2.id = b.event_type_id
                  JOIN accounts a ON a.id = et2.account_id
@@ -16775,7 +17009,7 @@ async fn troubleshoot(
                                 WHERE tm.team_id = et2.team_id AND tm.user_id = ?
                             )))
                    AND b.status = 'confirmed'
-                   AND b.start_at < ? AND b.end_at > ?
+                   AND b.start_at < strftime('%Y-%m-%dT%H:%M:%S', ?, '+2 days') AND b.end_at > strftime('%Y-%m-%dT%H:%M:%S', ?, '-2 days')
                  ORDER BY b.start_at",
             )
             .bind(member_id)
@@ -16797,12 +17031,12 @@ async fn troubleshoot(
         }
     } else {
         bookings = sqlx::query_as(
-            "SELECT b.start_at, b.end_at, b.guest_name, et2.title
+            "SELECT CASE b.time_version WHEN 1 THEN b.start_at ELSE rtrim(b.start_at, 'Z') END AS start_at, CASE b.time_version WHEN 1 THEN b.end_at ELSE rtrim(b.end_at, 'Z') END AS end_at, b.guest_name, et2.title
              FROM bookings b
              JOIN event_types et2 ON et2.id = b.event_type_id
              JOIN accounts a ON a.id = et2.account_id
              WHERE a.user_id = ? AND b.status IN ('confirmed', 'pending')
-               AND b.start_at < ? AND b.end_at > ?
+               AND b.start_at < strftime('%Y-%m-%dT%H:%M:%S', ?, '+2 days') AND b.end_at > strftime('%Y-%m-%dT%H:%M:%S', ?, '-2 days')
              ORDER BY b.start_at",
         )
         .bind(&user.id)
@@ -16901,8 +17135,7 @@ async fn troubleshoot(
     let bookings_parsed: Vec<(NaiveDateTime, NaiveDateTime, String, String)> = bookings
         .iter()
         .filter_map(|(s, e, guest, et_title)| {
-            let start = parse_ical_datetime(s)?;
-            let end = parse_ical_datetime(e)?;
+            let (start, end) = crate::booking_time::busy_range(s, e, host_tz)?;
             Some((start, end, guest.clone(), et_title.clone()))
         })
         .collect();
@@ -20549,7 +20782,7 @@ async fn approve_booking_form(
     let lang = crate::i18n::detect_from_headers(&headers);
     // Look up pending booking by confirm_token
     let booking: Option<(String, String, String, String, String)> = sqlx::query_as(
-        "SELECT b.guest_name, b.guest_email, b.start_at, b.end_at, et.title
+        "SELECT b.guest_name, b.guest_email, CASE b.time_version WHEN 1 THEN b.start_at ELSE rtrim(b.start_at, 'Z') END AS start_at, CASE b.time_version WHEN 1 THEN b.end_at ELSE rtrim(b.end_at, 'Z') END AS end_at, et.title
          FROM bookings b
          JOIN event_types et ON et.id = b.event_type_id
          WHERE b.confirm_token = ? AND b.status = 'pending'",
@@ -20572,6 +20805,8 @@ async fn approve_booking_form(
         }
     };
 
+    let (start_at, end_at) =
+        crate::booking_time::guest_wall_strings(&state.pool, &token, &start_at, &end_at).await;
     let date_label = format_date_label(&start_at, lang);
     let start_time = format_time_12h(&start_at);
     let end_time = format_time_12h(&end_at);
@@ -20603,7 +20838,7 @@ async fn approve_booking_by_token(
     #[allow(clippy::type_complexity)]
     let booking: Option<(String, String, String, String, String, String, String, String, String, Option<String>, Option<String>, String, Option<String>, String, Option<String>, String)> =
         sqlx::query_as(
-            "SELECT b.id, b.uid, b.guest_name, b.guest_email, b.start_at, b.end_at, et.title, a.user_id, u.name, et.location_value, b.cancel_token, COALESCE(b.guest_timezone, 'UTC'), b.reschedule_token, b.event_type_id, b.guest_phone, et.sms_phone_mode
+            "SELECT b.id, b.uid, b.guest_name, b.guest_email, CASE b.time_version WHEN 1 THEN b.start_at ELSE rtrim(b.start_at, 'Z') END AS start_at, CASE b.time_version WHEN 1 THEN b.end_at ELSE rtrim(b.end_at, 'Z') END AS end_at, et.title, a.user_id, u.name, et.location_value, b.cancel_token, COALESCE(b.guest_timezone, 'UTC'), b.reschedule_token, b.event_type_id, b.guest_phone, et.sms_phone_mode
              FROM bookings b
              JOIN event_types et ON et.id = b.event_type_id
              JOIN accounts a ON a.id = et.account_id
@@ -20645,6 +20880,16 @@ async fn approve_booking_by_token(
         }
     };
 
+    // Fetched separately: sqlx tuple FromRow only goes to 16 columns.
+    let assigned_user_id: Option<String> =
+        sqlx::query_scalar("SELECT assigned_user_id FROM bookings WHERE id = ?")
+            .bind(&bid)
+            .fetch_optional(&state.pool)
+            .await
+            .ok()
+            .flatten()
+            .flatten();
+
     // Pending bookings do not block shared resources, so re-verify them at
     // approval time under the process-wide resource lock; in round-robin
     // mode the resource is re-picked (the original pick may be long stale).
@@ -20665,6 +20910,8 @@ async fn approve_booking_by_token(
     if resource_guard.is_some() {
         if let (Some(s), Some(e)) = (parse_ical_datetime(&start_at), parse_ical_datetime(&end_at)) {
             let tz_check = get_host_tz(&state.pool, &event_type_id).await;
+            let (s, e) =
+                crate::booking_time::busy_range(&start_at, &end_at, tz_check).unwrap_or((s, e));
             match crate::resources::check_and_pick(
                 &state.pool,
                 &event_type_id,
@@ -20746,7 +20993,10 @@ async fn approve_booking_by_token(
         &state,
         &bid,
         &event_type_id,
-        Some(&user_id),
+        Some(meeting::confirm_host_user_id(
+            assigned_user_id.as_deref(),
+            user_id.as_str(),
+        )),
         location_value.as_deref(),
         &guest_name,
         &guest_email,
@@ -20765,6 +21015,7 @@ async fn approve_booking_by_token(
             .flatten();
 
     let details = crate::email::BookingDetails {
+        utc_times: crate::booking_time::ics_times(&start_at, &end_at),
         event_title: event_title.clone(),
         date: date.clone(),
         start_time: start_time.clone(),
@@ -20883,7 +21134,7 @@ async fn decline_booking_form(
 ) -> impl IntoResponse {
     let lang = crate::i18n::detect_from_headers(&headers);
     let booking: Option<(String, String, String, String, String)> = sqlx::query_as(
-        "SELECT b.guest_name, b.guest_email, b.start_at, b.end_at, et.title
+        "SELECT b.guest_name, b.guest_email, CASE b.time_version WHEN 1 THEN b.start_at ELSE rtrim(b.start_at, 'Z') END AS start_at, CASE b.time_version WHEN 1 THEN b.end_at ELSE rtrim(b.end_at, 'Z') END AS end_at, et.title
              FROM bookings b
              JOIN event_types et ON et.id = b.event_type_id
              WHERE b.confirm_token = ? AND b.status = 'pending'",
@@ -20905,6 +21156,8 @@ async fn decline_booking_form(
         }
     };
 
+    let (start_at, end_at) =
+        crate::booking_time::guest_wall_strings(&state.pool, &token, &start_at, &end_at).await;
     let date_label = format_date_label(&start_at, lang);
     let date = start_at.get(..10).unwrap_or(&start_at).to_string();
     let start_time = format_time_12h(&start_at);
@@ -20952,7 +21205,7 @@ async fn decline_booking_by_token(
         String,
         String,
     )> = sqlx::query_as(
-        "SELECT b.id, b.guest_name, b.guest_email, b.start_at, b.end_at, et.title, u.name, COALESCE(u.booking_email, u.email), COALESCE(b.guest_timezone, 'UTC'), et.id
+        "SELECT b.id, b.guest_name, b.guest_email, CASE b.time_version WHEN 1 THEN b.start_at ELSE rtrim(b.start_at, 'Z') END AS start_at, CASE b.time_version WHEN 1 THEN b.end_at ELSE rtrim(b.end_at, 'Z') END AS end_at, et.title, u.name, COALESCE(u.booking_email, u.email), COALESCE(b.guest_timezone, 'UTC'), et.id
              FROM bookings b
              JOIN event_types et ON et.id = b.event_type_id
              JOIN accounts a ON a.id = et.account_id
@@ -21009,6 +21262,7 @@ async fn decline_booking_by_token(
         crate::email::load_smtp_config(&state.pool, &state.secret_key).await
     {
         let details = crate::email::CancellationDetails {
+            utc_times: crate::booking_time::ics_times(&start_at, &end_at),
             event_title: event_title.clone(),
             date: date.clone(),
             start_time: start_time.clone(),
@@ -21109,11 +21363,8 @@ async fn fetch_notice_min_and_host_email(
 /// render the blocked page and return it. Otherwise return `None` so the
 /// caller can proceed.
 ///
-/// Note on time semantics: `start_at` is the host-local naive timestamp
-/// (matching how bookings are stored elsewhere) so we compare against
-/// `Local::now().naive_local()` to mirror the existing `slot_start < now +
-/// Duration::minutes(min_notice as i64)` precedent in the reschedule POST
-/// path.
+/// UTC bookings use absolute deadlines. Legacy timestamps retain their former
+/// server-local interpretation; upgrading does not reinterpret old bookings.
 fn check_notice_window(
     state: &AppState,
     notice_min: Option<i32>,
@@ -21126,12 +21377,17 @@ fn check_notice_window(
     if n <= 0 {
         return None;
     }
-    let start = match NaiveDateTime::parse_from_str(start_at, "%Y-%m-%dT%H:%M:%S") {
-        Ok(dt) => dt,
-        Err(_) => return None,
+    let (start, now) = if let Ok(utc) = chrono::DateTime::parse_from_rfc3339(start_at) {
+        (utc.naive_utc(), Utc::now().naive_utc())
+    } else {
+        let start = match NaiveDateTime::parse_from_str(start_at, "%Y-%m-%dT%H:%M:%S") {
+            Ok(dt) => dt,
+            Err(_) => return None,
+        };
+        (start, Local::now().naive_local())
     };
     let cutoff = start - chrono::Duration::minutes(n as i64);
-    if Local::now().naive_local() <= cutoff {
+    if now <= cutoff {
         return None;
     }
     let tmpl = match state.templates.get_template("booking_action_blocked.html") {
@@ -21175,7 +21431,7 @@ async fn booking_ics(
         Option<String>,
     )> = sqlx::query_as(
         "SELECT b.uid, b.guest_name, b.guest_email, COALESCE(b.guest_timezone, 'UTC'), \
-                b.start_at, b.end_at, et.title, u.name, COALESCE(u.booking_email, u.email), \
+                CASE b.time_version WHEN 1 THEN b.start_at ELSE rtrim(b.start_at, 'Z') END AS start_at, CASE b.time_version WHEN 1 THEN b.end_at ELSE rtrim(b.end_at, 'Z') END AS end_at, et.title, u.name, COALESCE(u.booking_email, u.email), \
                 COALESCE(NULLIF(b.meeting_url, ''), et.location_value), et.id, b.notes
              FROM bookings b
              JOIN event_types et ON et.id = b.event_type_id
@@ -21218,6 +21474,7 @@ async fn booking_ics(
         booking_strings_in_guest_tz(&start_at, &end_at, stored_tz, guest_tz_parsed);
 
     let details = crate::email::BookingDetails {
+        utc_times: crate::booking_time::ics_times(&start_at, &end_at),
         event_title,
         date,
         start_time,
@@ -21258,7 +21515,7 @@ async fn guest_cancel_form(
 ) -> impl IntoResponse {
     let lang = crate::i18n::detect_from_headers(&headers);
     let booking: Option<(String, String, String, String, String, String)> = sqlx::query_as(
-        "SELECT b.guest_name, b.guest_email, b.start_at, b.end_at, et.title, u.name
+        "SELECT b.guest_name, b.guest_email, CASE b.time_version WHEN 1 THEN b.start_at ELSE rtrim(b.start_at, 'Z') END AS start_at, CASE b.time_version WHEN 1 THEN b.end_at ELSE rtrim(b.end_at, 'Z') END AS end_at, et.title, u.name
              FROM bookings b
              JOIN event_types et ON et.id = b.event_type_id
              JOIN accounts a ON a.id = et.account_id
@@ -21312,6 +21569,8 @@ async fn guest_cancel_form(
         }
     }
 
+    let (start_at, end_at) =
+        crate::booking_time::guest_wall_strings(&state.pool, &token, &start_at, &end_at).await;
     let date_label = format_date_label(&start_at, lang);
     let date = start_at.get(..10).unwrap_or(&start_at).to_string();
     let start_time = format_time_12h(&start_at);
@@ -21350,7 +21609,7 @@ async fn guest_cancel_booking(
     #[allow(clippy::type_complexity)]
     let booking: Option<(String, String, String, String, String, String, String, String, String, String, String, Option<String>, String)> =
         sqlx::query_as(
-            "SELECT b.id, b.uid, b.guest_name, b.guest_email, b.start_at, b.end_at, et.title, u.name, COALESCE(u.booking_email, u.email), COALESCE(b.guest_timezone, 'UTC'), et.id, b.guest_phone, et.sms_phone_mode
+            "SELECT b.id, b.uid, b.guest_name, b.guest_email, CASE b.time_version WHEN 1 THEN b.start_at ELSE rtrim(b.start_at, 'Z') END AS start_at, CASE b.time_version WHEN 1 THEN b.end_at ELSE rtrim(b.end_at, 'Z') END AS end_at, et.title, u.name, COALESCE(u.booking_email, u.email), COALESCE(b.guest_timezone, 'UTC'), et.id, b.guest_phone, et.sms_phone_mode
              FROM bookings b
              JOIN event_types et ON et.id = b.event_type_id
              JOIN accounts a ON a.id = et.account_id
@@ -21441,6 +21700,7 @@ async fn guest_cancel_booking(
 
     // Built before the SMTP block so the SMS path can borrow the same strings.
     let details = crate::email::CancellationDetails {
+        utc_times: crate::booking_time::ics_times(&start_at, &end_at),
         event_title: event_title.clone(),
         date: date.clone(),
         start_time: start_time.clone(),
@@ -21538,7 +21798,7 @@ async fn guest_reschedule_slots(
     let lang = crate::i18n::detect_from_headers(&headers);
     // Look up booking by reschedule_token
     let booking: Option<(String, String, String, String, String, String)> = sqlx::query_as(
-        "SELECT b.id, b.guest_name, b.start_at, b.end_at, b.event_type_id, b.uid
+        "SELECT b.id, b.guest_name, CASE b.time_version WHEN 1 THEN b.start_at ELSE rtrim(b.start_at, 'Z') END AS start_at, CASE b.time_version WHEN 1 THEN b.end_at ELSE rtrim(b.end_at, 'Z') END AS end_at, b.event_type_id, b.uid
              FROM bookings b
              WHERE b.reschedule_token = ? AND b.status IN ('confirmed', 'pending')",
     )
@@ -21653,10 +21913,19 @@ async fn guest_reschedule_slots(
     let hosts = reschedule_hosts(&state.pool, &uid, &owner_user_id).await;
     let host = reschedule_host_profile(&state.pool, &hosts, &et_id).await;
 
-    let old_date_label = format_date_label(&start_at, lang);
-    let old_start_time = format_time_12h(&start_at);
-    let old_end_time = format_time_12h(&end_at);
-    let old_date = start_at.get(..10).unwrap_or(&start_at).to_string();
+    let old_guest_tz: String =
+        sqlx::query_scalar("SELECT guest_timezone FROM bookings WHERE id = ?")
+            .bind(&booking_id)
+            .fetch_one(&state.pool)
+            .await
+            .unwrap_or_else(|_| "UTC".into());
+    let old_tz = old_guest_tz.parse::<Tz>().unwrap_or(Tz::UTC);
+    let old_stored_tz = get_host_tz(&state.pool, &et_id).await;
+    let (old_date, old_start_time, old_end_time) =
+        booking_strings_in_guest_tz(&start_at, &end_at, old_stored_tz, old_tz);
+    let old_date_label = format_date_label(&old_date, lang);
+    let old_start_time = format_time_12h(&old_start_time);
+    let old_end_time = format_time_12h(&old_end_time);
 
     // If date + time + tz are present, show confirmation page
     if let (Some(date), Some(time)) = (&query.date, &query.time) {
@@ -21905,7 +22174,7 @@ async fn guest_reschedule_booking(
         i32,
         i32,
     )> = sqlx::query_as(
-        "SELECT b.id, b.uid, b.guest_name, b.guest_email, b.start_at, b.end_at,
+        "SELECT b.id, b.uid, b.guest_name, b.guest_email, CASE b.time_version WHEN 1 THEN b.start_at ELSE rtrim(b.start_at, 'Z') END AS start_at, CASE b.time_version WHEN 1 THEN b.end_at ELSE rtrim(b.end_at, 'Z') END AS end_at,
                     et.id, et.title, u.id, u.name, et.duration_min,
                     COALESCE(NULLIF(b.meeting_url, ''), et.location_value),
                     b.caldav_calendar_href, COALESCE(b.guest_timezone, 'UTC'),
@@ -22015,13 +22284,22 @@ async fn guest_reschedule_booking(
     // The URL carries guest-local date/time; convert to host-local for storage
     // and availability checks (existing semantics).
     let guest_local_start = date.and_time(start_time);
-    let guest_local_end = guest_local_start + Duration::minutes(duration as i64);
-    let slot_start = guest_to_host_local(guest_local_start, guest_tz, host_tz);
-    let slot_end = slot_start + Duration::minutes(duration as i64);
+    let Some((encoded_start, encoded_end)) =
+        crate::booking_time::encode(guest_local_start, guest_tz, duration)
+    else {
+        return Html(crate::i18n::translate(lang, "error-invalid-time", None)).into_response();
+    };
+    let guest_local_end = crate::booking_time::local(&encoded_end, guest_tz, guest_tz).unwrap();
+    let slot_start = crate::booking_time::local(&encoded_start, host_tz, host_tz).unwrap();
+    let (check_start, check_end) =
+        crate::booking_time::busy_range(&encoded_start, &encoded_end, host_tz).unwrap();
     let guest_end_time = guest_local_end.time().format("%H:%M").to_string();
 
-    let now = Local::now().naive_local();
-    if slot_start < now + Duration::minutes(min_notice as i64) {
+    if chrono::DateTime::parse_from_rfc3339(&encoded_start)
+        .unwrap()
+        .with_timezone(&Utc)
+        < Utc::now() + Duration::minutes(min_notice as i64)
+    {
         return render_error_page(
             &state,
             &headers,
@@ -22057,14 +22335,14 @@ async fn guest_reschedule_booking(
         &state.pool,
         &hosts,
         &et_id,
-        slot_start,
-        slot_end,
+        check_start,
+        check_end,
         host_tz,
         &booking_id,
         &uid,
     )
     .await;
-    if !busy_source_is_free(&busy, slot_start, slot_end) {
+    if !busy_source_is_free(&busy, check_start, check_end) {
         return render_error_page(
             &state,
             &headers,
@@ -22094,8 +22372,8 @@ async fn guest_reschedule_booking(
     let new_resource_assignment = match crate::resources::check_and_pick(
         &state.pool,
         &et_id,
-        slot_start,
-        slot_end,
+        check_start,
+        check_end,
         host_tz,
         Some(&booking_id),
     )
@@ -22129,8 +22407,7 @@ async fn guest_reschedule_booking(
         .clone()
         .filter(|_| old_resource != new_resource_assignment);
 
-    let new_start_at = slot_start.format("%Y-%m-%dT%H:%M:%S").to_string();
-    let new_end_at = slot_end.format("%Y-%m-%dT%H:%M:%S").to_string();
+    let (new_start_at, new_end_at) = (encoded_start, encoded_end);
     let new_reschedule_token = uuid::Uuid::new_v4().to_string();
     let new_cancel_token = uuid::Uuid::new_v4().to_string();
     let new_confirm_token = uuid::Uuid::new_v4().to_string();
@@ -22160,8 +22437,30 @@ async fn guest_reschedule_booking(
         None
     };
 
+    let assigned_member: Option<String> =
+        sqlx::query_scalar("SELECT assigned_user_id FROM bookings WHERE id = ?")
+            .bind(&booking_id)
+            .fetch_one(&state.pool)
+            .await
+            .unwrap_or(None);
+    match crate::booking_time::legacy_slot_taken(
+        &state.pool,
+        &et_id,
+        assigned_member.as_deref(),
+        &new_start_at,
+        &booking_id,
+    )
+    .await
+    {
+        Ok(false) => {}
+        Ok(true) => {
+            return Html(crate::i18n::translate(lang, "error-slot-unavailable", None))
+                .into_response()
+        }
+        Err(e) => return internal_error_response("booking conflict check", &e),
+    }
     let update_result = sqlx::query(
-        "UPDATE bookings SET start_at = ?, end_at = ?, status = ?,
+        "UPDATE bookings SET time_version = 1, start_at = ?, end_at = ?, status = ?,
                 reschedule_token = ?, cancel_token = ?, confirm_token = ?,
                 reminder_sent_at = NULL, guest_timezone = ?, reschedule_by_host = 0,
                 assigned_resource_id = ?
@@ -22231,7 +22530,7 @@ async fn guest_reschedule_booking(
     let attendee_groups =
         booking_attendee_groups(&state.pool, &booking_id, &uid, &host_email, &guest_email).await;
 
-    // old_start_at/old_end_at are stored in the event-type tz. Convert into the
+    // Legacy values use the event-type timezone; new values are UTC. Convert into the
     // guest's tz so `RescheduleDetails` carries guest-local wall-clock for
     // both the OLD and NEW times — matches the contract used elsewhere and
     // lets `host_time_display` correctly recover the host wall-clock.
@@ -22270,6 +22569,8 @@ async fn guest_reschedule_booking(
 
             // Send host reschedule approval request
             let reschedule_details = crate::email::RescheduleDetails {
+                old_utc_times: crate::booking_time::ics_times(&old_start_at, &old_end_at),
+                utc_times: crate::booking_time::ics_times(&new_start_at, &new_end_at),
                 event_title: et_title.clone(),
                 old_date,
                 old_start_time,
@@ -22310,6 +22611,7 @@ async fn guest_reschedule_booking(
                 )
             });
             let pending_details = crate::email::BookingDetails {
+                utc_times: crate::booking_time::ics_times(&new_start_at, &new_end_at),
                 event_title: et_title.clone(),
                 date: form.date.clone(),
                 start_time: form.time.clone(),
@@ -22340,6 +22642,7 @@ async fn guest_reschedule_booking(
         // Confirmed reschedule (host-initiated or guest on non-confirmation event)
         // Push updated event to CalDAV
         let push_details = crate::email::BookingDetails {
+            utc_times: crate::booking_time::ics_times(&new_start_at, &new_end_at),
             event_title: et_title.clone(),
             date: form.date.clone(),
             start_time: form.time.clone(),
@@ -22391,6 +22694,8 @@ async fn guest_reschedule_booking(
             let _ = crate::email::send_guest_reschedule_notification(
                 &smtp_config,
                 &crate::email::RescheduleDetails {
+                    old_utc_times: crate::booking_time::ics_times(&old_start_at, &old_end_at),
+                    utc_times: crate::booking_time::ics_times(&new_start_at, &new_end_at),
                     event_title: et_title.clone(),
                     old_date,
                     old_start_time,
@@ -22497,7 +22802,7 @@ async fn host_reschedule_slots(
     let lang = user.language.as_deref().unwrap_or("en");
 
     let booking: Option<(String, String, String, String, String, String)> = sqlx::query_as(
-        "SELECT b.id, b.guest_name, b.guest_email, b.start_at, b.end_at, et.title
+        "SELECT b.id, b.guest_name, b.guest_email, CASE b.time_version WHEN 1 THEN b.start_at ELSE rtrim(b.start_at, 'Z') END AS start_at, CASE b.time_version WHEN 1 THEN b.end_at ELSE rtrim(b.end_at, 'Z') END AS end_at, et.title
          FROM bookings b
          JOIN event_types et ON et.id = b.event_type_id
          JOIN accounts a ON a.id = et.account_id
@@ -22514,6 +22819,11 @@ async fn host_reschedule_slots(
         None => return Redirect::to("/dashboard/bookings").into_response(),
     };
 
+    let (start_at, end_at) = crate::booking_time::wall_strings(
+        &start_at,
+        &end_at,
+        user.timezone.parse().unwrap_or(Tz::UTC),
+    );
     let date_label = format_date_label(&start_at, lang);
     let start_time = format_time_12h(&start_at);
     let end_time = format_time_12h(&end_at);
@@ -22563,7 +22873,7 @@ async fn host_reschedule_booking(
         String,
         String,
     )> = sqlx::query_as(
-        "SELECT b.id, b.uid, b.guest_name, b.guest_email, b.start_at, b.end_at,
+        "SELECT b.id, b.uid, b.guest_name, b.guest_email, CASE b.time_version WHEN 1 THEN b.start_at ELSE rtrim(b.start_at, 'Z') END AS start_at, CASE b.time_version WHEN 1 THEN b.end_at ELSE rtrim(b.end_at, 'Z') END AS end_at,
                     et.title, COALESCE(b.guest_timezone, 'UTC'), et.id
              FROM bookings b
              JOIN event_types et ON et.id = b.event_type_id
@@ -22618,7 +22928,7 @@ async fn host_reschedule_booking(
                         .map(|base| format!("{}/booking/cancel/{}", base.trim_end_matches('/'), t))
                 });
 
-        // start_at/end_at are stored in the event-type tz (see #101). Convert
+        // Legacy times use the event timezone; version 1 timestamps are UTC. Convert
         // into the guest's tz before populating BookingDetails so the
         // guest-facing "pick new time" email shows their wall-clock with their
         // tz label.
@@ -22628,6 +22938,7 @@ async fn host_reschedule_booking(
             booking_strings_in_guest_tz(&start_at, &end_at, host_tz, guest_tz_parsed);
 
         let details = crate::email::BookingDetails {
+            utc_times: crate::booking_time::ics_times(&start_at, &end_at),
             event_title,
             date,
             start_time,
@@ -22844,9 +23155,11 @@ async fn booking_write_targets(
     booking_uid: &str,
     fallback_user_id: &str,
 ) -> Vec<String> {
-    let row: Option<(Option<String>, Option<String>, String)> = sqlx::query_as(
-        "SELECT b.assigned_user_id, et.team_id, et.scheduling_mode
-         FROM bookings b JOIN event_types et ON et.id = b.event_type_id
+    let row: Option<(Option<String>, Option<String>, String, Option<String>)> = sqlx::query_as(
+        "SELECT b.assigned_user_id, et.team_id, et.scheduling_mode, a.user_id
+         FROM bookings b
+         JOIN event_types et ON et.id = b.event_type_id
+         JOIN accounts a ON a.id = et.account_id
          WHERE b.uid = ?",
     )
     .bind(booking_uid)
@@ -22854,17 +23167,21 @@ async fn booking_write_targets(
     .await
     .unwrap_or(None);
     match row {
-        Some((Some(assigned), _, _)) => vec![assigned],
-        Some((None, Some(team_id), mode)) if mode == "collective" => {
+        Some((Some(assigned), _, _, _)) => vec![assigned],
+        Some((None, Some(team_id), mode, owner)) if mode == "collective" => {
             // Same eligibility as the slot grid: enabled members with a
             // non-zero per-event-type weight.
             let members = eligible_collective_booking_members(pool, booking_uid, &team_id).await;
             if members.is_empty() {
-                vec![fallback_user_id.to_string()]
+                vec![owner.unwrap_or_else(|| fallback_user_id.to_string())]
             } else {
                 members
             }
         }
+        // Unassigned round-robin (and personal): same person `elect_meet_owner`
+        // uses — the event type owner — not the caller. A team admin pushing
+        // must not mint Meet on the owner then write ICS elsewhere.
+        Some((None, _, _, Some(owner))) => vec![owner],
         _ => vec![fallback_user_id.to_string()],
     }
 }
@@ -23097,6 +23414,42 @@ async fn caldav_push_booking(
 /// [`caldav_push_booking`], which resolves the right user(s) first; this
 /// is for pushes that deliberately target a specific extra calendar
 /// (booking claims).
+/// Email the host when the Google Meet time patch failed for good.
+///
+/// `details` carries the booking's host identity, and the skip branch only
+/// runs when that person is also the Meet owner (`should_skip_caldav_put`
+/// requires `elect_meet_owner == user_id`), so this reaches the calendar that
+/// is actually out of date.
+async fn notify_host_meet_time_desync(
+    pool: &SqlitePool,
+    key: &[u8; 32],
+    booking_uid: &str,
+    details: &crate::email::BookingDetails,
+    reason: &str,
+) {
+    // Google error bodies can be long JSON; the host needs the gist, not the payload.
+    let reason: String = reason.chars().take(300).collect();
+    match crate::email::load_smtp_config(pool, key).await {
+        Ok(Some(smtp)) => {
+            if let Err(e) =
+                crate::email::send_host_calendar_sync_failure(&smtp, details, &reason).await
+            {
+                tracing::error!(
+                    error = %e,
+                    uid = %booking_uid,
+                    "google meet: could not email the host about the calendar time desync"
+                );
+            }
+        }
+        _ => {
+            tracing::warn!(
+                uid = %booking_uid,
+                "google meet: host calendar left at the old time and SMTP is unconfigured, so nobody can be told"
+            );
+        }
+    }
+}
+
 async fn caldav_push_booking_for_user(
     pool: &SqlitePool,
     key: &[u8; 32],
@@ -23115,8 +23468,9 @@ async fn caldav_push_booking_for_user(
         Option<String>,
         Option<String>,
         String,
+        Option<String>,
     )> = sqlx::query_as(
-        "SELECT cs.id, cs.url, cs.username, cs.password_enc, cs.write_calendar_href, cs.auth_type, cs.access_token_enc, cs.token_expires_at, cs.provider_type
+        "SELECT cs.id, cs.url, cs.username, cs.password_enc, cs.write_calendar_href, cs.auth_type, cs.access_token_enc, cs.token_expires_at, cs.provider_type, cs.oauth2_provider
          FROM caldav_sources cs
          JOIN accounts a ON a.id = cs.account_id
          WHERE a.user_id = ? AND cs.enabled = 1 AND cs.write_calendar_href IS NOT NULL",
@@ -23156,6 +23510,7 @@ async fn caldav_push_booking_for_user(
     }
 
     let ics = crate::email::generate_ics_caldav(details);
+    let mut preserved_meet_href = false;
 
     for (
         source_id,
@@ -23167,8 +23522,88 @@ async fn caldav_push_booking_for_user(
         access_token_enc,
         token_expires_at,
         provider_type,
+        oauth2_provider,
     ) in &sources
     {
+        if crate::google_meet::should_skip_caldav_put(
+            pool,
+            booking_uid,
+            user_id,
+            source_id,
+            auth_type,
+            oauth2_provider.as_deref(),
+        )
+        .await
+        {
+            let stored_href: Option<Option<String>> =
+                sqlx::query_scalar("SELECT caldav_calendar_href FROM bookings WHERE uid = ?")
+                    .bind(booking_uid)
+                    .fetch_optional(pool)
+                    .await
+                    .ok()
+                    .flatten();
+            // First confirm: `create_meet_for_booking` just PUT the event at
+            // these times. Patching immediately is a wasted Calendar round-trip
+            // and a spurious warning when the iCalUID index is still stale.
+            // Reschedule / re-push already have an href and need the patch.
+            if stored_href
+                .flatten()
+                .as_deref()
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .is_some()
+            {
+                if let Err(e) = crate::google_meet::patch_owner_event_times(
+                    pool,
+                    key,
+                    user_id,
+                    booking_uid,
+                    details,
+                    &crate::google_meet::LiveGoogleMeetApi,
+                )
+                .await
+                {
+                    tracing::warn!(
+                        error = %e,
+                        uid = %booking_uid,
+                        "google meet: skipped CalDAV PUT but could not patch event times"
+                    );
+                    // Retries are exhausted by now. The booking, the guest's
+                    // invite and the reminders all hold the new time while the
+                    // host's calendar holds the old one, and this Google event
+                    // is the only copy the host has -- a log line would leave
+                    // them to discover it at the old time.
+                    notify_host_meet_time_desync(pool, key, booking_uid, details, &e.to_string())
+                        .await;
+                } else {
+                    tracing::info!(
+                        uid = %booking_uid,
+                        calendar_href = %calendar_href,
+                        "google meet: patched event times, skipped CalDAV PUT to preserve conferenceData"
+                    );
+                }
+            }
+
+            // The event *is* on this calendar -- `create_meet_for_booking`
+            // PUT it there before attaching the conference. Record the href
+            // exactly as the PUT path below does, or the booking looks like
+            // it was never pushed: cancellation skips the delete and leaves
+            // a ghost event (with its Meet) blocking the host's own
+            // availability, the pending-reschedule path never clears the old
+            // time, and `cancel_orphaned_bookings` cannot see the booking at
+            // all. Recorded even when the time patch failed: the patch says
+            // nothing about whether the event exists.
+            let _ = sqlx::query("UPDATE bookings SET caldav_calendar_href = ? WHERE uid = ?")
+                .bind(calendar_href)
+                .bind(booking_uid)
+                .execute(pool)
+                .await;
+            // Later PUTs to other calendars must not overwrite this: cancel
+            // keys off one href, and that has to be the Meet-holding calendar.
+            preserved_meet_href = true;
+            continue;
+        }
+
         tracing::debug!(uid = %booking_uid, calendar_href = %calendar_href, provider = %provider_type, "pushing booking to calendar");
 
         let client = match crate::providers::build_provider_for_source(
@@ -23200,12 +23635,15 @@ async fn caldav_push_booking_for_user(
 
         tracing::info!(uid = %booking_uid, calendar_href = %calendar_href, "calendar write-back succeeded");
 
-        // Record which calendar href the booking was pushed to (last successful one)
-        let _ = sqlx::query("UPDATE bookings SET caldav_calendar_href = ? WHERE uid = ?")
-            .bind(calendar_href)
-            .bind(booking_uid)
-            .execute(pool)
-            .await;
+        // Record which calendar href the booking was pushed to (last successful
+        // one), unless a Meet skip already pinned the Meet-holding calendar.
+        if !preserved_meet_href {
+            let _ = sqlx::query("UPDATE bookings SET caldav_calendar_href = ? WHERE uid = ?")
+                .bind(calendar_href)
+                .bind(booking_uid)
+                .execute(pool)
+                .await;
+        }
     }
 }
 
@@ -23917,7 +24355,7 @@ async fn claim_booking_form(
 
     // Fetch booking details for display
     let booking: Option<(String, String, String, String, String, Option<String>)> = sqlx::query_as(
-        "SELECT et.title, b.guest_name, b.guest_email, b.start_at, b.end_at, u.name \
+        "SELECT et.title, b.guest_name, b.guest_email, CASE b.time_version WHEN 1 THEN b.start_at ELSE rtrim(b.start_at, 'Z') END AS start_at, CASE b.time_version WHEN 1 THEN b.end_at ELSE rtrim(b.end_at, 'Z') END AS end_at, u.name \
              FROM bookings b \
              JOIN event_types et ON et.id = b.event_type_id \
              LEFT JOIN users u ON u.id = b.assigned_user_id \
@@ -23940,6 +24378,8 @@ async fn claim_booking_form(
         }
     };
 
+    let (start_at, end_at) =
+        crate::booking_time::guest_wall_strings(&state.pool, &booking_id, &start_at, &end_at).await;
     let date_label = format_date_label(&start_at, lang);
     let start_time = format_time_12h(&start_at);
     let end_time = format_time_12h(&end_at);
@@ -24108,7 +24548,7 @@ async fn claim_booking(
         Option<String>,
         String,
     )> = sqlx::query_as(
-        "SELECT et.title, b.guest_name, b.guest_email, b.start_at, b.end_at, b.uid, \
+        "SELECT et.title, b.guest_name, b.guest_email, CASE b.time_version WHEN 1 THEN b.start_at ELSE rtrim(b.start_at, 'Z') END AS start_at, CASE b.time_version WHEN 1 THEN b.end_at ELSE rtrim(b.end_at, 'Z') END AS end_at, b.uid, \
              COALESCE(b.guest_timezone, 'UTC'), a.user_id, et.location_value, b.event_type_id \
              FROM bookings b \
              JOIN event_types et ON et.id = b.event_type_id \
@@ -24162,6 +24602,9 @@ async fn claim_booking(
 
     let (host_name, host_email) = host.unwrap_or_default();
 
+    let claim_utc_times = crate::booking_time::ics_times(&start_at, &end_at);
+    let (start_at, end_at) =
+        crate::booking_time::guest_wall_strings(&state.pool, &booking_id, &start_at, &end_at).await;
     let date = start_at.get(..10).unwrap_or(&start_at).to_string();
     let start_time = extract_time_24h(&start_at);
     let end_time = extract_time_24h(&end_at);
@@ -24179,6 +24622,7 @@ async fn claim_booking(
 
     // Build details with claimant as additional attendee for CalDAV push
     let mut details = crate::email::BookingDetails {
+        utc_times: claim_utc_times.clone(),
         event_title: event_title.clone(),
         date: date.clone(),
         start_time: start_time.clone(),
@@ -25857,7 +26301,8 @@ mod tests {
         expected.sort();
         assert_eq!(targets, expected, "collective targets every member");
 
-        // Personal (no team): the fallback user.
+        // Personal (no team): the event type owner, even if the caller
+        // passed someone else (same person `elect_meet_owner` uses).
         let (owner, _, personal_et) = seed_test_data(&pool).await;
         insert_booking(&pool, &personal_et, None, start, "confirmed").await;
         let uid3: String =
@@ -25867,8 +26312,133 @@ mod tests {
                 .await
                 .unwrap();
         assert_eq!(
-            booking_write_targets(&pool, &uid3, &owner).await,
-            vec![owner]
+            booking_write_targets(&pool, &uid3, "not-the-owner").await,
+            vec![owner.clone()]
+        );
+
+        // Unassigned round-robin: event type owner, not the caller.
+        sqlx::query("UPDATE event_types SET scheduling_mode = 'round_robin' WHERE id = ?")
+            .bind(&et_id)
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query(
+            "UPDATE accounts SET user_id = ? WHERE id = (SELECT account_id FROM event_types WHERE id = ?)",
+        )
+        .bind(&alice)
+        .bind(&et_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+        let rr_start = start + Duration::hours(4);
+        insert_booking(&pool, &et_id, None, rr_start, "confirmed").await;
+        let uid4: String =
+            sqlx::query_scalar("SELECT uid FROM bookings WHERE event_type_id = ? AND start_at = ?")
+                .bind(&et_id)
+                .bind(rr_start.format("%Y-%m-%dT%H:%M:%S").to_string())
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(
+            booking_write_targets(&pool, &uid4, &bob).await,
+            vec![alice],
+            "unassigned round-robin writes to the event type owner, matching Meet minting"
+        );
+    }
+
+    /// A Google Meet booking is PUT to the owner's Google calendar by
+    /// `create_meet_for_booking`, so the write-back loop skips its own PUT to
+    /// keep a second ICS from stripping `conferenceData`. It must still record
+    /// `caldav_calendar_href`: without it `caldav_delete_booking` reads the
+    /// booking as never pushed and returns early, so cancelling leaves the
+    /// Google event and its Meet on the host's calendar, blocking their own
+    /// availability from then on.
+    #[tokio::test]
+    async fn google_meet_skip_branch_still_records_caldav_href() {
+        let pool = setup_test_db().await;
+        let alice = insert_role_user(&pool, "alice@meethref.test", "user").await;
+        let et_id = insert_personal_et(&pool, &alice, "meet-href").await;
+        sqlx::query("UPDATE event_types SET location_type = 'google_meet' WHERE id = ?")
+            .bind(&et_id)
+            .execute(&pool)
+            .await
+            .unwrap();
+        let account_id: String = sqlx::query_scalar("SELECT id FROM accounts WHERE user_id = ?")
+            .bind(&alice)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        let write_href = "https://apidata.example.test/dav/alice/events/";
+        let source_id = uuid::Uuid::new_v4().to_string();
+        sqlx::query(
+            "INSERT INTO caldav_sources (id, account_id, name, url, username, enabled, \
+             write_calendar_href, auth_type, oauth2_provider, access_token_enc, token_expires_at) \
+             VALUES (?, ?, 'Google', 'https://apidata.example.test/dav/', 'alice', 1, ?, \
+             'oauth2', 'google', 'unopenable', '2099-01-01T00:00:00')",
+        )
+        .bind(&source_id)
+        .bind(&account_id)
+        .bind(write_href)
+        .execute(&pool)
+        .await
+        .unwrap();
+        // A Meet URL is what makes `should_skip_caldav_put` fire. The write
+        // href is deliberately not `/caldav/v2/`, so a times patch (reschedule)
+        // would fail calendarId parse and never hit the network.
+        let start = NaiveDate::from_ymd_opt(2026, 3, 17)
+            .unwrap()
+            .and_hms_opt(10, 0, 0)
+            .unwrap();
+        insert_booking(&pool, &et_id, None, start, "confirmed").await;
+        let uid: String =
+            sqlx::query_scalar("SELECT uid FROM bookings WHERE event_type_id = ? LIMIT 1")
+                .bind(&et_id)
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        sqlx::query("UPDATE bookings SET meeting_url = ? WHERE uid = ?")
+            .bind("https://meet.google.com/aaa-bbbb-ccc")
+            .bind(&uid)
+            .execute(&pool)
+            .await
+            .unwrap();
+        assert!(
+            crate::google_meet::should_skip_caldav_put(
+                &pool,
+                &uid,
+                &alice,
+                &source_id,
+                "oauth2",
+                Some("google")
+            )
+            .await,
+            "precondition: the owner's Google source is the one holding the Meet"
+        );
+        let details = crate::email::BookingDetails {
+            event_title: "Meet".to_string(),
+            date: "2026-03-17".to_string(),
+            start_time: "10:00".to_string(),
+            end_time: "10:30".to_string(),
+            guest_name: "G".to_string(),
+            guest_email: "g@e.com".to_string(),
+            guest_timezone: "UTC".to_string(),
+            host_name: "Alice".to_string(),
+            host_email: "alice@meethref.test".to_string(),
+            uid: uid.clone(),
+            host_timezone: "UTC".to_string(),
+            ..Default::default()
+        };
+        caldav_push_booking_for_user(&pool, &[0u8; 32], &alice, &uid, &details).await;
+        let stored: Option<String> =
+            sqlx::query_scalar("SELECT caldav_calendar_href FROM bookings WHERE uid = ?")
+                .bind(&uid)
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(
+            stored.as_deref(),
+            Some(write_href),
+            "the skip branch must record the href, or cancellation cannot find the Google event"
         );
     }
 
@@ -26321,6 +26891,7 @@ mod tests {
             &et_id,
             start,
             end,
+            start,
             0,
             0,
             chrono_tz::Tz::UTC,
@@ -30796,6 +31367,41 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn public_profile_trailing_slash_redirects_to_working_canonical_page() {
+        let (app, _, _, _) = setup_test_app().await;
+        for query in ["", "?lang=fr&next=https%3A%2F%2Fexample.com%2F&tag=a&tag=b"] {
+            let response = app
+                .clone()
+                .oneshot(get(&format!("/u/testuser/{query}")))
+                .await
+                .unwrap();
+            assert_eq!(response.status(), 308);
+            let location = response.headers()["location"].to_str().unwrap();
+            assert_eq!(location, format!("/u/testuser{query}"));
+            let canonical = app.clone().oneshot(get(location)).await.unwrap();
+            assert_eq!(canonical.status(), 200);
+            assert!(body_string(canonical).await.contains("Test Meeting"));
+        }
+    }
+
+    #[tokio::test]
+    async fn public_profile_trailing_slash_head_preserves_encoded_path_and_query() {
+        let (app, _, _, _) = setup_test_app().await;
+        let request = axum::http::Request::builder()
+            .method("HEAD")
+            .uri("/u/test%75ser/?value=%2F%3F%26")
+            .body(Body::empty())
+            .unwrap();
+        let response = app.oneshot(request).await.unwrap();
+        assert_eq!(response.status(), 308);
+        assert_eq!(
+            response.headers()["location"],
+            "/u/test%75ser?value=%2F%3F%26"
+        );
+        assert!(body_string(response).await.is_empty());
+    }
+
+    #[tokio::test]
     async fn public_slots_page_returns_200() {
         let (app, _, _, _) = setup_test_app().await;
         let response = app.oneshot(get("/u/testuser/test-meeting")).await.unwrap();
@@ -32545,6 +33151,132 @@ mod tests {
                 .await
                 .unwrap();
         assert_eq!(name.unwrap(), "Updated Name");
+    }
+
+    #[tokio::test]
+    async fn settings_save_confirms_language_change_in_the_new_language() {
+        let (app, _pool, session, _) = setup_test_app().await;
+        let csrf = "test-csrf-settings-lang";
+        let body = format!("_csrf={}&name=Test+User&booking_email=&language=fr", csrf);
+        let response = app
+            .oneshot(post_form("/dashboard/settings", &session, csrf, &body))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), 200);
+        let resp_body = body_string(response).await;
+        assert!(
+            resp_body.contains("Paramètres enregistrés"),
+            "confirmation should render in the language that was just saved"
+        );
+        assert!(
+            !resp_body.contains("Settings saved"),
+            "confirmation should not render in the pre-save language"
+        );
+    }
+
+    #[tokio::test]
+    async fn settings_validation_error_keeps_the_submitted_fields() {
+        let (app, pool, session, _) = setup_test_app().await;
+        let csrf = "test-csrf-settings-keep";
+        // Empty name is rejected. Every other field carries an edit, and none of
+        // them matches what the seeded row holds.
+        let body = format!(
+            "_csrf={}&name=&username=testuser&title=Head+of+Demos&bio=Runs+the+demo+rota\
+             &booking_email=demo%40example.com&timezone=Europe%2FParis&language=fr",
+            csrf
+        );
+        let response = app
+            .oneshot(post_form("/dashboard/settings", &session, csrf, &body))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), 200);
+        let resp_body = body_string(response).await;
+
+        assert!(
+            resp_body.contains("Name must be between 1 and 255 characters."),
+            "the name error should be shown"
+        );
+        for expected in [
+            r#"value="Head of Demos""#,
+            "Runs the demo rota",
+            r#"value="demo@example.com""#,
+            // minijinja escapes the slash in the option value.
+            r#"value="Europe&#x2f;Paris" selected"#,
+            r#"value="fr" selected"#,
+        ] {
+            assert!(
+                resp_body.contains(expected),
+                "a rejected field should not discard the other edits, missing {expected}"
+            );
+        }
+
+        // The checkbox was left unchecked, so it must come back unchecked even
+        // though the stored row still has it on.
+        let checkbox = resp_body
+            .split(r#"name="allow_dynamic_group""#)
+            .nth(1)
+            .expect("the dynamic-group checkbox should render")
+            .split('>')
+            .next()
+            .unwrap_or("");
+        assert!(
+            !checkbox.contains("checked"),
+            "an unchecked box should come back unchecked"
+        );
+
+        // Nothing was saved: the UPDATE never ran.
+        let (title, tz): (Option<String>, String) =
+            sqlx::query_as("SELECT title, timezone FROM users WHERE email = 'test@example.com'")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(title, None);
+        assert_eq!(tz, "UTC");
+    }
+
+    #[tokio::test]
+    async fn settings_booking_email_error_shows_the_rejected_value() {
+        let (app, _pool, session, _) = setup_test_app().await;
+        let csrf = "test-csrf-settings-email";
+        let body = format!(
+            "_csrf={}&name=Alice+Martin&username=testuser&title=Head+of+Demos\
+             &booking_email=not-an-email",
+            csrf
+        );
+        let response = app
+            .oneshot(post_form("/dashboard/settings", &session, csrf, &body))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), 200);
+        let resp_body = body_string(response).await;
+
+        assert!(
+            resp_body.contains("Please enter a valid booking email address."),
+            "the booking email error should be shown"
+        );
+        assert!(
+            resp_body.contains(r#"value="not-an-email""#),
+            "the field in error should show the value that was rejected"
+        );
+        assert!(
+            resp_body.contains(r#"value="Head of Demos""#),
+            "the other edits should survive the error"
+        );
+        assert!(
+            resp_body.contains(r#"value="Alice Martin""#),
+            "the submitted name should survive the error"
+        );
+        let avatar = resp_body
+            .split(r#"flex-shrink: 0; overflow: hidden;">"#)
+            .nth(1)
+            .expect("the avatar preview should render")
+            .split("</div>")
+            .next()
+            .unwrap_or("");
+        assert!(
+            avatar.contains("AM"),
+            "the avatar initials should follow the name being shown, got {avatar:?}"
+        );
     }
 
     // --- Admin actions ---
@@ -36905,4 +37637,5 @@ mod tests {
         assert_eq!(parse_optional_day_count("-1"), None);
         assert_eq!(parse_optional_day_count("abc"), None);
     }
+    include!("booking_time_tests.rs");
 }

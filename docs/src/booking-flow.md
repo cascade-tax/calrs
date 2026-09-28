@@ -12,6 +12,42 @@
 8. **Confirmation page** — shows booking summary (including any additional attendees)
 9. **Email** — guest and any additional attendees receive a confirmation email with an `.ics` calendar invite attached
 
+## Timezones and existing installations
+
+New bookings store UTC timestamps. Availability rules remain in the event type's
+IANA timezone, and guests see times in their selected timezone. The dashboard
+uses the host's profile timezone. Changing those settings does not move a new
+booking's actual start or end time; the server's timezone does not determine it.
+The CLI interprets `booking create --date ... --time ...` in `--timezone` (UTC by
+default), then checks availability in the event timezone.
+
+Upgrading adds a storage-version field automatically. Existing bookings retain
+their original timestamps and legacy interpretation: there is no bulk conversion,
+manual migration, notification, or calendar rewrite. Historical timezone mistakes
+are not repaired automatically. Rescheduling an existing booking stores the
+newly selected time in UTC; cancelling it leaves its timestamps unchanged.
+
+Back up the database before upgrading as usual. Older binaries do not understand
+the new storage format; reverting to one after creating UTC bookings requires
+restoring the pre-upgrade backup, which loses bookings created since that backup.
+
+Ambiguous or nonexistent local start times during daylight-saving transitions
+are rejected instead of silently choosing an instant. Calendar attachments for
+new bookings carry both exact UTC endpoints, including across midnight and clock
+changes. Meeting-provider webhooks likewise receive explicit UTC timestamps for
+new bookings (legacy bookings retain the previous format).
+
+### Clock changes
+
+Durations and minimum notice use elapsed time. The slot picker omits nonexistent
+or ambiguous local starts, since booking forms do not carry a DST-fold marker.
+Conflict checks retain the existing wall-clock availability engine: a UTC booking
+that crosses a backward clock change blocks a conservative envelope covering both
+occurrences of the repeated hour. This can hide otherwise free slots around the
+transition, but prevents a reversed local interval from allowing double-booking.
+Host email text and calendar attachments use the exact UTC endpoints for new rows.
+
+
 ## Booking statuses
 
 | Status | Description |
@@ -31,7 +67,7 @@ When an event type has **requires confirmation** enabled:
 4. Host can approve/decline in two ways:
    - **From the email** — click the Approve or Decline button (no login required, token-based)
    - **From the dashboard** — go to **Pending approval** section and click Confirm or Decline
-5. On confirm: status becomes `confirmed`, guest receives confirmation email with `.ics`, booking is pushed to CalDAV
+5. On confirm: status becomes `confirmed`, guest receives confirmation email with `.ics`, booking is pushed to CalDAV. Auto meeting links (Jitsi, webhook, Google Meet) are generated at this moment, not while the booking is pending.
 6. On decline: status becomes `declined`, guest receives a decline notification with optional reason
 
 > **Note:** The email action buttons require `CALRS_BASE_URL` to be set. Without it, the host must use the dashboard.
@@ -78,7 +114,7 @@ Hosts can reschedule from the dashboard:
 2. Pick a new time slot
 3. Confirm the new time
 4. The booking stays `confirmed` — no approval needed
-5. The CalDAV event is updated in place (same UID)
+5. The CalDAV event is updated in place (same UID). Google Meet bookings keep the existing Meet link; only the event times are patched.
 6. The guest receives a reschedule notification with the updated `.ics` invite
 
 ### Token regeneration
@@ -144,7 +180,7 @@ All emails are sent as **HTML with plain text fallback**. They include event tit
 - Guest's timezone is auto-detected via `Intl.DateTimeFormat` in the browser
 - A timezone dropdown lets the guest change it
 - Slots are displayed in the guest's selected timezone
-- The booking is stored in the host's timezone
+- New bookings use UTC storage. Legacy bookings retain their existing timezone interpretation.
 - The timezone is preserved across navigation (week picker, booking form)
 
 ## CLI booking

@@ -38,7 +38,11 @@ calrs source add --url https://mail.company.com/dav/ \
 
 > **Tip:** Use app-specific passwords for Fastmail and iCloud.
 
-Google Calendar is supported through OAuth2. See [Google Calendar](./google-calendar.md). Microsoft 365 uses Microsoft Graph instead of CalDAV; see [Microsoft 365 Calendar](./microsoft-365.md).
+### Google Calendar
+
+Google Calendar connects via OAuth2, not a username/password. See [Google Calendar](./google-calendar.md) for Cloud project setup, scopes, and [Google Meet auto-links](./google-calendar.md#google-meet-auto-links).
+
+Microsoft 365 uses Microsoft Graph instead of CalDAV; see [Microsoft 365 Calendar](./microsoft-365.md).
 
 ## Auto-discovery
 

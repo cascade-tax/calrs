@@ -152,7 +152,7 @@
     <div class="detail"><strong>{{ t("confirmed-detail-event") }}</strong> {{ event_title }}</div>
     <div class="detail"><strong>{{ t("confirmed-detail-with") }}</strong> {{ host_name }}</div>
     {% if location_value and not pending %}
-      <div class="detail"><strong>{{ t("confirmed-detail-location") }}</strong> {% if location_type == "link" or location_type == "jitsi_auto" or location_type == "webhook_auto" %}<a href="{{ location_value }}" target="_blank">{{ location_value }}</a>{% else %}{{ location_value }}{% endif %}</div>
+      <div class="detail"><strong>{{ t("confirmed-detail-location") }}</strong> {% if (location_type == "link" or location_type == "jitsi_auto" or location_type == "webhook_auto" or location_type == "google_meet") and (location_value is startingwith("https://") or location_value is startingwith("http://")) %}<a href="{{ location_value }}" target="_blank">{{ location_value }}</a>{% else %}{{ location_value }}{% endif %}</div>
     {% endif %}
     {% if notes %}
       <div class="detail"><strong>{{ t("confirmed-detail-notes") }}</strong> {{ notes }}</div>

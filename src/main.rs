@@ -7,12 +7,14 @@
 #![allow(clippy::too_many_arguments)]
 
 mod auth;
+mod booking_time;
 mod caldav;
 mod commands;
 mod crypto;
 mod db;
 mod email;
 mod ews;
+mod google_meet;
 mod i18n;
 mod microsoft_graph;
 mod models;
