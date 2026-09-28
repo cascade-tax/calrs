@@ -471,6 +471,12 @@ pub async fn generate_and_persist(
         start_at: &pattern_start,
     };
 
+    // Cascade: the Teams bridge reads webhook times as UTC instants. New rows
+    // already carry `...Z`; convert legacy event-timezone wall clocks too so a
+    // pre-upgrade booking approved later cannot shift the Teams event.
+    let webhook_start = webhook_instant(&start_at, event_tz);
+    let webhook_end = webhook_instant(&end_at, event_tz);
+
     let cfg = load_config(pool, secret_key).await;
 
     let url = match location_type.as_str() {
@@ -486,8 +492,8 @@ pub async fn generate_and_persist(
                 host_username: &host_username,
                 guest_name,
                 guest_email,
-                start_at: &start_at,
-                end_at: &end_at,
+                start_at: &webhook_start,
+                end_at: &webhook_end,
             };
             call_webhook(webhook_cfg, &payload).await.ok()
         }
@@ -526,6 +532,15 @@ pub async fn generate_and_persist(
             None
         }
     }
+}
+
+/// Explicit UTC (`YYYY-MM-DDTHH:MM:SSZ`) for a stored booking endpoint.
+/// UTC rows pass through unchanged; legacy wall clocks are read in the event
+/// timezone. Unparseable values are sent as stored.
+fn webhook_instant(value: &str, event_tz: chrono_tz::Tz) -> String {
+    crate::booking_time::local(value, event_tz, chrono_tz::Tz::UTC)
+        .map(|utc| utc.format("%Y-%m-%dT%H:%M:%SZ").to_string())
+        .unwrap_or_else(|| value.to_string())
 }
 
 /// Hex-encoded HMAC-SHA256 of `body` keyed by `secret`.
@@ -742,6 +757,26 @@ mod tests {
         assert_eq!(WebhookAuthMode::from_str("none").as_str(), "none");
         assert_eq!(WebhookAuthMode::from_str("").as_str(), "none");
         assert_eq!(WebhookAuthMode::from_str("garbage").as_str(), "none");
+    }
+
+    #[test]
+    fn webhook_instant_is_always_explicit_utc() {
+        let la: chrono_tz::Tz = "America/Los_Angeles".parse().unwrap();
+        // New rows are already UTC and pass through unchanged.
+        assert_eq!(
+            webhook_instant("2026-10-05T21:00:00Z", la),
+            "2026-10-05T21:00:00Z"
+        );
+        // Legacy rows are event-timezone wall clocks (PDT, then PST).
+        assert_eq!(
+            webhook_instant("2026-10-05T14:00:00", la),
+            "2026-10-05T21:00:00Z"
+        );
+        assert_eq!(
+            webhook_instant("2026-12-07T14:00:00", la),
+            "2026-12-07T22:00:00Z"
+        );
+        assert_eq!(webhook_instant("garbage", la), "garbage");
     }
 
     #[test]
