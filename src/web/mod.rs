@@ -32430,6 +32430,38 @@ mod tests {
 
     #[tokio::test]
     async fn approve_collective_booking_preserves_guest_added_and_cohost_attendees() {
+        approve_collective_booking_and_capture(
+            "UTC",
+            "2030-06-20T10:00:00",
+            "2030-06-20T10:30:00",
+            0,
+        )
+        .await;
+    }
+
+    // Cascade: attendee preservation must hold for upstream 1.18.0's UTC rows,
+    // whose calendar payload carries the exact UTC endpoints.
+    #[tokio::test]
+    async fn approve_collective_utc_booking_preserves_attendees_and_exact_times() {
+        let bodies = approve_collective_booking_and_capture(
+            "America/Los_Angeles",
+            "2030-06-20T17:00:00Z",
+            "2030-06-20T17:30:00Z",
+            1,
+        )
+        .await;
+        for ics in &bodies {
+            assert!(ics.contains("DTSTART:20300620T170000Z"), "{ics}");
+            assert!(ics.contains("DTEND:20300620T173000Z"), "{ics}");
+        }
+    }
+
+    async fn approve_collective_booking_and_capture(
+        guest_timezone: &str,
+        start_at: &str,
+        end_at: &str,
+        time_version: i64,
+    ) -> Vec<String> {
         let (app, pool, _, et_id) = setup_test_app().await;
 
         let captured = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
@@ -32509,9 +32541,13 @@ mod tests {
 
         let booking_id = uuid::Uuid::new_v4().to_string();
         let confirm_token = uuid::Uuid::new_v4().to_string();
-        sqlx::query("INSERT INTO bookings (id, event_type_id, uid, guest_name, guest_email, guest_timezone, start_at, end_at, status, cancel_token, reschedule_token, confirm_token) VALUES (?, ?, 'uid-collective-approval', 'Primary Guest', 'guest@test.com', 'UTC', '2030-06-20T10:00:00', '2030-06-20T10:30:00', 'pending', ?, ?, ?)")
+        sqlx::query("INSERT INTO bookings (time_version, id, event_type_id, uid, guest_name, guest_email, guest_timezone, start_at, end_at, status, cancel_token, reschedule_token, confirm_token) VALUES (?, ?, ?, 'uid-collective-approval', 'Primary Guest', 'guest@test.com', ?, ?, ?, 'pending', ?, ?, ?)")
+            .bind(time_version)
             .bind(&booking_id)
             .bind(&et_id)
+            .bind(guest_timezone)
+            .bind(start_at)
+            .bind(end_at)
             .bind(uuid::Uuid::new_v4().to_string())
             .bind(uuid::Uuid::new_v4().to_string())
             .bind(&confirm_token)
@@ -32561,8 +32597,9 @@ mod tests {
                 !ics.contains("ATTENDEE;SCHEDULE-AGENT=CLIENT;RSVP=TRUE:mailto:test@example.com")
             );
         }
-        drop(bodies);
+        let bodies = bodies.clone();
         server.abort();
+        bodies
     }
 
     /// Regression test for #101: when the event type's timezone differs from
