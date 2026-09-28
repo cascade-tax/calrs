@@ -19,7 +19,13 @@ branch is based on the production release pinned by
 - Microsoft 365 connections request delegated read-only calendar access and
   cannot be selected as booking write-back targets.
 - Cascade's Microsoft Graph schema extension is migration `064`, after
-  upstream's SMS and booking-horizon migrations (`062` and `063`).
+  upstream's SMS and booking-horizon migrations (`062` and `063`). Databases
+  that recorded it under the legacy name `062_microsoft_graph` are adopted
+  without replaying its statements. Upstream 1.18.0's `064_booking_time_version`
+  is registered here as `065_booking_time_version`.
+- Meeting-provider webhooks always send explicit UTC start and end times
+  (`...Z`), including for bookings stored before 1.18.0; the Teams bridge in
+  `cascade-tax/cascade-calendar` reads them as UTC.
 
 The deployment repository's weekly upstream review compares this branch with
 `olivierlambert/calrs`, reviews new releases and security changes, and reports
@@ -35,7 +41,7 @@ builder layers across Cloud Build workers. Build release images with:
 gcloud builds submit . \
   --project cascade-calendar-prod \
   --config cloudbuild.yaml \
-  --substitutions _TAG=1.17.1-cascade.N
+  --substitutions _TAG=1.18.0-cascade.1
 ```
 
 The `build-cache` tag is build infrastructure, not a deployable release. Pin

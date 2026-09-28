@@ -34,8 +34,8 @@ restoring the pre-upgrade backup, which loses bookings created since that backup
 Ambiguous or nonexistent local start times during daylight-saving transitions
 are rejected instead of silently choosing an instant. Calendar attachments for
 new bookings carry both exact UTC endpoints, including across midnight and clock
-changes. Meeting-provider webhooks likewise receive explicit UTC timestamps for
-new bookings (legacy bookings retain the previous format).
+changes. Meeting-provider webhooks receive explicit UTC timestamps for every
+booking; legacy wall-clock values are converted from the event timezone.
 
 ### Clock changes
 
