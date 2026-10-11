@@ -1,5 +1,40 @@
 # Cal.rs upstream review and production baseline
 
+## October 11, 2026 — unreleased upstream reviewed
+
+Reviewed `89662d949ebb74b46db64edca6009d89616b6cb3` through
+`c7d627c2c45ada6f1521db236b0928cc6cd61a71`, covering contributor merges and
+PRs #247–#253. Upstream Cargo version remains 1.18.0; these changes appear
+under Unreleased, not in a new production release. No code was ported,
+compiled, deployed, or production-approved in this review. Production remains
+the September 28 baseline below.
+
+The delta adds CalDAV CDATA/entity parsing fixes, EWS UID fallback/window
+splitting, authenticated booking prefill, guest sender/Reply-To identity,
+source-sync and write-back failure tracking/retries, stable collective booking
+organizers, captcha configuration fixes, and translations. Source review
+covered the change inventory, changelog, migration registrations, provider
+contract, retry path and fork constraints; it does not prove runtime
+compatibility or cherry-pick cleanliness.
+
+Next-release porting constraints:
+
+- Renumber upstream migrations 065–070 after Cascade's existing
+  `065_booking_time_version`. Register every renamed migration in `src/db.rs`.
+- New `CalendarProvider::event_exists` requires a Cascade Microsoft-provider
+  implementation while retaining the read-only write-back boundary.
+- Keep Sunday-first slot/week calculations, forced 12-hour display, exact
+  themes and explicit UTC Teams payloads.
+- Rehearse the new write-back/source failure columns and organizer migration.
+  Upstream migration 070 deliberately does not backfill existing bookings;
+  new collective bookings freeze organizer identity and older ones retain
+  roster-derived behavior.
+- Retain the prior pending-hold/public-language migration review and drop the
+  fork's async-trait lockfile bump once upstream absorbs that dependency.
+
+The assistant hygiene policy records this reviewed head. Later upstream
+movement is another review request, not permission to force-sync production.
+
 ## September 28, 2026 — 1.18.0 production baseline
 
 Production now runs `1.18.0-cascade.1`, built from exact fork revision
