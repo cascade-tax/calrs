@@ -222,3 +222,9 @@ production baseline. The latest pre-deploy backup is
 `gs://cascade-calendar-backups-cascade-calendar-prod/cascade-calendar-20260830T134757Z.tar.gz`.
 Issue #121 and PR #143 are fixed. Issues #161, #162, and #194 and PR #182
 remain open.
+
+## October 12, 2026 — archived maintenance closeout receipt
+
+The daily-hygiene final report says the **1.19.0 source review and maintenance records were committed and pushed**. It explicitly left production unchanged. This corroborates the reviewed/not-ported disposition at the top of this topic; it supplies no additional compile, runtime, image-build, migration-rehearsal or deployment proof. Fleet audit totals and Drawbridge's 79 tests belong to the hygiene report, not Cal.rs test coverage.
+
+Source: supplied October 11–12 historical archive, saved October 12, 2026. This memory save did not repeat the operational work or verify live product, mailbox, runtime or deployment state.
