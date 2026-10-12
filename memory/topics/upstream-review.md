@@ -1,5 +1,53 @@
 # Cal.rs upstream review and production baseline
 
+## October 12, 2026 — 1.19.0 reviewed, not ported
+
+Reviewed `c7d627c2c45ada6f1521db236b0928cc6cd61a71` through
+`e75b8d1cceca28a1baf57c2b32ed9481c6e75e26` (PRs #254–#259).
+[Upstream 1.19.0](https://github.com/olivierlambert/calrs/releases/tag/v1.19.0)
+was published October 11. The release gathers the previously reviewed
+pending-slot holds, guest language/sender changes, calendar sync/write-back
+tracking and stable organizers, plus the changes below.
+
+The new delta splits `src/web/mod.rs` and `src/email.rs` into area modules
+and moves their tests into matching directories. The architecture map now
+names the owners. Log targets follow those module names; prefix filters
+still match, but exact-target consumers need review during an upgrade.
+
+Three new fixes affect the fork's existing behavior:
+
+- Booking POST and guest reschedule recompute offered slots, rejecting
+  blocked dates, out-of-hours times, off-grid times and violations of
+  first-slot-only. Personal, legacy, team and dynamic-group routes share
+  the slot-page computation. Added tests cover those routes, overrides,
+  guest timezones and rescheduling.
+- Demote, disable and delete atomically retain an enabled administrator.
+  Disabled administrators do not satisfy the guard; CLI and web paths
+  share it. Added coverage includes concurrent changes against SQLite WAL.
+- Personal/team event-type create/edit validates titles, durations,
+  nonnegative numeric fields and slugs on the server, preserving submitted
+  values on rejection. Nine locales carry the new messages. The email
+  source guard also checks every sender call, including attendee copies.
+
+Disposition: keep the production-aligned custom fork at
+`1.18.0-cascade.1`; do not force-sync it or deploy from this hygiene review.
+The next separately authorized upgrade should target 1.19.0 and include
+these fixes. Carry the October 11 constraints forward: renumber upstream
+migrations 065–070 after Cascade's `065_booking_time_version`, implement
+Microsoft `event_exists` while retaining read-only write-back, rehearse
+the organizer/failure migrations, and preserve UTC Teams payloads,
+Sunday-first slots and exact themes. The module split adds a porting step:
+place each fork-only web/email change in its new owning module, including
+forced 12-hour formatting and branding; do not lose it with the old files.
+
+Source review covered the commit inventory, release metadata/changelog,
+module map, booking validation helpers and call sites, atomic admin SQL,
+event-type validation and added regression coverage. `src/db.rs` and
+`migrations/` have no changes in this new range; Cargo's only delta is the
+application version. No port, compile, runtime test, image build, migration
+rehearsal or production approval is claimed. The September 28 production
+baseline remains the last verified deployment.
+
 ## October 11, 2026 — unreleased upstream reviewed
 
 Reviewed `89662d949ebb74b46db64edca6009d89616b6cb3` through
