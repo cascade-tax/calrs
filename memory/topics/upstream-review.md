@@ -1,5 +1,35 @@
 # Cal.rs upstream review and production baseline
 
+## October 13, 2026 — post-1.19.0 guest-detail fixes reviewed
+
+Reviewed `e75b8d1cceca28a1baf57c2b32ed9481c6e75e26` through
+`c3ac84a4ab36dd0db6fa01c4c9eb86fa38a96663`, the five-commit range merged
+in [upstream PR #262](https://github.com/olivierlambert/calrs/pull/262)
+for [issue #261](https://github.com/olivierlambert/calrs/issues/261).
+
+Approval through the dashboard or emailed token, confirmed rescheduling,
+claims and reminders now reload guest notes and collected phone numbers
+from the booking. Host confirmation/reminder emails include those details.
+Approval and confirmed rescheduling also retain additional attendees.
+Google Meet's booking-details query carries the collected phone and host
+language into the host calendar copy.
+
+The calendar-copy boundary is explicit: the guest phone appears only in
+the host's CalDAV copy, not email ICS attachments or the claimant's copy.
+Shared resource calendars omit both guest notes and phone numbers.
+Phone display follows the event type's current phone-collection mode;
+stored numbers are hidden if collection has since been switched off.
+
+Disposition: retain the production-aligned `1.18.0-cascade.1` custom fork.
+Carry these fixes into the next separately authorized upgrade with the
+October 12 module-split and migration constraints. This range changes
+only ten Rust source/test files; it changes no version, dependency,
+migration, template, or Cascade customization. No code was ported or
+deployed, and no upstream compile/runtime test or clean-apply result is
+claimed. Review covered the complete delta and its email, ICS, approval
+and attendee regression tests. The added tests do not exercise live
+Google Meet, claimant, resource-calendar or reminder delivery.
+
 ## October 12, 2026 — 1.19.0 reviewed, not ported
 
 Reviewed `c7d627c2c45ada6f1521db236b0928cc6cd61a71` through
