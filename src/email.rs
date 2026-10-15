@@ -719,10 +719,6 @@ fn host_time_display_exact(
 
 /// Generate an .ics VCALENDAR string for a booking
 /// Extract first name (first word) from a full name.
-fn first_name(full_name: &str) -> &str {
-    full_name.split_whitespace().next().unwrap_or(full_name)
-}
-
 pub fn generate_ics(details: &BookingDetails, method: &str) -> String {
     generate_ics_impl(details, method, false)
 }
@@ -742,12 +738,9 @@ fn generate_ics_impl(
     method: &str,
     schedule_agent_client: bool,
 ) -> String {
-    let guest_first = first_name(&details.guest_name);
-    let host_first = first_name(&details.host_name);
-    let summary = sanitize_ics(&format!(
-        "{} \u{2014} {} & {}",
-        details.event_title, guest_first, host_first
-    ));
+    // Cascade: the title is the event name only; attendees are listed on the
+    // invitation itself, not in the calendar title.
+    let summary = sanitize_ics(&details.event_title);
     // CN= is a parameter, not a TEXT value: it needs quoting, not backslashes.
     let host_name = sanitize_ics_param(&details.host_name);
     let guest_name = sanitize_ics_param(&details.guest_name);
@@ -840,12 +833,9 @@ fn generate_ics_impl(
 
 /// Generate an .ics VCALENDAR for cancellation (METHOD:CANCEL)
 fn generate_cancel_ics(details: &CancellationDetails) -> String {
-    let guest_first = first_name(&details.guest_name);
-    let host_first = first_name(&details.host_name);
-    let summary = sanitize_ics(&format!(
-        "{} \u{2014} {} & {}",
-        details.event_title, guest_first, host_first
-    ));
+    // Cascade: the title is the event name only; attendees are listed on the
+    // invitation itself, not in the calendar title.
+    let summary = sanitize_ics(&details.event_title);
     // CN= is a parameter, not a TEXT value: it needs quoting, not backslashes.
     let host_name = sanitize_ics_param(&details.host_name);
     let guest_name = sanitize_ics_param(&details.guest_name);
@@ -3732,7 +3722,7 @@ mod tests {
         // Europe/Paris is UTC+1 in March (CET), so 14:00 Paris = 13:00 UTC
         assert!(ics.contains("DTSTART:20260310T130000Z"));
         assert!(ics.contains("DTEND:20260310T133000Z"));
-        assert!(ics.contains("SUMMARY:Intro Call \u{2014} Jane & Alice"));
+        assert!(ics.contains("SUMMARY:Intro Call\r\n"));
         assert!(ics.contains("ORGANIZER;CN=Alice:mailto:alice@cal.rs"));
         assert!(ics.contains("ATTENDEE;CN=Jane Doe;RSVP=TRUE:mailto:jane@example.com"));
         assert!(ics.contains("STATUS:CONFIRMED"));
@@ -3912,7 +3902,7 @@ mod tests {
     }
 
     #[test]
-    fn generate_ics_summary_includes_first_names() {
+    fn generate_ics_summary_omits_attendee_names() {
         let details = BookingDetails {
             event_title: "30min call".to_string(),
             date: "2026-03-10".to_string(),
@@ -3932,7 +3922,9 @@ mod tests {
         };
 
         let ics = generate_ics(&details, "PUBLISH");
-        assert!(ics.contains("SUMMARY:30min call \u{2014} Jean-Baptiste & Olivier"));
+        // Cascade: attendee names stay out of the calendar title.
+        assert!(ics.contains("SUMMARY:30min call\r\n"));
+        assert!(!ics.contains("SUMMARY:30min call \u{2014}"));
     }
 
     #[test]
@@ -3956,7 +3948,7 @@ mod tests {
         };
 
         let ics = generate_ics(&details, "PUBLISH");
-        assert!(ics.contains("SUMMARY:Meet\\; discuss\\, plan \u{2014} O'Brien & Host"));
+        assert!(ics.contains("SUMMARY:Meet\\; discuss\\, plan\r\n"));
     }
 
     // --- h (HTML escaping) ---
@@ -4060,7 +4052,7 @@ mod tests {
         assert!(ics.contains("UID:cancel-uid-123"));
         assert!(ics.contains("DTSTART:20260310T140000Z"));
         assert!(ics.contains("DTEND:20260310T143000Z"));
-        assert!(ics.contains("SUMMARY:Intro Call \u{2014} Jane & Alice"));
+        assert!(ics.contains("SUMMARY:Intro Call\r\n"));
     }
 
     // Regression test for #49 — DTSTAMP is also required on CANCEL, and its
@@ -4287,9 +4279,9 @@ mod tests {
             ics.contains("ORGANIZER;CN=\"H\u{e9}lo\u{ef}se; Host\":mailto:host@test.com"),
             "{ics}"
         );
-        // The SUMMARY is a TEXT value and keeps backslash escaping.
+        // The SUMMARY is the event title only.
         assert!(
-            ics.contains("SUMMARY:Call \u{2014} Test & H\u{e9}lo\u{ef}se\u{5c};"),
+            ics.contains("SUMMARY:Call\r\n"),
             "{ics}"
         );
         // No `CN=` value may carry a backslash escape.
@@ -4467,7 +4459,7 @@ mod tests {
             ..Default::default()
         };
         let ics = generate_cancel_ics(&details);
-        assert!(ics.contains("SUMMARY:Team sync\\; weekly\\, recurring \u{2014} Bob & Alice"));
+        assert!(ics.contains("SUMMARY:Team sync\\; weekly\\, recurring\r\n"));
         assert!(ics.contains("METHOD:CANCEL"));
         assert!(ics.contains("STATUS:CANCELLED"));
         assert!(ics.contains("DTSTART:20260520T160000Z"));
@@ -5132,33 +5124,6 @@ mod tests {
         assert!(html.contains("Decline"), "Should have decline button");
         assert!(html.contains(approve_url), "Should contain approve URL");
         assert!(html.contains(decline_url), "Should contain decline URL");
-    }
-
-    // --- first_name helper ---
-
-    #[test]
-    fn first_name_single_word() {
-        assert_eq!(first_name("Alice"), "Alice");
-    }
-
-    #[test]
-    fn first_name_two_words() {
-        assert_eq!(first_name("Alice Smith"), "Alice");
-    }
-
-    #[test]
-    fn first_name_hyphenated() {
-        assert_eq!(first_name("Jean-Baptiste Piacentino"), "Jean-Baptiste");
-    }
-
-    #[test]
-    fn first_name_empty_string() {
-        assert_eq!(first_name(""), "");
-    }
-
-    #[test]
-    fn first_name_multiple_spaces() {
-        assert_eq!(first_name("  Alice  Smith  "), "Alice");
     }
 
     // --- convert_to_utc additional edge cases ---

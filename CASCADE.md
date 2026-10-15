@@ -23,6 +23,8 @@ branch is based on the production release pinned by
   that recorded it under the legacy name `062_microsoft_graph` are adopted
   without replaying its statements. Upstream 1.18.0's `064_booking_time_version`
   is registered here as `065_booking_time_version`.
+- Calendar invitation titles are the event name only (for example `Demo`);
+  guest and host names are not appended.
 - Meeting-provider webhooks always send explicit UTC start and end times
   (`...Z`), including for bookings stored before 1.18.0; the Teams bridge in
   `cascade-tax/cascade-calendar` reads them as UTC.
