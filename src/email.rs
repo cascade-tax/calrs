@@ -4280,10 +4280,7 @@ mod tests {
             "{ics}"
         );
         // The SUMMARY is the event title only.
-        assert!(
-            ics.contains("SUMMARY:Call\r\n"),
-            "{ics}"
-        );
+        assert!(ics.contains("SUMMARY:Call\r\n"), "{ics}");
         // No `CN=` value may carry a backslash escape.
         for line in ics.lines().filter(|l| l.contains("CN=")) {
             assert!(!line.contains("\\;"), "backslash-escaped CN: {line}");
