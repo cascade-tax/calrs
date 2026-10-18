@@ -1,5 +1,19 @@
 # Cal.rs upstream review and production baseline
 
+## October 18, 2026 — 1.20.0 ported and deployed
+
+`cascade-main` merged upstream v1.20.0 at `1f8229d` and production runs
+`1.20.0-cascade.1` (digest `sha256:5647c24d...2ea573`) from that revision,
+approved by Arthur (approval `66ea467f05dc46808e048ec7843b9db2`). Upstream
+065-072 are registered as 066-073. Dropped as absorbed: `618cd30`
+(async-trait) and the duplicate part of `9c07eba`. Fork web/email work lives in
+upstream's split modules; fork-only web tests are in `src/web/tests/cascade.rs`.
+Upstream's refusal pages use the styled error card with real status codes.
+Eight machine-written email-footer translations are unreviewed. Full proof and
+live verification are in the deployment repository's
+`memory/topics/calrs-upstream-review.md`. Next upstream review starts after
+`5cb4fac`.
+
 ## October 18, 2026 — 1.20.0 reviewed, not ported
 
 Reviewed `c3ac84a4ab36dd0db6fa01c4c9eb86fa38a96663` through
