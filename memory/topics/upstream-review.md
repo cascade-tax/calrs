@@ -1,5 +1,64 @@
 # Cal.rs upstream review and production baseline
 
+## October 18, 2026 — 1.20.0 reviewed, not ported
+
+Reviewed `c3ac84a4ab36dd0db6fa01c4c9eb86fa38a96663` through
+`5cb4fac26c1bcaf7fa447f965d848188b22c882e`, the exact head of
+[upstream 1.20.0](https://github.com/olivierlambert/calrs/releases/tag/v1.20.0),
+including PRs [#268](https://github.com/olivierlambert/calrs/pull/268),
+[#270](https://github.com/olivierlambert/calrs/pull/270),
+[#271](https://github.com/olivierlambert/calrs/pull/271) and
+[#272](https://github.com/olivierlambert/calrs/pull/272).
+
+The booking changes centralize guest input for write-back retries, Meet and
+pending notices. Additional attendees receive reschedule updates and
+cancellations after a booking was first confirmed. Approval distinguishes a
+reschedule from a new request, sends matching email/SMS wording, and avoids a
+second watcher offer. Calendar invites carry an increasing sequence, escape
+backslashes and fold at 75 octets; readers unfold calendar data. Guest email
+headlines now escape host-supplied text. Host-only phone/resource information
+and cancellation reasons stay out of attendee email bodies.
+
+All timezone pickers share grouped IANA choices, retain saved/detected aliases,
+and preserve an unchanged stored zone. Editing an event type that follows its
+owner keeps that inheritance. Slot views add a localized clock-change note.
+The template change touches the fork's customized slot page: preserve forced
+12-hour rendering, Sunday-first weeks and exact themes during any later port.
+
+Migration 071 adds first-confirmation timestamps and insert/update triggers.
+Its backfill recognizes confirmed rows and pending rows with prior-confirmation
+evidence. An old pending reschedule without that evidence remains unmarked:
+approval may resend the original attendee invitation, and decline/expiry/cancel
+may omit withdrawal of an old invitation. Migration 072 adds sequence zero to
+existing bookings; reschedules and confirmed cancellations advance it.
+Both migrations are registered in `src/db.rs`. Cargo changes only the application
+version; dependency declarations and dependency lock entries do not change.
+
+OIDC parse diagnostics add bounded reason masking and response-shape summaries.
+Source review found deliberate exceptions: short literals remain readable and
+selected JOSE header values are logged. Treat this as diagnostic behavior to
+review against the actual identity provider during an upgrade, not proof that
+every possible personal value is redacted. The EWS orphan-cancellation helper
+still only updates status/sequence and sends no cancellation; do not infer that
+the new attendee notification coverage includes that path.
+
+Disposition: retain `1.18.0-cascade.1` and all custom work. Target 1.20.0 at the
+next separately authorized upgrade, carrying forward October 11–13 constraints.
+Renumber upstream migrations 065–072 after Cascade's existing 065, registering
+the resulting 066–073 entries together. Rehearse the backfill and restore path
+using a database backup; rollback requires restoring that backup with the old
+binary. Preserve the Microsoft read-only boundary and implement its required
+`event_exists`; retain explicit UTC Teams payloads, invitation titles and branding.
+
+Evidence: reviewed the release/changelog, source inventory, booking notification
+call sites, calendar serializers/readers, timezone handlers/templates, OIDC
+diagnostics and added regression assertions. A disposable in-memory SQLite
+check passed the eight-row backfill fixture, confirmation insert/update triggers,
+nine sequence defaults and registration checks. No Rust compilation, upstream
+test-suite run, browser/provider delivery, port, image build, production database
+migration or deployment was performed. The September 28 deployment remains the
+last verified production baseline in this record.
+
 ## October 13, 2026 — post-1.19.0 guest-detail fixes reviewed
 
 Reviewed `e75b8d1cceca28a1baf57c2b32ed9481c6e75e26` through
