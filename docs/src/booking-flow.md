@@ -53,9 +53,9 @@ Host email text and calendar attachments use the exact UTC endpoints for new row
 | Status | Description |
 |---|---|
 | `confirmed` | Booking is active. Slot is blocked. Emails sent. |
-| `pending` | Awaiting host approval (when `requires_confirmation` is on). |
+| `pending` | Awaiting host approval (when `requires_confirmation` is on). Blocks the slot unless the event type turns that off. |
 | `cancelled` | Cancelled by host or guest. Slot is freed. |
-| `declined` | Declined by host (pending booking rejected). |
+| `declined` | Declined by host, or expired before the host answered. |
 
 ## Confirmation mode
 
@@ -69,6 +69,21 @@ When an event type has **requires confirmation** enabled:
    - **From the dashboard** — go to **Pending approval** section and click Confirm or Decline
 5. On confirm: status becomes `confirmed`, guest receives confirmation email with `.ics`, booking is pushed to CalDAV. Auto meeting links (Jitsi, webhook, Google Meet) are generated at this moment, not while the booking is pending.
 6. On decline: status becomes `declined`, guest receives a decline notification with optional reason
+
+Before confirming, both approval paths check that the host is still free at that time (the assigned member for round-robin, every member for collective): a calendar event or a confirmed booking that appeared in the meantime makes the approval fail with an explanation instead of double-booking the host. Other pending requests do not count here, so when two requests overlap the host can approve either one; the other is then refused.
+
+### Pending requests hold the slot
+
+By default a pending request blocks its host's time exactly like a confirmed booking: the slot disappears from the booking page, and overlapping slots on the host's other event types disappear too, so a second guest is never offered a time that is already requested. Uncheck **Pending requests block the time slot** in the event type form to let other guests request the same time (the first approved wins; the database still refuses two bookings on the exact same slot).
+
+### Request expiry
+
+**Request expiry** (never, 4, 24, 48 or 72 hours; 24 for new event types, never for event types that existed before the setting) bounds how long a request may wait. The deadline is set when the request is made. It never runs later than the latest moment another guest could still book the slot (start minus the minimum notice), since expiring after that point frees nothing. A request made inside that window (the guest booked right at the minimum notice) keeps the expiry, capped by the meeting start, rather than lapsing minutes later. A guest reschedule that puts the booking back to pending restarts it.
+
+- Halfway to the deadline, the host gets one reminder with the Approve and Decline buttons.
+- At the deadline the request is **declined, never accepted**. The guest receives an email in the language they booked in (and an SMS when the event type collects phone numbers) asking them to pick another time, with a link to the booking page when the event type is public and `CALRS_BASE_URL` is set. The host gets a short notice.
+
+The check runs in the same background task as reminders, once a minute.
 
 > **Note:** The email action buttons require `CALRS_BASE_URL` to be set. Without it, the host must use the dashboard.
 
@@ -103,7 +118,7 @@ Guests can reschedule their booking via the reschedule link in the confirmation 
 1. Click the "Reschedule" button in the email
 2. Pick a new time slot from the slot picker (the current booking's slot is freed so it remains available)
 3. Confirm the new time
-4. The booking moves to `pending` status — the host must approve via email or dashboard
+4. The booking moves to `pending` status — the host must approve via email or dashboard. The request expiry starts over from the reschedule.
 5. If the booking was previously pushed to CalDAV, the event is removed (re-pushed on approval)
 
 ### Host reschedule
@@ -158,6 +173,8 @@ Additionally, a database-level unique index prevents two bookings from occupying
 
 When a booking is confirmed (either directly or via approval), calrs can push the event to the host's CalDAV calendar. For team event types the host is the assigned member (round-robin), or every eligible member (collective: enabled members with a non-zero per-event-type weight, the same set the slot grid checks). See [CalDAV Integration > Write-back](./caldav.md#caldav-write-back) for setup.
 
+The event's `ORGANIZER` is the host: the assigned member, or for a collective booking the first eligible member by name, with every member's name joined. A collective or dynamic group booking stores that organizer when it is created and keeps it for every later update (approval, reschedule, claim, retry), even if the team changes in the meantime: Google CalDAV refuses an update that changes an existing event's organizer. Bookings made before calrs stored it (migration 070) still resolve it from the current roster.
+
 ## Email notifications
 
 If SMTP is configured, calrs sends emails at these moments:
@@ -174,6 +191,28 @@ If SMTP is configured, calrs sends emails at these moments:
 | Invite sent | Invite email with booking link | — |
 
 All emails are sent as **HTML with plain text fallback**. They include event title, date, time, timezone, location, and notes. The HTML templates are responsive and support dark mode in email clients that honor `prefers-color-scheme`.
+
+### Email language
+
+Every email is written in its reader's language, in any of the languages calrs ships:
+
+- **Guests** (and the additional attendees they add) get the language the booking page was shown in when they booked, whoever triggers the email. That is the guest's browser language, unless the host chose **Always my language** under **Public booking page language** in Profile & Settings: their own booking pages (`/u/{username}`, and the legacy `/{slug}` routes), and so their guests' emails, then use the host's own saved language. Being logged in to calrs does not change the language of a booking page: it follows the browser the booking is made from, so a staff member booking on a client's behalf books in their own browser's language, not their saved calrs preference. To reach a client in another language, book from a browser set to it, or send the client the booking link. The email goes out whoever triggers it: the guest themselves, the host approving, declining, cancelling or asking for a new time, the reminder task, or a calendar sync noticing the host deleted the event.
+- **Hosts, team members and watchers** get the language they chose in **Profile & Settings**. With none set, they get English. On a collective team booking each member receives the host email in their own language.
+- The guest's cancel and reschedule pages use that same language, so they match the emails. The host's approve and decline pages use the host's saved language (for a collective booking, which several members can approve, the browser's), and claim pages the watcher's.
+- **Invites** follow the language of the person sending them, who also writes the optional personal message.
+
+The admin SMTP test email is English.
+
+### Sender and replies
+
+Every email leaves from the configured sender address, so SPF, DKIM and DMARC keep aligning with the instance's domain. What changes is the name the guest sees and where their reply goes:
+
+- **Guest emails** (confirmation, the copies to additional attendees, pending, reminder, cancellation, decline, expired request, pick a new time, reschedule, invite) show the host's name followed by the configured sender name, joined in the email's language: `Bob Smith via Acme Scheduling`, or just `Bob Smith` when no sender name is set. They carry a `Reply-To` with the host's booking email (their account email when no booking email is set), so a guest who answers the email reaches the host directly.
+- On a round-robin booking the host is the assigned member. On a collective or dynamic group booking the name is the joined roster (`Alice & Bob via ...`), and replies go to the member the calendar invite names as organizer, the same on every email of that booking even when the team changes after it was made, and whoever cancels, declines or reschedules it. Bookings made before migration 070 have no stored organizer and still resolve it from the current roster, so a team change can move theirs.
+- **Invites** take the `Reply-To` from the inviting user's account email, never their booking email: the inviter picks the recipients, and the booking email is not verified.
+- **Host, team member, watcher and admin emails** keep the configured sender name and have no `Reply-To`.
+
+A host whose booking email is on a free-mail domain while the instance sends from its own domain may see some guest emails scored higher by spam filters (SpamAssassin's `FREEMAIL_FORGED_REPLYTO`). A booking email on the organization's domain avoids it.
 
 ## Timezone handling
 

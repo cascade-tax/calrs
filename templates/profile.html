@@ -27,10 +27,10 @@
 
 {% if event_types %}
   {% for et in event_types %}
-  <a href="/u/{{ username }}/{{ et.slug }}" data-calrs-sync class="card et-card">
+  <div class="card card-link et-card">
     <div class="et-body">
       <div class="et-head">
-        <span class="et-title">{{ et.title }}</span>
+        <a href="/u/{{ username }}/{{ et.slug }}" data-calrs-sync class="card-link-title"><span class="et-title">{{ et.title }}</span></a>
         <span class="et-dur"><svg class="ic ic-sm" aria-hidden="true"><use href="#i-clock"/></svg>{{ et.duration_min }} min</span>
       </div>
       {% if et.description %}
@@ -38,7 +38,7 @@
       {% endif %}
     </div>
     <svg class="ic et-go" aria-hidden="true"><use href="#i-arrow-right"/></svg>
-  </a>
+  </div>
   {% endfor %}
 {% else %}
   <div class="card">

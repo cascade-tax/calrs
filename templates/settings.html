@@ -437,8 +437,12 @@
       <div class="form-group">
         <label for="timezone">Timezone</label>
         <select id="timezone" name="timezone">
-          {% for tz in tz_options %}
-            <option value="{{ tz.value }}" {% if tz.value == form_timezone %}selected{% endif %}>{{ tz.label }}</option>
+          {% for group in tz_options %}
+            <optgroup label="{{ group.label }}">
+            {% for tz in group.options %}
+              <option value="{{ tz.value }}"{% if tz.selected %} selected{% endif %}>{{ tz.label }}</option>
+            {% endfor %}
+            </optgroup>
           {% endfor %}
         </select>
         <span class="field-hint">Availability rules and booking times are computed here.</span>
@@ -454,6 +458,15 @@
         </select>
         <span class="field-hint">Leave on Auto to follow your browser.</span>
       </div>
+    </div>
+
+    <div class="form-group">
+      <label for="public_page_language">{{ t("settings-public-page-language") }}</label>
+      <select id="public_page_language" name="public_page_language">
+        <option value="visitor" {% if form_public_page_language != "host" %}selected{% endif %}>{{ t("settings-public-page-language-visitor") }}</option>
+        <option value="host" {% if form_public_page_language == "host" %}selected{% endif %}>{{ t("settings-public-page-language-host") }}</option>
+      </select>
+      <span class="field-hint">{{ t("settings-public-page-language-help") }}</span>
     </div>
   </div>
 

@@ -33,6 +33,19 @@ slots-location-google-meet = Google Meet
 
 slots-tz-label = Seu fuso horário
 slots-time-format-label = Formato de horário
+tz-group-common = Fusos horários comuns
+tz-region-africa = África
+tz-region-america = Américas
+tz-region-antarctica = Antártida
+tz-region-arctic = Ártico
+tz-region-asia = Ásia
+tz-region-atlantic = Oceano Atlântico
+tz-region-australia = Austrália
+tz-region-europe = Europa
+tz-region-indian = Oceano Índico
+tz-region-pacific = Oceano Pacífico
+slots-offset-note-day = Os horários de %1 estão em %2 (mudança de horário em %3).
+slots-offset-note-range = Mudança de horário em %1: a partir daí, os horários estão em %2.
 
 slots-view-month = Visualização mensal
 slots-view-week = Visualização semanal
@@ -171,7 +184,7 @@ action-error-page-title = Erro na ação do agendamento
 
 # Host-initiated reschedule (booking_host_reschedule.html)
 
-host-resched-page-title = Reagendar agendamento — calrs
+host-resched-page-title = Reagendar agendamento — Cascade
 host-resched-heading = Reagendar agendamento
 host-resched-subtitle = Isso enviará um e-mail para { $guest } pedindo que escolha um novo horário.
 host-resched-currently = Atualmente:
@@ -235,7 +248,7 @@ common-format-long-date = { $weekday }, { $day } de { $month } de { $year }
 
 # Email signatures and shared bits (src/email.rs)
 
-email-signature = — calrs
+email-signature = — Cascade
 email-action-reschedule = Reagendar
 email-action-cancel-booking = Cancelar agendamento
 
@@ -395,6 +408,8 @@ bookings-reschedule = Remarcar
 bookings-decline = Recusar
 bookings-claim = Assumir
 bookings-badge-awaiting-reschedule = remarcação pendente
+bookings-badge-writeback-failed = fora da sua agenda
+bookings-writeback-failed-detail = Falha ao gravar na agenda: { $error }
 bookings-cancel = Cancelar
 bookings-reason-placeholder = Motivo (opcional)
 bookings-confirm-cancel = Confirmar o cancelamento
@@ -444,6 +459,7 @@ sources-page-title = Fontes de agenda
 sources-heading = Fontes de agenda
 sources-add = Adicionar
 sources-last-sync = Última sincronização:
+sources-sync-failing = Sincronização falhando desde { $since } UTC: { $error }
 sources-sync = Sincronizar
 sources-full-resync = Ressincronização completa
 sources-full-resync-title = Limpar o cache e baixar novamente todos os eventos do servidor
@@ -527,6 +543,11 @@ settings-timezone-help = Suas regras de disponibilidade e horários de agendamen
 settings-language = Idioma
 settings-language-auto = Automático (idioma do navegador)
 settings-language-help = Escolha um idioma para a interface, ou deixe em Automático para seguir a configuração do navegador.
+settings-public-page-language = Idioma das páginas públicas de agendamento
+settings-public-page-language-visitor = O idioma de cada visitante
+settings-public-page-language-host = Sempre o meu idioma
+settings-public-page-language-help = Idioma do seu perfil público, das suas páginas de agendamento e dos e-mails que seus convidados recebem. "Sempre o meu idioma" usa o idioma escolhido acima.
+settings-error-public-page-language = Escolha um idioma válido para as páginas públicas de agendamento.
 settings-dynamic-group = Permitir que outras pessoas me incluam em links de grupo dinâmicos
 settings-dynamic-group-help = Quando ativado, outros usuários podem criar URLs de reunião coletiva improvisadas que incluem você (ex.: { $example }).
 settings-lend-resource = Emprestar meu acesso à agenda para reservas de recursos
@@ -991,6 +1012,7 @@ etf-webhook-hint = A URL de reunião de cada agendamento vem do webhook que a ad
 admin-page-title = Administração
 admin-heading = Painel de administração
 admin-action-refused = Ação recusada:
+admin-error-last-admin = Este é o último administrador ativo. Promova ou reative outro administrador primeiro.
 admin-logo = Logotipo da empresa
 admin-logo-help = Aparece nas páginas de agendamento públicas. Recomendado: PNG ou SVG, no máximo 2 MB.
 admin-company-link = Link da empresa
@@ -1071,6 +1093,9 @@ admin-site-key = Chave do site
 admin-secret = Segredo
 admin-widget-url = URL do script do widget
 admin-widget-url-help = Altere se o CDN estiver bloqueado. As mudanças valem logo após salvar.
+admin-wasm-url = URL do WASM do widget
+admin-wasm-url-help = De onde o widget carrega o seu solucionador. Indique o arquivo WASM servido pelo seu servidor Cap para que as páginas de reserva não acessem mais cdn.jsdelivr.net. Deixe vazio para o valor padrão.
+admin-captcha-wasm-url-invalid = A URL do WASM do widget deve ser uma URL http(s) absoluta.
 admin-captcha-disable-help = Deixe em branco a URL da instância, a chave do site e o segredo para desativar o captcha nas páginas de agendamento.
 admin-save-captcha = Salvar as configurações do captcha
 admin-resources = Recursos
@@ -1177,7 +1202,7 @@ admin-show-fewer = Mostrar menos
 admin-delete-user-confirm = Excluir permanentemente o usuário { $email }?{"\u000A"}{"\u000A"}Isso remove a conta dele, o perfil de agendamento, as fontes de agenda, os tipos de evento e todos os dados que pertencem exclusivamente a ele. Agendamentos passados serão excluídos junto com os tipos de evento.{"\u000A"}{"\u000A"}Para usuários de OIDC/SSO: se o cadastro automático estiver ativado, esta pessoa será recriada no próximo login.{"\u000A"}{"\u000A"}Esta ação não pode ser desfeita.
 admin-system-settings-help = URL pública e configurações de segurança de rede. Também podem ser definidas pelas variáveis de ambiente <code>CALRS_BASE_URL</code> e <code>CALRS_ALLOW_PRIVATE_HOSTS</code>. Quando uma variável de ambiente está definida, ela <strong>tem prioridade</strong> sobre o valor abaixo.
 admin-set-by-env = — definido pelo ambiente ({ $var }), tem prioridade sobre o valor salvo
-admin-google-help = Para ativar a integração com o Google Agenda, crie credenciais OAuth2 no <a href="https://console.cloud.google.com/apis/credentials" target="_blank" style="color: var(--accent);">Google Cloud Console</a>. Ative a <strong>Google Calendar API</strong> e depois adicione { $redirect_uri } como URI de redirecionamento autorizado.
+admin-google-help = Para ativar a integração com o Google Agenda, crie credenciais OAuth2 no <a href="https://console.cloud.google.com/apis/credentials" target="_blank" style="color: var(--accent);">Google Cloud Console</a>. Ative a <strong>CalDAV API</strong> (leitura dos horários ocupados e gravação das reservas) e a <strong>Google Calendar API</strong> (links do Google Meet) e depois adicione { $redirect_uri } como URI de redirecionamento autorizado.
 admin-room-pattern-help = Marcadores disponíveis: <code>{"{"}username{"}"}</code> (organizador), <code>{"{"}event{"}"}</code> (identificador do tipo de evento), <code>{"{"}date{"}"}</code> (AAAAMMDD), <code>{"{"}random{"}"}</code> (8 caracteres). Padrão: { $default }.
 admin-room-pattern-warning = Sem <code>{"{"}random{"}"}</code> o nome da sala é previsível: dois convidados que agendem o mesmo tipo de evento no mesmo dia acabam na mesma sala e podem ver a reunião um do outro. Salas fixas são permitidas (por exemplo, uma sala pessoal por organizador), mas ative isso só se entender a contrapartida.
 admin-meeting-webhook-help = Quando o local de um tipo de evento é «Webhook (provedor próprio)», o calrs envia os dados do agendamento por POST para esta URL na confirmação e espera de volta um corpo JSON <code>{"{"}"url": "https://..."{"}"}</code>.
@@ -1216,6 +1241,11 @@ form-error-team-slug-taken = Já existe uma equipe com este identificador.
 form-error-title-required = É preciso um título para gerar o identificador.
 form-error-event-type-slug-taken = Já existe um tipo de evento com este identificador.
 form-error-event-type-slug-taken-team = Já existe um tipo de evento com este identificador nesta equipe.
+form-error-event-type-title-required = O título é obrigatório.
+form-error-event-type-title-length = O título pode ter no máximo 255 caracteres.
+form-error-event-type-duration = A duração deve ser um número inteiro de minutos, de 1 a 1440 (24 horas).
+form-error-event-type-number = Intervalos, antecedência mínima, lembrete e convidados adicionais devem ser números inteiros, 0 ou mais.
+form-error-event-type-horizon = O horizonte de agendamento deve ser um número inteiro de dias, 0 ou mais. Deixe em branco para não ter limite.
 form-error-location-required = Os detalhes do local são obrigatórios (por exemplo, um link de videochamada, um telefone ou um endereço).
 form-error-not-team-admin = Você não é administrador desta equipe.
 form-error-no-account = Nenhum perfil de agendamento encontrado. Por favor, fale com a administração.
@@ -1268,6 +1298,8 @@ error-too-many-requests = Muitas requisições. Por favor, tente novamente mais 
 error-no-members-available = Nenhum membro da equipe está disponível para este horário.
 error-dynamic-group-public-only = Links de grupo dinâmicos só estão disponíveis para tipos de evento públicos.
 error-user-not-found = Usuário não encontrado.
+error-title-not-found = Não encontrado
+error-title-too-many-attempts = Muitas tentativas
 
 # Booking action error page: titles (templates/booking_action_error.html)
 
@@ -1325,3 +1357,114 @@ dynamic-group-user-not-found = Usuário “{ $username }” não encontrado.
 dynamic-group-user-opted-out = O usuário “{ $username }” não ativou os links de grupo dinâmico.
 
 error-slot-unavailable-member = Este horário não está mais disponível ({ $username } tem um conflito).
+
+# Pending requests: slot hold, expiry and approval re-check (#234)
+
+sms-expired = Pedido expirado: { $event }, { $date } às { $time } ({ $tz }). Sem resposta, escolha outro horário.
+email-pending-expired-status = Pedido expirado
+email-pending-expired-headline = Seu pedido de agendamento expirou: o organizador não respondeu a tempo. Escolha outro horário, por favor.
+email-pending-expired-action = Escolher outro horário
+bae-body-host-busy = O organizador (ou um membro necessário da equipe) não está mais livre neste horário. Peça ao convidado para escolher outro horário.
+bookings-error-generic = Algo deu errado.
+troubleshoot-detail-pending-request = { $title } (pedido pendente)
+etf-pending-blocks-slot = Pedidos pendentes bloqueiam o horário
+etf-pending-blocks-slot-help = Enquanto um pedido aguarda sua resposta, ninguém mais pode agendar esse horário, nem neste nem nos seus outros tipos de evento.
+etf-pending-expiry = Expiração dos pedidos
+etf-pending-expiry-help = Um pedido que você não responder até lá é recusado automaticamente e pedimos ao convidado que escolha outro horário. Ele termina antes se a reunião estiver próxima demais para outra pessoa ainda agendar o horário. Você recebe um lembrete na metade do prazo.
+etf-pending-expiry-never = Nunca
+
+etf-pending-expiry-hours =
+    { $hours ->
+        [one] Após { $hours } hora
+       *[other] Após { $hours } horas
+    }
+
+# Host, watcher and remaining guest emails (src/email.rs, #209)
+
+email-footer-sent-by = Enviado por
+email-footer-note = Notificação automática de agendamento. Gerencie seus agendamentos no seu painel do Cascade.
+email-sender-via = { $host } via { $instance }
+email-date-at-time = { $date } às { $time }
+email-detail-phone = Telefone:
+email-detail-expires = Expira:
+email-detail-new-date = Nova data:
+email-detail-new-time = Novo horário:
+email-detail-previous = Anterior:
+email-detail-requested = Solicitado:
+email-detail-originally = Originalmente:
+email-detail-organizer = Organizador:
+email-detail-booked-by = Agendado por:
+email-detail-invited-by = Convidado por:
+email-detail-message = Mensagem:
+email-action-approve = Aprovar
+email-action-decline = Recusar
+email-action-pick-new-time = Escolher um novo horário
+email-host-approve-line = Aprovar: { $url }
+email-host-decline-line = Recusar: { $url }
+email-host-approval-dashboard = Acesse o seu painel para confirmar ou recusar este agendamento.
+email-host-new-subject = Novo agendamento: { $event }, { $guest } ({ $date })
+email-host-new-heading = Novo agendamento!
+email-host-new-message = { $guest } agendou um horário com você.
+email-host-confirmed-subject = Confirmado: { $event }, { $guest } ({ $date })
+email-host-confirmed-heading = Agendamento confirmado
+email-host-confirmed-message = Você aprovou o agendamento com { $guest }.
+email-host-confirmed-footer = O evento foi adicionado à sua agenda.
+email-host-sync-failure-subject = Ação necessária: agenda não atualizada para { $event } ({ $date })
+email-host-sync-failure-heading = Sua agenda não foi atualizada
+email-host-sync-failure-intro = Este agendamento mudou de horário, mas o Cascade não conseguiu atualizar o evento no seu Google Agenda. O convidado tem o novo horário; sua agenda ainda mostra o antigo.
+email-host-sync-failure-action = Abra o evento no Google Agenda e mova-o para o horário acima. Mova o evento existente em vez de recriá-lo, senão o link do Google Meet que o convidado já tem deixará de funcionar.
+email-writeback-failure-subject = Ação necessária: { $event } ({ $date }) não está na sua agenda
+email-writeback-failure-heading = Falta uma reserva na sua agenda
+email-writeback-failure-intro = O Cascade não conseguiu adicionar esta reserva à sua agenda, mesmo após várias tentativas. A reserva está confirmada e o convidado recebeu o convite.
+email-writeback-failure-action = Adicione você mesmo o evento à sua agenda para não perdê-lo e verifique a fonte de agenda no Cascade. O Cascade continua tentando por mais algumas horas; você não receberá este e-mail novamente para esta reserva.
+email-detail-error = Erro:
+email-source-failure-subject = Ação necessária: a fonte de agenda "{ $source }" não está sincronizando
+email-source-failure-heading = Uma fonte de agenda parou de sincronizar
+email-source-failure-intro = O Cascade não consegue sincronizar esta fonte de agenda há mais de uma hora. Suas páginas de reserva continuam oferecendo horários, mas eles se baseiam na última sincronização bem-sucedida, então eventos adicionados ou movidos desde então não são considerados.
+email-source-failure-action = Verifique a fonte na página Fontes de agenda: a causa costuma ser uma senha expirada ou um acesso revogado. Você só terá notícias desta fonte de novo se ela se recuperar e falhar outra vez.
+email-detail-source = Fonte de agenda:
+email-detail-failing-since = Falhando desde:
+email-host-reminder-subject = Lembrete: { $event }, { $guest } ({ $date })
+email-host-reminder-heading = Próximo agendamento
+email-host-reminder-message = Lembrete: você tem em breve um agendamento com { $guest }.
+email-host-cancel-subject = Cancelado: { $event }, { $guest } ({ $date })
+email-host-cancel-message-by-host = Você cancelou este agendamento.
+email-host-cancel-message-by-guest = { $guest } cancelou o agendamento.
+email-host-approval-subject = Ação necessária: { $event }, { $guest } ({ $date })
+email-host-approval-heading = Ação necessária
+email-host-approval-message = { $guest } quer agendar um horário com você.
+email-host-approval-reminder-subject = Lembrete: { $guest } está aguardando sua resposta ({ $event }, { $date })
+email-host-approval-reminder-heading = Lembrete: ação necessária
+email-host-approval-reminder-message = { $guest } ainda está aguardando sua resposta. Se você não responder, o pedido será recusado automaticamente em { $deadline }.
+email-host-approval-footer = Você também pode gerenciar isso pelo seu painel.
+email-host-expired-subject = Expirado: { $event } com { $guest } ({ $date })
+email-host-expired-heading = Pedido de agendamento expirado
+email-host-expired-message = Ninguém respondeu ao pedido de { $guest } dentro do prazo, então ele foi recusado automaticamente e o convidado foi orientado a escolher outro horário.
+email-host-expired-footer = Você pode mudar quanto tempo os pedidos aguardam nas configurações do tipo de evento.
+email-host-reschedule-request-subject = Pedido de reagendamento: { $event }, { $guest } ({ $email })
+email-host-reschedule-request-message = { $guest } quer reagendar o agendamento.
+email-watcher-claim-subject = Disponível para assumir: { $event }, { $guest } ({ $date })
+email-watcher-claim-message = Há um novo agendamento disponível para assumir. Clique abaixo para participar como convidado.
+email-watcher-claim-link = Assumir este agendamento: { $url }
+email-watcher-claim-footer = Você também pode assumi-lo pelo seu painel.
+email-claim-confirmed-subject = Agendamento assumido: { $event }, { $guest } ({ $date })
+email-claim-confirmed-footer = Você será adicionado como participante desta reunião.
+email-attendee-greeting = Olá,
+email-attendee-message = Você foi adicionado como participante de um agendamento.
+email-attendee-rescheduled-message = Um agendamento do qual você participa foi remarcado para um novo horário.
+email-attendee-cancelled-message = Um agendamento do qual você participa foi cancelado.
+email-attendee-cancelled-subject = Cancelado: { $event }
+email-original-booking-cancelled = Seu agendamento original também foi cancelado.
+email-pick-new-time-subject = Reagendamento: { $event }, escolha um novo horário
+email-pick-new-time-message = { $host } precisa reagendar o seu agendamento. Escolha um novo horário, por favor.
+email-pick-new-time-link = Escolher um novo horário: { $url }
+email-rescheduled-message = Seu agendamento foi reagendado por { $host }.
+email-reschedule-approved-message = { $host } confirmou o novo horário do seu agendamento.
+email-rescheduled-ics-attached-plain = Um convite de calendário atualizado está anexado.
+email-rescheduled-ics-attached-html = Um convite de calendário atualizado está anexado a este e-mail.
+email-need-to-reschedule = Precisa reagendar? { $url }
+email-invite-subject = { $host } convidou você para agendar: { $event }
+email-invite-message = { $host } convidou você para agendar: { $event }
+email-invite-link = Clique no link abaixo para escolher um horário:
+email-invite-action = Escolher um horário
+email-cancel-reason-calendar-deleted = O organizador excluiu o evento da agenda.

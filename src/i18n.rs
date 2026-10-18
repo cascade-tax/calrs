@@ -29,6 +29,7 @@ const SUPPORTED_LANGS: &[(&str, &str, &str)] = &[
         "Português (Brasil)",
         include_str!("../i18n/pt/main.ftl"),
     ),
+    ("nl", "Nederlands", include_str!("../i18n/nl/main.ftl")),
 ];
 
 const DEFAULT_LANG: &str = "en";
@@ -133,6 +134,17 @@ pub fn is_supported(code: &str) -> bool {
     SUPPORTED_LANGS.iter().any(|(c, _, _)| *c == code)
 }
 
+/// The bundled locale code for a stored value (trimmed), when calrs ships
+/// it. The `&'static str` lets a stored language stand in for one detected
+/// from a request.
+pub fn supported_code(code: &str) -> Option<&'static str> {
+    let code = code.trim();
+    SUPPORTED_LANGS
+        .iter()
+        .find(|(c, _, _)| *c == code)
+        .map(|(c, _, _)| *c)
+}
+
 /// Resolve the language to use for rendering. The user's saved preference
 /// (when set and supported) wins over `Accept-Language`. Pass `None` for
 /// `user_pref` to skip straight to header detection (e.g. for guests).
@@ -196,8 +208,20 @@ pub fn format_long_date(date: NaiveDate, lang: &str) -> String {
     translate(lang, "common-format-long-date", Some(&args))
 }
 
-/// Register the `t(key, **kwargs)` function on a minijinja environment.
-/// Templates pull the active language from the rendering context's `lang` var.
+/// The BCP-47 tag for a locale code, for `<html lang>`. The codes are the
+/// bundle directory names, and `pt` is Brazilian Portuguese: declared as
+/// plain `pt`, browsers and screen readers would assume European Portuguese.
+pub fn html_lang(code: &str) -> &str {
+    match code {
+        "pt" => "pt-BR",
+        "" => "en",
+        other => other,
+    }
+}
+
+/// Register the `t(key, **kwargs)` function and the `html_lang` filter on a
+/// minijinja environment. Templates pull the active language from the
+/// rendering context's `lang` var.
 pub fn register(env: &mut Environment<'static>) {
     env.add_function("t", t_function);
     env.add_filter("time12h", |value: minijinja::Value| {
@@ -206,6 +230,7 @@ pub fn register(env: &mut Environment<'static>) {
             .map(crate::web::format_time_12h)
             .unwrap_or_default()
     });
+    env.add_filter("html_lang", |code: String| html_lang(&code).to_string());
 }
 
 /// A template argument on its way into Fluent.
@@ -462,6 +487,28 @@ mod tests {
         );
     }
 
+    /// The email module's short helpers are scanned like `translate`, so a
+    /// typo in an email key fails the build too; names that merely end in
+    /// `t(` are not.
+    #[test]
+    fn rust_key_scan_reads_the_email_helpers() {
+        let src = r#"
+            let a = t(lang, "email-one");
+            let b = ta(
+                lang,
+                "email-two",
+                [("x", y)],
+            );
+            push_row(&mut rows, lang, "email-three", value);
+            let c = format(lang, "not-a-call");
+        "#;
+        let keys = find_rust_keys(src);
+        for key in ["email-one", "email-two", "email-three"] {
+            assert!(keys.iter().any(|k| k == key), "{key} not found: {keys:?}");
+        }
+        assert!(!keys.iter().any(|k| k == "not-a-call"), "{keys:?}");
+    }
+
     /// Handlers translate too (form validation errors, the troubleshoot
     /// timeline). A typo there renders the raw message id into the page just
     /// as silently as it would from a template.
@@ -486,6 +533,13 @@ mod tests {
         );
     }
 
+    #[test]
+    fn html_lang_tags_brazilian_portuguese() {
+        assert_eq!(super::html_lang("pt"), "pt-BR");
+        assert_eq!(super::html_lang("fr"), "fr");
+        assert_eq!(super::html_lang(""), "en");
+    }
+
     /// A message id: kebab-case ASCII, which no template name, CSS class or
     /// SQL fragment in this codebase looks like.
     fn looks_like_key(key: &str) -> bool {
@@ -497,21 +551,22 @@ mod tests {
 
     /// Message ids passed to `translate(lang, "key", ..)` or `tr1(lang, "key", ..)`,
     /// plus the two indirect forms: the key pairs handed to
-    /// `render_booking_action_error_keys(state, headers, "title", "body")`, and the
+    /// `render_booking_action_error_keys_in(state, lang, "title", "body")`, and the
     /// keys the booking-form validators return as `Err("key")`. Both reach Fluent
     /// through a variable, so without this pass a typo renders the raw id.
     fn find_rust_keys(src: &str) -> Vec<String> {
         let mut keys = Vec::new();
         // Helpers that take message ids as arguments instead of resolving them
         // inline. Add one here when you add one to the code.
-        const KEY_TAKING_HELPERS: &[&str] = &["render_booking_action_error_keys("];
+        const KEY_TAKING_HELPERS: &[&str] =
+            &["render_booking_action_error_keys_in(", "status_subject("];
         for call in KEY_TAKING_HELPERS {
             let mut i = 0;
             while let Some(pos) = src[i..].find(call) {
                 let at = i + pos;
                 let start = at + call.len();
                 i = start;
-                // The guard test in web/mod.rs names this helper in a string
+                // The guard test in web/tests/guards.rs names this helper in a string
                 // literal; scanning from there would run past the call site.
                 if src[..at].ends_with('"') {
                     continue;
@@ -552,16 +607,43 @@ mod tests {
                 keys.push(key.to_string());
             }
         }
-        for call in ["translate(", "tr1("] {
+        // `t(lang, "key")` and `ta(lang, "key", ..)` are the email module's
+        // short forms of `translate`; `push_row(rows, lang, "key", ..)` hands
+        // a label key to one of them. Each is listed with how many arguments
+        // come before the key.
+        for (call, skip) in [
+            ("translate(", 1),
+            ("tr1(", 1),
+            ("t(", 1),
+            ("ta(", 1),
+            ("push_row(", 2),
+        ] {
             let mut i = 0;
             while let Some(pos) = src[i..].find(call) {
-                let start = i + pos + call.len();
+                let at = i + pos;
+                let start = at + call.len();
                 i = start;
-                // Skip the lang argument, then read the quoted key.
-                let Some(comma) = src[start..].find(',') else {
+                // `t(` and `ta(` also end longer names (`format(`, `meta(`).
+                if src[..at]
+                    .chars()
+                    .next_back()
+                    .is_some_and(|c| c.is_ascii_alphanumeric() || c == '_')
+                {
                     continue;
-                };
-                let rest = src[start + comma + 1..].trim_start();
+                }
+                // Skip the arguments before the key, then read the quoted key.
+                let mut from = start;
+                let mut found = true;
+                for _ in 0..skip {
+                    match src[from..].find(',') {
+                        Some(comma) => from += comma + 1,
+                        None => found = false,
+                    }
+                }
+                if !found {
+                    continue;
+                }
+                let rest = src[from..].trim_start();
                 let Some(inner) = rest.strip_prefix('"') else {
                     continue;
                 };
@@ -757,6 +839,7 @@ mod tests {
             ("it", &["one", "other"]),
             ("pt", &["one", "other"]),
             ("et", &["one", "other"]),
+            ("nl", &["one", "other"]),
         ];
         let plural_keys: Vec<&str> = SUPPORTED_LANGS
             .iter()

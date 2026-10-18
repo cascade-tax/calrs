@@ -371,6 +371,14 @@ impl CalendarProvider for GraphProvider {
         Ok(())
     }
 
+    /// Read-only lookup by the Cascade booking UID property. Cascade never
+    /// selects a Microsoft 365 calendar as a write-back target (the OAuth grant
+    /// is `Calendars.Read`), so this only answers whether such an event is
+    /// visible; it never writes.
+    async fn event_exists(&self, calendar_id: &str, uid: &str) -> Result<bool> {
+        Ok(!self.find_booking_events(calendar_id, uid).await?.is_empty())
+    }
+
     async fn delete_event(&self, calendar_id: &str, uid: &str) -> Result<()> {
         for event in self.find_booking_events(calendar_id, uid).await? {
             let url = Self::calendar_url(

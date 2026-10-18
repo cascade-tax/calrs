@@ -33,6 +33,19 @@ slots-location-google-meet = Google Meet
 
 slots-tz-label = Sinu ajavöönd
 slots-time-format-label = Ajavorming
+tz-group-common = Levinud ajavööndid
+tz-region-africa = Aafrika
+tz-region-america = Ameerika
+tz-region-antarctica = Antarktis
+tz-region-arctic = Arktika
+tz-region-asia = Aasia
+tz-region-atlantic = Atlandi ookean
+tz-region-australia = Austraalia
+tz-region-europe = Euroopa
+tz-region-indian = India ookean
+tz-region-pacific = Vaikne ookean
+slots-offset-note-day = Kellaajad päeval %1 on %2 järgi (kellad keeratakse %3).
+slots-offset-note-range = Kellad keeratakse %1: sellest alates on kellaajad %2 järgi.
 
 slots-view-month = Kuuvaade
 slots-view-week = Nädalavaade
@@ -171,7 +184,7 @@ action-error-page-title = Viga broneeringu toimingus
 
 # Host-initiated reschedule (booking_host_reschedule.html)
 
-host-resched-page-title = Muuda broneeringu aega — calrs
+host-resched-page-title = Muuda broneeringu aega — Cascade
 host-resched-heading = Muuda broneeringu aega
 host-resched-subtitle = See saadab külalisele { $guest } e-kirja palvega valida uus aeg.
 host-resched-currently = Praegu:
@@ -235,7 +248,7 @@ common-format-long-date = { $weekday }, { $day }. { $month } { $year }
 
 # Email signatures and shared bits (src/email.rs)
 
-email-signature = — calrs
+email-signature = — Cascade
 email-action-reschedule = Muuda aega
 email-action-cancel-booking = Tühista broneering
 
@@ -395,6 +408,8 @@ bookings-reschedule = Muuda aega
 bookings-decline = Lükka tagasi
 bookings-claim = Võta üle
 bookings-badge-awaiting-reschedule = ootab aja muutmist
+bookings-badge-writeback-failed = pole su kalendris
+bookings-writeback-failed-detail = Kalendrisse kirjutamine ebaõnnestus: { $error }
 bookings-cancel = Tühista
 bookings-reason-placeholder = Põhjus (valikuline)
 bookings-confirm-cancel = Kinnita tühistamine
@@ -444,6 +459,7 @@ sources-page-title = Kalendriallikad
 sources-heading = Kalendriallikad
 sources-add = Lisa
 sources-last-sync = Viimane sünkroonimine:
+sources-sync-failing = Sünkroonimine ebaõnnestub alates { $since } UTC: { $error }
 sources-sync = Sünkrooni
 sources-full-resync = Täielik uuestisünkroonimine
 sources-full-resync-title = Tühjenda vahemälu ja lae kõik sündmused serverist uuesti
@@ -527,6 +543,11 @@ settings-timezone-help = Sinu saadavuse reeglid ja broneerimisajad arvutatakse s
 settings-language = Keel
 settings-language-auto = Automaatne (brauseri keel)
 settings-language-help = Vali kasutajaliidese keel või jäta valikuks „Automaatne“, et järgida brauseri seadet.
+settings-public-page-language = Avalike broneerimislehtede keel
+settings-public-page-language-visitor = Iga külastaja keel
+settings-public-page-language-host = Alati minu keel
+settings-public-page-language-help = Sinu avaliku profiili, broneerimislehtede ja külalistele saadetavate kirjade keel. „Alati minu keel“ kasutab ülal valitud keelt.
+settings-error-public-page-language = Vali avalikele broneerimislehtedele kehtiv keel.
 settings-dynamic-group = Luba teistel kaasata mind dünaamilistesse rühmalinkidesse
 settings-dynamic-group-help = Kui see on sisse lülitatud, saavad teised kasutajad luua ühekordseid ühiskohtumise linke, mis sind kaasavad (nt { $example }).
 settings-lend-resource = Laena minu kalendriõigusi ressursside broneerimiseks
@@ -991,6 +1012,7 @@ etf-webhook-hint = Iga broneeringu kohtumisaadress võetakse webhookist, mille h
 admin-page-title = Haldus
 admin-heading = Halduse töölaud
 admin-action-refused = Toiming keelati:
+admin-error-last-admin = See on viimane aktiivne administraator. Anna esmalt administraatori õigused kellelegi teisele või lülita mõni teine administraator sisse.
 admin-logo = Ettevõtte logo
 admin-logo-help = Kuvatakse avalikel broneerimislehtedel. Soovitatav: PNG või SVG, kuni 2 MB.
 admin-company-link = Ettevõtte link
@@ -1071,6 +1093,9 @@ admin-site-key = Saidi võti
 admin-secret = Saladus
 admin-widget-url = Vidina skripti aadress
 admin-widget-url-help = Muuda, kui CDN on blokeeritud. Muudatused jõustuvad kohe pärast salvestamist.
+admin-wasm-url = Vidina WASM-faili aadress
+admin-wasm-url-help = Koht, kust vidin oma lahendaja laadib. Määra oma Cap-serveri pakutav WASM-fail, et broneerimislehed ei pöörduks enam cdn.jsdelivr.net poole. Jäta tühjaks vaikeväärtuse jaoks.
+admin-captcha-wasm-url-invalid = Vidina WASM-faili aadress peab olema täielik http(s) aadress.
 admin-captcha-disable-help = Jäta paigalduse aadress, saidi võti ja saladus tühjaks, et captcha broneerimislehtedel välja lülitada.
 admin-save-captcha = Salvesta captcha seaded
 admin-resources = Ressursid
@@ -1177,7 +1202,7 @@ admin-show-fewer = Näita vähem
 admin-delete-user-confirm = Kas kustutada kasutaja { $email } jäädavalt?{"\u000A"}{"\u000A"}See eemaldab tema kasutajakonto, ajaplaneerimise profiili, kalendriallikad, sündmuse tüübid ja kõik andmed, mis kuuluvad ainult temale. Varasemad broneeringud kustutatakse koos tema sündmuse tüüpidega.{"\u000A"}{"\u000A"}OIDC/SSO kasutajate puhul: kui automaatne registreerumine on sees, luuakse see inimene järgmisel sisselogimisel uuesti.{"\u000A"}{"\u000A"}Seda ei saa tagasi võtta.
 admin-system-settings-help = Avalik aadress ja võrguturbe seaded. Neid saab määrata ka keskkonnamuutujatega <code>CALRS_BASE_URL</code> ja <code>CALRS_ALLOW_PRIVATE_HOSTS</code>. Kui keskkonnamuutuja on määratud, <strong>on sellel eelis</strong> allpool oleva väärtuse ees.
 admin-set-by-env = — määratud keskkonnast ({ $var }), tühistab salvestatud väärtuse
-admin-google-help = Google’i kalendri sidumiseks loo OAuth2 pääsuandmed <a href="https://console.cloud.google.com/apis/credentials" target="_blank" style="color: var(--accent);">Google Cloud Console’is</a>. Luba <strong>Google Calendar API</strong> ja lisa seejärel { $redirect_uri } lubatud ümbersuunamisaadressiks.
+admin-google-help = Google’i kalendri sidumiseks loo OAuth2 pääsuandmed <a href="https://console.cloud.google.com/apis/credentials" target="_blank" style="color: var(--accent);">Google Cloud Console’is</a>. Luba <strong>CalDAV API</strong> (hõivatud aegade lugemiseks ja broneeringute kirjutamiseks) ning <strong>Google Calendar API</strong> (Google Meeti linkide jaoks) ja lisa seejärel { $redirect_uri } lubatud ümbersuunamisaadressiks.
 admin-room-pattern-help = Saadaolevad kohatäited: <code>{"{"}username{"}"}</code> (korraldaja), <code>{"{"}event{"}"}</code> (sündmuse tüübi identifikaator), <code>{"{"}date{"}"}</code> (AAAAKKPP), <code>{"{"}random{"}"}</code> (8 märki). Vaikimisi: { $default }.
 admin-room-pattern-warning = Ilma kohatäiteta <code>{"{"}random{"}"}</code> on ruumi nimi ettearvatav: kaks külalist, kes broneerivad sama sündmuse tüübi samal päeval, satuvad ühte ruumi ja näevad teineteise kohtumist. Püsivad ruumid on lubatud (näiteks üks isiklik ruum korraldaja kohta), kuid lülita see sisse ainult siis, kui mõistad tagajärgi.
 admin-meeting-webhook-help = Kui sündmuse tüübi asukohaks on „Webhook (oma teenusepakkuja)“, saadab calrs kinnitamisel broneeringu andmed POST-päringuga sellele aadressile ja ootab vastuseks JSON-keha <code>{"{"}"url": "https://..."{"}"}</code>.
@@ -1216,6 +1241,11 @@ form-error-team-slug-taken = Selle identifikaatoriga meeskond on juba olemas.
 form-error-title-required = Identifikaatori loomiseks on vaja pealkirja.
 form-error-event-type-slug-taken = Selle identifikaatoriga sündmuse tüüp on juba olemas.
 form-error-event-type-slug-taken-team = Selles meeskonnas on juba selle identifikaatoriga sündmuse tüüp.
+form-error-event-type-title-required = Pealkiri on kohustuslik.
+form-error-event-type-title-length = Pealkiri võib olla kuni 255 märki pikk.
+form-error-event-type-duration = Kestus peab olema täisarv minuteid vahemikus 1 kuni 1440 (24 tundi).
+form-error-event-type-number = Puhvrid, vähim etteteatamisaeg, meeldetuletus ja lisakülaliste arv peavad olema täisarvud, 0 või rohkem.
+form-error-event-type-horizon = Broneerimishorisont peab olema täisarv päevi, 0 või rohkem. Piirangu puudumisel jäta väli tühjaks.
 form-error-location-required = Asukoha andmed on kohustuslikud (näiteks videokõne link, telefoninumber või aadress).
 form-error-not-team-admin = Sa ei ole selle meeskonna haldaja.
 form-error-no-account = Ajaplaneerimise profiili ei leitud. Palun võta ühendust haldajaga.
@@ -1268,6 +1298,8 @@ error-too-many-requests = Liiga palju päringuid. Palun proovi hiljem uuesti.
 error-no-members-available = Ükski meeskonnaliige ei ole sel ajal saadaval.
 error-dynamic-group-public-only = Dünaamilised rühmalingid on saadaval ainult avalike sündmuse tüüpide puhul.
 error-user-not-found = Kasutajat ei leitud.
+error-title-not-found = Ei leitud
+error-title-too-many-attempts = Liiga palju katseid
 
 # Booking action error page: titles (templates/booking_action_error.html)
 
@@ -1325,3 +1357,114 @@ dynamic-group-user-not-found = Kasutajat „{ $username }“ ei leitud.
 dynamic-group-user-opted-out = Kasutaja „{ $username }“ ei ole dünaamilise grupi linke lubanud.
 
 error-slot-unavailable-member = See aeg ei ole enam saadaval ({ $username } on hõivatud).
+
+# Pending requests: slot hold, expiry and approval re-check (#234)
+
+sms-expired = Taotlus aegus: { $event }, { $date } kell { $time } ({ $tz }). Vastust ei tulnud, vali palun muu aeg.
+email-pending-expired-status = Taotlus aegus
+email-pending-expired-headline = Sinu broneerimistaotlus aegus: korraldaja ei vastanud õigel ajal. Vali palun muu aeg.
+email-pending-expired-action = Vali muu aeg
+bae-body-host-busy = Korraldaja (või vajalik meeskonnaliige) ei ole sel ajal enam vaba. Palu külalisel valida mõni muu aeg.
+bookings-error-generic = Midagi läks valesti.
+troubleshoot-detail-pending-request = { $title } (ootel taotlus)
+etf-pending-blocks-slot = Ootel taotlused blokeerivad aja
+etf-pending-blocks-slot-help = Kuni taotlus ootab sinu vastust, ei saa keegi teine seda aega broneerida, ei selles ega sinu teistes sündmuse tüüpides.
+etf-pending-expiry = Taotluste aegumine
+etf-pending-expiry-help = Taotlus, millele sa selleks ajaks vastanud pole, lükatakse automaatselt tagasi ja külalisel palutakse valida muu aeg. Tähtaeg saabub varem, kui kohtumine on liiga lähedal, et keegi teine saaks seda aega veel broneerida. Poole aja peal saad ühe meeldetuletuse.
+etf-pending-expiry-never = Mitte kunagi
+
+etf-pending-expiry-hours =
+    { $hours ->
+        [one] { $hours } tunni pärast
+       *[other] { $hours } tunni pärast
+    }
+
+# Host, watcher and remaining guest emails (src/email.rs, #209)
+
+email-footer-sent-by = Saatja:
+email-footer-note = Automaatne broneerimisteavitus. Halda oma broneeringuid Cascade’i töölaual.
+email-sender-via = { $host } { $instance } kaudu
+email-date-at-time = { $date } kell { $time }
+email-detail-phone = Telefon:
+email-detail-expires = Aegub:
+email-detail-new-date = Uus kuupäev:
+email-detail-new-time = Uus kellaaeg:
+email-detail-previous = Varem:
+email-detail-requested = Soovitud:
+email-detail-originally = Algselt:
+email-detail-organizer = Korraldaja:
+email-detail-booked-by = Broneerija:
+email-detail-invited-by = Kutsuja:
+email-detail-message = Sõnum:
+email-action-approve = Kinnita
+email-action-decline = Lükka tagasi
+email-action-pick-new-time = Vali uus aeg
+email-host-approve-line = Kinnita: { $url }
+email-host-decline-line = Lükka tagasi: { $url }
+email-host-approval-dashboard = Logi oma töölauale sisse, et see broneering kinnitada või tagasi lükata.
+email-host-new-subject = Uus broneering: { $event }, { $guest } ({ $date })
+email-host-new-heading = Uus broneering!
+email-host-new-message = { $guest } broneeris sinuga aja.
+email-host-confirmed-subject = Kinnitatud: { $event }, { $guest } ({ $date })
+email-host-confirmed-heading = Broneering kinnitatud
+email-host-confirmed-message = Kinnitasid broneeringu külalisega { $guest }.
+email-host-confirmed-footer = Sündmus on lisatud sinu kalendrisse.
+email-host-sync-failure-subject = Vajab tegutsemist: sündmuse { $event } kalendrit ei uuendatud ({ $date })
+email-host-sync-failure-heading = Sinu kalendrit ei uuendatud
+email-host-sync-failure-intro = See broneering nihkus, kuid Cascade ei saanud sündmust sinu Google'i kalendris uuendada. Külalisel on uus aeg, sinu kalender näitab endiselt vana.
+email-host-sync-failure-action = Ava sündmus Google'i kalendris ja nihuta see ülaltoodud ajale. Nihuta olemasolevat sündmust, ära loo seda uuesti, muidu lakkab külalisel juba olev Google Meeti link töötamast.
+email-writeback-failure-subject = Vajalik tegevus: { $event } ({ $date }) puudub su kalendrist
+email-writeback-failure-heading = Broneering puudub su kalendrist
+email-writeback-failure-intro = Cascade ei saanud seda broneeringut ka mitme katse järel su kalendrisse lisada. Broneering on kinnitatud ja külalisel on kutse.
+email-writeback-failure-action = Lisa sündmus ise oma kalendrisse, et sa sellest ilma ei jääks, ja kontrolli calrsis kalendriallikat. Cascade proovib veel mõne tunni; selle broneeringu kohta sa seda kirja enam ei saa.
+email-detail-error = Viga:
+email-source-failure-subject = Vajalik tegevus: kalendriallikas „{ $source }“ ei sünkrooni
+email-source-failure-heading = Kalendriallikas lõpetas sünkroonimise
+email-source-failure-intro = Cascade ei ole saanud seda kalendriallikat üle tunni aja sünkroonida. Su broneerimislehed pakuvad endiselt aegu, kuid need põhinevad viimasel õnnestunud sünkroonimisel, nii et pärast seda lisatud või nihutatud sündmusi ei arvestata.
+email-source-failure-action = Kontrolli allikat kalendriallikate lehel: tavaliselt on põhjus aegunud parool või tühistatud ligipääs. Sellest allikast kuuled uuesti ainult siis, kui see taastub ja siis jälle katki läheb.
+email-detail-source = Kalendriallikas:
+email-detail-failing-since = Vigane alates:
+email-host-reminder-subject = Meeldetuletus: { $event }, { $guest } ({ $date })
+email-host-reminder-heading = Eelseisev broneering
+email-host-reminder-message = Meeldetuletus: sul on varsti broneering külalisega { $guest }.
+email-host-cancel-subject = Tühistatud: { $event }, { $guest } ({ $date })
+email-host-cancel-message-by-host = Tühistasid selle broneeringu.
+email-host-cancel-message-by-guest = { $guest } tühistas oma broneeringu.
+email-host-approval-subject = Vajab tegutsemist: { $event }, { $guest } ({ $date })
+email-host-approval-heading = Vajab tegutsemist
+email-host-approval-message = { $guest } soovib sinuga aega broneerida.
+email-host-approval-reminder-subject = Meeldetuletus: { $guest } ootab sinu vastust ({ $event }, { $date })
+email-host-approval-reminder-heading = Meeldetuletus: vajab tegutsemist
+email-host-approval-reminder-message = { $guest } ootab endiselt sinu vastust. Kui sa ei vasta, lükatakse taotlus automaatselt tagasi { $deadline }.
+email-host-approval-footer = Saad seda hallata ka oma töölaualt.
+email-host-expired-subject = Aegunud: { $event }, { $guest } ({ $date })
+email-host-expired-heading = Broneerimistaotlus aegus
+email-host-expired-message = Keegi ei vastanud külalise { $guest } taotlusele enne tähtaega, seega lükati see automaatselt tagasi ja külalisel paluti valida muu aeg.
+email-host-expired-footer = Seda, kui kaua taotlused ootavad, saad muuta sündmuse tüübi seadetes.
+email-host-reschedule-request-subject = Ajamuutmise taotlus: { $event }, { $guest } ({ $email })
+email-host-reschedule-request-message = { $guest } soovib oma broneeringu aega muuta.
+email-watcher-claim-subject = Ülevõtmiseks: { $event }, { $guest } ({ $date })
+email-watcher-claim-message = Uus broneering on ülevõtmiseks saadaval. Klõpsa allpool, et liituda osalejana.
+email-watcher-claim-link = Võta see broneering üle: { $url }
+email-watcher-claim-footer = Saad selle üle võtta ka oma töölaualt.
+email-claim-confirmed-subject = Broneering üle võetud: { $event }, { $guest } ({ $date })
+email-claim-confirmed-footer = Sind lisatakse selle kohtumise osalejaks.
+email-attendee-greeting = Tere,
+email-attendee-message = Sind lisati broneeringu osalejaks.
+email-attendee-rescheduled-message = Broneering, milles sa osaled, on viidud uuele ajale.
+email-attendee-cancelled-message = Broneering, milles sa osaled, on tühistatud.
+email-attendee-cancelled-subject = Tühistatud: { $event }
+email-original-booking-cancelled = Sinu esialgne broneering on samuti tühistatud.
+email-pick-new-time-subject = Aja muutmine: { $event }, vali palun uus aeg
+email-pick-new-time-message = { $host } peab sinu broneeringu aega muutma. Vali palun uus aeg.
+email-pick-new-time-link = Vali uus aeg: { $url }
+email-rescheduled-message = { $host } muutis sinu broneeringu aega.
+email-reschedule-approved-message = { $host } kinnitas sinu broneeringu uue aja.
+email-rescheduled-ics-attached-plain = Uuendatud kalendrikutse on manuses.
+email-rescheduled-ics-attached-html = Uuendatud kalendrikutse on selle kirja manuses.
+email-need-to-reschedule = Kas soovid aega muuta? { $url }
+email-invite-subject = { $host } kutsus sind broneerima: { $event }
+email-invite-message = { $host } kutsus sind broneerima: { $event }
+email-invite-link = Klõpsa alloleval lingil, et aeg valida:
+email-invite-action = Vali aeg
+email-cancel-reason-calendar-deleted = Korraldaja kustutas kalendrisündmuse.

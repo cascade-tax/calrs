@@ -397,6 +397,20 @@
     transform: translateY(-1px);
   }
   .slot-pill:active { transform: translateY(0); box-shadow: none; }
+  /* Shown when the day's UTC offset differs from the one in the picker */
+  .slot-offset-note {
+    margin-bottom: 0.625rem;
+    padding: 0.5rem 0.625rem;
+    border-left: 3px solid var(--accent);
+    border-radius: var(--radius-sm);
+    background: var(--accent-subtle);
+    color: var(--text);
+    font-size: 0.75rem;
+    line-height: 1.4;
+  }
+  .slot-offset-note[hidden] {
+    display: none;
+  }
   .slot-empty {
     text-align: center;
     padding: 2rem 0.75rem;
@@ -843,8 +857,12 @@
       <div class="slots-info-setting">
         <label for="tz-select" class="slots-info-setting-label"><svg class="ic" aria-hidden="true"><use href="#i-globe"/></svg>{{ t("slots-tz-label") }}</label>
         <select id="tz-select">
-          {% for tz in tz_options %}
-            <option value="{{ tz.value }}" {% if tz.selected %}selected{% endif %}>{{ tz.label }}</option>
+          {% for group in tz_options %}
+            <optgroup label="{{ group.label }}">
+            {% for tz in group.options %}
+              <option value="{{ tz.value }}"{% if tz.selected %} selected{% endif %}>{{ tz.label }}</option>
+            {% endfor %}
+            </optgroup>
           {% endfor %}
         </select>
       </div>
@@ -870,6 +888,7 @@
     "nextMonth": "{% if next_month is defined and next_month %}{{ next_month }}{% endif %}",
     "defaultCalendarView": "{{ default_calendar_view | default(value='month') }}",
     "deferredLoad": {% if deferred_load is defined and deferred_load %}true{% else %}false{% endif %},
+    "lang": {{ (lang | default('en')) | tojson }},
     "i18n": {
       "selectDate": {{ t("slots-select-date") | tojson }},
       "noTimesMonth": {{ t("slots-no-times-month") | tojson }},
@@ -877,6 +896,8 @@
       "clickHighlighted": {{ t("slots-click-highlighted") | tojson }},
       "noAvailabilityParticipants": {{ t("slots-no-availability-participants") | tojson }},
       "weekMore": {{ t("slots-week-more") | tojson }},
+      "offsetNoteDay": {{ t("slots-offset-note-day") | tojson }},
+      "offsetNoteRange": {{ t("slots-offset-note-range") | tojson }},
       "weekdays": [
         {{ t("slots-weekday-sun") | tojson }},
         {{ t("slots-weekday-mon") | tojson }},
@@ -954,6 +975,7 @@
         <div class="slot-panel-header">
           <div class="slot-panel-title" id="slot-panel-title">{{ t("slots-select-date") }}</div>
         </div>
+        <div class="slot-offset-note" id="slot-offset-note" hidden></div>
         <div class="slot-list" id="slot-list">
           {% if deferred_load is defined and deferred_load %}
           <div class="slot-empty" id="deferred-loader" style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.75rem; padding: 3rem 1rem;">
@@ -1026,6 +1048,131 @@
   function formatTime(t) {
     return calrsFormat12h(t);
   }
+
+  // UTC offset note (#265). The picker labels each zone with today's
+  // offset, so on a day past a clock change the label is an hour off. These
+  // helpers find that case and say so above the times. Offsets are read in
+  // en-US, whose shortOffset reads "GMT+2" (plain "GMT" at zero), and shown
+  // as "UTC+2", "UTC+0" like the picker labels. A browser without
+  // shortOffset support shows no note. English dates use en-GB, so the
+  // change day reads "25 October".
+  var pageLang = calData.lang || 'en';
+  if (pageLang === 'en') pageLang = 'en-GB';
+  var offsetFmt = null;
+  try {
+    offsetFmt = new Intl.DateTimeFormat('en-US', { timeZone: guestTz || 'UTC', timeZoneName: 'shortOffset' });
+  } catch (e) { offsetFmt = null; }
+
+  function offsetAt(ms) {
+    var parts = offsetFmt.formatToParts(new Date(ms));
+    for (var i = 0; i < parts.length; i++) {
+      if (parts[i].type === 'timeZoneName') return normalizeOffset(parts[i].value);
+    }
+    return '';
+  }
+
+  // "GMT+2" -> "UTC+2"; "GMT", "GMT+0", "UTC" -> "UTC+0", as the server
+  // labels a zone at zero offset.
+  function normalizeOffset(label) {
+    var s = label.replace(/^(GMT|UTC)/, 'UTC');
+    return /^UTC([+-]0(:00)?)?$/.test(s) ? 'UTC+0' : s;
+  }
+
+  function offsetMinutes(label) {
+    var m = /([+-])(\d+)(?::(\d+))?/.exec(label);
+    if (!m) return 0;
+    var v = parseInt(m[2], 10) * 60 + (m[3] ? parseInt(m[3], 10) : 0);
+    return m[1] === '-' ? -v : v;
+  }
+
+  function utcNoon(ds) {
+    var p = ds.split('-');
+    return Date.UTC(parseInt(p[0], 10), parseInt(p[1], 10) - 1, parseInt(p[2], 10), 12);
+  }
+
+  // Offset in force at local noon on a YYYY-MM-DD day of the guest's zone.
+  function dayOffset(ds) {
+    var noon = utcNoon(ds);
+    return offsetAt(noon - offsetMinutes(offsetAt(noon)) * 60000);
+  }
+
+  function shiftDay(ds, n) {
+    return new Date(utcNoon(ds) + n * 86400000).toISOString().slice(0, 10);
+  }
+
+  // A clock-change day in the page language ("25 October", "25 octobre").
+  function changeLabel(c) {
+    var opts = { day: 'numeric', month: 'long', timeZone: 'UTC' };
+    if (c.change.slice(0, 4) !== todayDate.slice(0, 4)) opts.year = 'numeric';
+    try { return new Intl.DateTimeFormat(pageLang, opts).format(new Date(utcNoon(c.change))); }
+    catch (e) { return c.change; }
+  }
+
+  // For the first of `dates` whose offset differs from the one in force
+  // now, returns that day, its offset and the day the clocks changed (the
+  // first day of the run of days with that offset). Null when none differs.
+  function offsetChange(dates) {
+    if (!offsetFmt) return null;
+    var now = offsetAt(Date.now());
+    for (var i = 0; i < dates.length; i++) {
+      var ds = dates[i];
+      if (ds < todayDate) continue;
+      var off = dayOffset(ds);
+      if (off === now) continue;
+      var change = ds;
+      for (var n = 0; n < 400 && change > todayDate; n++) {
+        var prev = shiftDay(change, -1);
+        if (dayOffset(prev) !== off) break;
+        change = prev;
+      }
+      return { date: ds, offset: off, change: change };
+    }
+    return null;
+  }
+
+  // Note for one selected day (month view). The day reads like the panel
+  // title just above it ("Mon 26"). On the change day itself the times
+  // before the change keep the old offset, so that day gets the range
+  // wording ("Clocks change on 25 October: from then on...").
+  function dayOffsetNote(ds) {
+    var c = offsetChange([ds]);
+    if (c && c.change === ds) return rangeNoteText(c);
+    if (!c || !i18n.offsetNoteDay) return '';
+    var weekday = dayLabels[new Date(utcNoon(ds)).getUTCDay()];
+    return i18n.offsetNoteDay
+      .replace('%1', weekday + ' ' + parseInt(ds.slice(8), 10))
+      .replace('%2', c.offset)
+      .replace('%3', changeLabel(c));
+  }
+
+  function rangeNoteText(c) {
+    if (!i18n.offsetNoteRange) return '';
+    return i18n.offsetNoteRange.replace('%1', changeLabel(c)).replace('%2', c.offset);
+  }
+
+  // Note for a range of days (week and column views). Both pass only their
+  // days with times, so the note follows the first bookable day past a
+  // change, as the month view does for the selected day.
+  function rangeOffsetNote(dates) {
+    var c = offsetChange(dates);
+    return c ? rangeNoteText(c) : '';
+  }
+
+  function prependOffsetNote(container, text) {
+    if (!text) return;
+    var note = document.createElement('div');
+    note.className = 'slot-offset-note';
+    note.textContent = text;
+    container.insertBefore(note, container.firstChild);
+  }
+
+  function showDayOffsetNote(text) {
+    var el = document.getElementById('slot-offset-note');
+    if (!el) return;
+    el.textContent = text;
+    el.hidden = !text;
+  }
+
 
   // Timezone auto-detect + change
   var select = document.getElementById('tz-select');
@@ -1130,7 +1277,10 @@
 
     // Auto-select first available date
     var firstAvail = null;
+    // availableDates can hold days outside this month (the week grid's
+    // spill-over, or months merged by the week view): only pick one shown here.
     for (var key in availableDates) {
+      if (key.indexOf(monthYear + '-') !== 0) continue;
       if (!firstAvail || key < firstAvail) firstAvail = key;
     }
     if (firstAvail) selectDay(firstAvail);
@@ -1140,6 +1290,7 @@
   function clearSlotPanel() {
     var titleEl = document.getElementById('slot-panel-title');
     if (titleEl) titleEl.textContent = i18n.selectDate || 'Select a date';
+    showDayOffsetNote('');
     var listEl = document.getElementById('slot-list');
     if (listEl) listEl.innerHTML = emptyState('calendar-x', i18n.noTimesMonth || 'No available times this month');
   }
@@ -1163,9 +1314,11 @@
     var slots = slotData[dateStr];
 
     if (!slots || slots.length === 0) {
+      showDayOffsetNote('');
       listEl.innerHTML = emptyState('clock', i18n.noTimesDay || 'No available times this day');
       return;
     }
+    showDayOffsetNote(dayOffsetNote(dateStr));
 
     var html = '';
     for (var i = 0; i < slots.length; i++) {
@@ -1219,6 +1372,8 @@
       daysInMonth = newData.daysInMonth;
       monthYear = newData.monthYear;
       hasPrevMonth = newData.hasPrevMonth;
+      // A month change from the month or column view re-anchors the week view.
+      weekStart = null;
 
       // Keep calData in sync so all views see fresh state
       calData.monthLabel = newData.monthLabel;
@@ -1338,29 +1493,37 @@
     return href;
   }
 
+  // Sunday of the week shown in the week view (Cascade weeks start on
+  // Sunday). It is anchored once (on the week containing today, or the 1st of
+  // a future month) and then moved by whole weeks. Deriving it from monthYear
+  // plus an offset broke as soon as a week navigation loaded another month,
+  // since monthYear moved the base.
+  var weekStart = null;
+
   function getWeekDates() {
-    // Get the week containing today (or first available date if today is before this month)
-    var parts = monthYear.split('-');
-    var year = parseInt(parts[0], 10);
-    var month = parseInt(parts[1], 10);
+    if (!weekStart) {
+      var parts = monthYear.split('-');
+      var year = parseInt(parts[0], 10);
+      var month = parseInt(parts[1], 10);
 
-    // Find a good starting date: today if in this month, else first of month
-    var todayParts = todayDate.split('-');
-    var startDate;
-    if (parseInt(todayParts[0]) === year && parseInt(todayParts[1]) === month) {
-      startDate = new Date(year, month - 1, parseInt(todayParts[2]));
-    } else {
-      startDate = new Date(year, month - 1, 1);
+      // Find a good starting date: today if in this month, else first of month
+      var todayParts = todayDate.split('-');
+      var anchor;
+      if (parseInt(todayParts[0]) === year && parseInt(todayParts[1]) === month) {
+        anchor = new Date(year, month - 1, parseInt(todayParts[2]));
+      } else {
+        anchor = new Date(year, month - 1, 1);
+      }
+
+      // Go back to Sunday
+      anchor.setDate(anchor.getDate() - anchor.getDay());
+      weekStart = anchor;
     }
-
-    // Go back to Sunday
-    var dow = startDate.getDay();
-    startDate.setDate(startDate.getDate() - dow);
 
     var dates = [];
     for (var i = 0; i < 7; i++) {
-      var d = new Date(startDate);
-      d.setDate(startDate.getDate() + i);
+      var d = new Date(weekStart);
+      d.setDate(weekStart.getDate() + i);
       var ds = d.getFullYear() + '-' + (d.getMonth() < 9 ? '0' : '') + (d.getMonth() + 1) + '-' + (d.getDate() < 10 ? '0' : '') + d.getDate();
       dates.push({ date: d, dateStr: ds, day: d.getDate(), weekday: shortDays[d.getDay()] });
     }
@@ -1416,6 +1579,9 @@
     }
     html += '</div>';
     weekViewEl.innerHTML = html;
+    prependOffsetNote(weekViewEl, rangeOffsetNote(dates.filter(function(d) {
+      return (slotData[d.dateStr] || []).length > 0;
+    }).map(function(d) { return d.dateStr; })));
 
     // Wire "+N more" expand buttons
     weekViewEl.querySelectorAll('[data-week-expand]').forEach(function(btn) {
@@ -1447,9 +1613,9 @@
       prevBtn.innerHTML = ICON_PREV;
       prevBtn.addEventListener('click', function(e) {
         e.preventDefault();
-        weekOffset -= 7;
         var targetDate = new Date(dates[0].date);
         targetDate.setDate(targetDate.getDate() - 7);
+        weekStart = targetDate;
         ensureMonthLoaded(targetDate, function() { buildWeekView(); });
       });
       nav.appendChild(prevBtn);
@@ -1461,49 +1627,32 @@
       nav.appendChild(s);
     }
 
-    // Next week
-    var nextBtn = document.createElement('a');
-    nextBtn.href = '#';
-    nextBtn.innerHTML = ICON_NEXT;
-    nextBtn.addEventListener('click', function(e) {
-      e.preventDefault();
-      weekOffset += 7;
-      var targetDate = new Date(dates[6].date);
-      targetDate.setDate(targetDate.getDate() + 1);
-      ensureMonthLoaded(targetDate, function() { buildWeekView(); });
-    });
-    nav.appendChild(nextBtn);
-  }
-
-  var weekOffset = 0;
-
-  // Override getWeekDates to use offset
-  getWeekDates = function() {
-    var parts = monthYear.split('-');
-    var year = parseInt(parts[0], 10);
-    var month = parseInt(parts[1], 10);
-
-    var todayParts = todayDate.split('-');
-    var startDate;
-    if (parseInt(todayParts[0]) === year && parseInt(todayParts[1]) === month) {
-      startDate = new Date(year, month - 1, parseInt(todayParts[2]));
+    // Next week: gated like the month view's arrow, so a booking horizon
+    // stops week paging too. Allowed while the next week starts in the
+    // loaded month, or in the next month when the server says it exists.
+    var nextWeekStart = new Date(dates[6].date);
+    nextWeekStart.setDate(nextWeekStart.getDate() + 1);
+    var nextWeekMonth = nextWeekStart.getFullYear() + '-' + (nextWeekStart.getMonth() < 9 ? '0' : '') + (nextWeekStart.getMonth() + 1);
+    var canGoNext = nextWeekMonth === monthYear ||
+      (calData.hasNextMonth && calData.nextMonth === nextWeekMonth);
+    if (canGoNext) {
+      var nextBtn = document.createElement('a');
+      nextBtn.href = '#';
+      nextBtn.innerHTML = ICON_NEXT;
+      nextBtn.addEventListener('click', function(e) {
+        e.preventDefault();
+        weekStart = nextWeekStart;
+        ensureMonthLoaded(nextWeekStart, function() { buildWeekView(); });
+      });
+      nav.appendChild(nextBtn);
     } else {
-      startDate = new Date(year, month - 1, 1);
+      var n = document.createElement('span');
+      n.className = 'disabled';
+      n.setAttribute('aria-hidden', 'true');
+      n.innerHTML = ICON_NEXT;
+      nav.appendChild(n);
     }
-
-    // Go to Sunday of that week
-    var dow = startDate.getDay();
-    startDate.setDate(startDate.getDate() - dow + weekOffset);
-
-    var dates = [];
-    for (var i = 0; i < 7; i++) {
-      var d = new Date(startDate);
-      d.setDate(startDate.getDate() + i);
-      var ds = d.getFullYear() + '-' + (d.getMonth() < 9 ? '0' : '') + (d.getMonth() + 1) + '-' + (d.getDate() < 10 ? '0' : '') + d.getDate();
-      dates.push({ date: d, dateStr: ds, day: d.getDate(), weekday: shortDays[d.getDay()] });
-    }
-    return dates;
-  };
+  }
 
   // Ensure data is loaded for the month containing targetDate
   function ensureMonthLoaded(targetDate, cb) {
@@ -1596,6 +1745,8 @@
       html += '</div>';
     }
     columnViewEl.innerHTML = html;
+    // `dates` holds only the days with times, the same rule as the week view.
+    prependOffsetNote(columnViewEl, rangeOffsetNote(dates.map(function(d) { return d.dateStr; })));
   }
 
   // Update shared nav for month/column views (month-level prev/next)
@@ -1707,7 +1858,11 @@
       // Update loading spinner with appropriate message
       var loader = document.getElementById('deferred-loader');
       if (loader) {
-        var hasSlots = Object.keys(availableDates).length > 0;
+        // The payload also covers the edge weeks of neighbouring months
+        // (#228); only dates in the displayed month are highlighted.
+        var hasSlots = Object.keys(availableDates).some(function(k) {
+          return k.indexOf(monthYear + '-') === 0;
+        });
         if (hasSlots) {
           loader.innerHTML = emptyInner('calendar', i18n.clickHighlighted || 'Click a highlighted date to see available times');
         } else {

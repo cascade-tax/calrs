@@ -605,8 +605,12 @@
     <div class="form-group" style="margin-bottom: 1rem;">
       <label for="event_type_timezone">Timezone</label>
       <select id="event_type_timezone" name="timezone">
-        {% for tz in tz_options %}
-          <option value="{{ tz.value }}" {% if tz.value == form_timezone %}selected{% endif %}>{{ tz.label }}</option>
+        {% for group in tz_options %}
+          <optgroup label="{{ group.label }}">
+          {% for tz in group.options %}
+            <option value="{{ tz.value }}"{% if tz.selected %} selected{% endif %}>{{ tz.label }}</option>
+          {% endfor %}
+          </optgroup>
         {% endfor %}
       </select>
       <span class="field-hint">The hours below are interpreted in this timezone. For team event types, pick the team's working timezone (not necessarily the creator's).</span>
@@ -753,6 +757,25 @@
         <div class="check-option-desc">Bookings will be pending until you approve them from the dashboard.</div>
       </div>
     </label>
+
+    <div id="pending-options" style="margin-top: 0.75rem;{% if not form_requires_confirmation %} display: none;{% endif %}">
+      <label class="check-option">
+        <input type="checkbox" name="pending_blocks_slot" {% if form_pending.blocks_slot %}checked{% endif %}>
+        <div>
+          <strong>{{ t("etf-pending-blocks-slot") }}</strong>
+          <div class="check-option-desc">{{ t("etf-pending-blocks-slot-help") }}</div>
+        </div>
+      </label>
+      <div class="form-group" style="margin-top: 0.75rem; margin-bottom: 0;">
+        <label for="pending_expiry_hours">{{ t("etf-pending-expiry") }}</label>
+        <select id="pending_expiry_hours" name="pending_expiry_hours">
+          {% for o in form_pending.options %}
+          <option value="{{ o.value }}" {% if o.value == form_pending.selected %}selected{% endif %}>{% if o.hours is none %}{{ t("etf-pending-expiry-never") }}{% else %}{{ t("etf-pending-expiry-hours", hours=o.hours) }}{% endif %}</option>
+          {% endfor %}
+        </select>
+        <span class="field-hint">{{ t("etf-pending-expiry-help") }}</span>
+      </div>
+    </div>
 
     {% if can_enable_sms is defined and can_enable_sms %}
     <div class="form-group" style="margin-top: 0.75rem;">
@@ -1400,6 +1423,14 @@ function sub(tpl, a, b) {
     on(guestsSel, 'change', updateOptionsHint);
     on(viewSel, 'change', updateOptionsHint);
     updateOptionsHint();
+
+    // Pending-request options only apply when bookings need approval.
+    var pendingOpts = $('pending-options');
+    function updatePendingOptions() {
+      if (pendingOpts) pendingOpts.style.display = (confirmCb && confirmCb.checked) ? '' : 'none';
+    }
+    on(confirmCb, 'change', updatePendingOptions);
+    updatePendingOptions();
 
     // --- Access & notifications ---
     var visSel = $('visibility');

@@ -238,6 +238,12 @@ impl CalendarProvider for PublishedIcsProvider {
     async fn delete_event(&self, _calendar_id: &str, _uid: &str) -> Result<()> {
         bail!("Published calendar feeds are read-only")
     }
+
+    /// Bookings are never written to a published feed, so there is nothing to
+    /// read back: report that the answer is unknowable rather than "absent".
+    async fn event_exists(&self, _calendar_id: &str, _uid: &str) -> Result<bool> {
+        bail!("Published calendar feeds are read-only")
+    }
 }
 
 #[cfg(test)]

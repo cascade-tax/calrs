@@ -260,6 +260,12 @@ pub async fn create_item_from_ics(
 
 /// Find calendar items that match a specific iCalendar UID. EWS exposes
 /// `calendar:UID` as a searchable field; the result is usually 0 or 1 item.
+///
+/// Some Exchange versions refuse `calendar:UID` inside a `Restriction` with
+/// `ErrorUnsupportedPathForQuery` (#179). On that fault, and only on the
+/// query-shape faults listed in [`is_unsupported_restriction_fault`], the
+/// lookup falls back to [`find_items_by_uid_in_calendar_view`]. Auth and
+/// transport errors, and any other fault, propagate unchanged.
 pub async fn find_items_by_uid(
     endpoint: &str,
     username: &str,
@@ -288,9 +294,163 @@ pub async fn find_items_by_uid(
         uid = escape(uid),
         folder = escape(folder_id),
     );
-    let resp = post_soap(endpoint, username, password, &body, false).await?;
+    let resp = match post_soap(endpoint, username, password, &body, false).await {
+        Ok(resp) => resp,
+        Err(e) if is_unsupported_restriction_fault(&e.to_string()) => {
+            tracing::info!(
+                uid = %uid,
+                error = %e,
+                "EWS refused the calendar:UID restriction, scanning a CalendarView instead"
+            );
+            return find_items_by_uid_in_calendar_view(
+                endpoint, username, password, folder_id, uid,
+            )
+            .await;
+        }
+        Err(e) => return Err(e),
+    };
     let parsed = parse_calendar_items_response(&resp)?;
     Ok(parsed.items.into_iter().map(|i| i.item_id).collect())
+}
+
+/// SOAP fault codes that mean "this server cannot run the restricted
+/// FindItem", as opposed to "this request is not allowed" or "this folder is
+/// gone". Only these trigger the CalendarView fallback.
+const UNSUPPORTED_RESTRICTION_FAULTS: &[&str] = &[
+    "ErrorUnsupportedPathForQuery",
+    "ErrorUnsupportedQueryFilter",
+    "ErrorInvalidRestriction",
+];
+
+/// Whether an error raised by [`post_soap`] is a SOAP fault whose code says
+/// the restriction itself is unsupported. `post_soap` formats faults as
+/// `EWS SOAP fault: <Code>: <MessageText>`; 401s and transport failures carry
+/// a different message and never match.
+fn is_unsupported_restriction_fault(message: &str) -> bool {
+    let Some(fault) = message.strip_prefix(super::soap::SOAP_FAULT_PREFIX) else {
+        return false;
+    };
+    let code = fault.split(':').next().unwrap_or("").trim();
+    UNSUPPORTED_RESTRICTION_FAULTS.contains(&code)
+}
+
+/// How far back and forward the fallback scan looks. The booking horizon is
+/// capped at 365 days, so a calrs-written item lives inside this window.
+const UID_SCAN_PAST_DAYS: i64 = 30;
+const UID_SCAN_FUTURE_DAYS: i64 = 400;
+/// Width of one CalendarView request. A CalendarView returns at most 1000
+/// entries, so the window is split to keep each request well under that on a
+/// busy calendar.
+const UID_SCAN_CHUNK_DAYS: i64 = 60;
+/// Exchange truncates a CalendarView at this many entries, silently.
+const CALENDAR_VIEW_CAP: usize = 1000;
+/// A window at the cap is halved and both halves scanned again, down to this
+/// width. A window this narrow still at the cap is reported as an error, since
+/// an empty result would read as "the event is gone".
+const UID_SCAN_MIN_WINDOW_HOURS: i64 = 24;
+
+/// Fallback for [`find_items_by_uid`]: walk the folder with CalendarView
+/// requests that carry `calendar:UID`, and filter by UID in memory.
+async fn find_items_by_uid_in_calendar_view(
+    endpoint: &str,
+    username: &str,
+    password: &str,
+    folder_id: &str,
+    uid: &str,
+) -> Result<Vec<String>> {
+    let now = chrono::Utc::now();
+    let start = now - chrono::Duration::days(UID_SCAN_PAST_DAYS);
+    let end = now + chrono::Duration::days(UID_SCAN_FUTURE_DAYS);
+    scan_windows_for_uid(
+        start,
+        end,
+        uid,
+        CALENDAR_VIEW_CAP,
+        chrono::Duration::hours(UID_SCAN_MIN_WINDOW_HOURS),
+        |s, e| async move {
+            list_items_in_window(
+                endpoint,
+                username,
+                password,
+                folder_id,
+                &s.format("%Y-%m-%dT%H:%M:%SZ").to_string(),
+                &e.format("%Y-%m-%dT%H:%M:%SZ").to_string(),
+            )
+            .await
+        },
+    )
+    .await
+}
+
+/// Scan `[start, end)` in [`UID_SCAN_CHUNK_DAYS`] chunks, oldest first, and
+/// stop at the first window holding `uid`, since calrs writes each booking as
+/// a single item. A window that comes back with `cap` entries or more may have
+/// been truncated by the server, so it is split in half and both halves are
+/// scanned (oldest first) instead, recursively. A window no wider than
+/// `min_window` that is still at the cap is an error: returning an empty
+/// result there would let a caller conclude the item does not exist.
+async fn scan_windows_for_uid<F, Fut>(
+    start: chrono::DateTime<chrono::Utc>,
+    end: chrono::DateTime<chrono::Utc>,
+    uid: &str,
+    cap: usize,
+    min_window: chrono::Duration,
+    mut fetch: F,
+) -> Result<Vec<String>>
+where
+    F: FnMut(chrono::DateTime<chrono::Utc>, chrono::DateTime<chrono::Utc>) -> Fut,
+    Fut: std::future::Future<Output = Result<Vec<EwsCalendarItem>>>,
+{
+    // Windows still to scan, the next one on top of the stack.
+    let mut chunks = Vec::new();
+    let mut chunk_start = start;
+    while chunk_start < end {
+        let chunk_end = (chunk_start + chrono::Duration::days(UID_SCAN_CHUNK_DAYS)).min(end);
+        chunks.push((chunk_start, chunk_end));
+        chunk_start = chunk_end;
+    }
+    chunks.reverse();
+
+    while let Some((s, e)) = chunks.pop() {
+        let items = fetch(s, e).await?;
+        // A match is a match even in a truncated window.
+        let found = item_ids_with_uid(&items, uid);
+        if !found.is_empty() {
+            return Ok(found);
+        }
+        if items.len() >= cap {
+            if e - s <= min_window {
+                bail!(
+                    "EWS CalendarView from {s} to {e} returned {} entries, the server cap; \
+                     the UID scan cannot tell whether the item exists",
+                    items.len()
+                );
+            }
+            let mid = s + (e - s) / 2;
+            tracing::debug!(%s, %e, "EWS CalendarView hit its entry cap, splitting the window");
+            chunks.push((mid, e));
+            chunks.push((s, mid));
+        }
+    }
+    Ok(Vec::new())
+}
+
+/// Item ids whose `calendar:UID` equals `uid`, deduplicated in order. A
+/// CalendarView lists each occurrence of a recurring series separately, and
+/// overlapping requests can return the same single item twice.
+fn item_ids_with_uid(items: &[EwsCalendarItem], uid: &str) -> Vec<String> {
+    let escaped = escape(uid);
+    let mut ids: Vec<String> = Vec::new();
+    for item in items {
+        let matches = item
+            .uid
+            .as_deref()
+            .is_some_and(|u| u == uid || u == escaped);
+        if matches && !ids.contains(&item.item_id) {
+            ids.push(item.item_id.clone());
+        }
+    }
+    ids
 }
 
 /// Permanently delete an item by id. We use `HardDelete` because the
@@ -379,4 +539,209 @@ pub async fn sync_folder_items(
          returning partial result, next sync will resume from cursor"
     );
     Ok(all)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ews::soap::{extract_soap_fault, SOAP_FAULT_PREFIX};
+
+    /// The response from #179, trimmed to the parts `post_soap` reads.
+    const UNSUPPORTED_PATH_RESPONSE: &str = r#"<?xml version="1.0" encoding="utf-8"?>
+<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
+  <s:Body>
+    <m:FindItemResponse xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages">
+      <m:ResponseMessages>
+        <m:FindItemResponseMessage ResponseClass="Error">
+          <m:MessageText>Die Eigenschaft darf nicht mit diesem Einschränkungstyp verwendet werden.</m:MessageText>
+          <m:ResponseCode>ErrorUnsupportedPathForQuery</m:ResponseCode>
+          <m:DescriptiveLinkKey>0</m:DescriptiveLinkKey>
+        </m:FindItemResponseMessage>
+      </m:ResponseMessages>
+    </m:FindItemResponse>
+  </s:Body>
+</s:Envelope>"#;
+
+    #[test]
+    fn unsupported_path_fault_triggers_the_fallback() {
+        let fault = extract_soap_fault(UNSUPPORTED_PATH_RESPONSE).expect("a fault");
+        let message = format!("{SOAP_FAULT_PREFIX}{fault}");
+        assert!(is_unsupported_restriction_fault(&message), "{message}");
+    }
+
+    #[test]
+    fn other_errors_do_not_trigger_the_fallback() {
+        for message in [
+            "EWS authentication failed (401). Check username/password.",
+            "EWS request to https://ex.example.com/EWS/Exchange.asmx failed",
+            "EWS SOAP fault: ErrorAccessDenied: Access is denied.",
+            "EWS SOAP fault: ErrorFolderNotFound",
+            "ErrorUnsupportedPathForQuery without the fault prefix",
+        ] {
+            assert!(!is_unsupported_restriction_fault(message), "{message}");
+        }
+        assert!(is_unsupported_restriction_fault(
+            "EWS SOAP fault: ErrorInvalidRestriction"
+        ));
+    }
+
+    fn item(id: &str, uid: Option<&str>) -> EwsCalendarItem {
+        EwsCalendarItem {
+            item_id: id.to_string(),
+            change_key: None,
+            uid: uid.map(str::to_string),
+            subject: None,
+            start: None,
+            end: None,
+            location: None,
+            is_all_day: false,
+            is_cancelled: false,
+            free_busy_status: None,
+            has_recurrence: false,
+        }
+    }
+
+    #[test]
+    fn calendar_view_items_are_filtered_by_uid_and_deduplicated() {
+        let items = vec![
+            item("A", Some("other@calrs")),
+            item("B", Some("73c8e55c@calrs")),
+            item("C", None),
+            item("B", Some("73c8e55c@calrs")),
+            item("D", Some("73c8e55c@calrs")),
+        ];
+        assert_eq!(item_ids_with_uid(&items, "73c8e55c@calrs"), ["B", "D"]);
+        assert!(item_ids_with_uid(&items, "missing@calrs").is_empty());
+    }
+
+    /// A fake CalendarView over items placed at fixed instants: returns the
+    /// items inside `[s, e)`, truncated to `cap` like Exchange does, and
+    /// records every window requested.
+    fn fake_view(
+        items: Vec<(chrono::DateTime<chrono::Utc>, EwsCalendarItem)>,
+        cap: usize,
+        calls: &std::cell::RefCell<
+            Vec<(chrono::DateTime<chrono::Utc>, chrono::DateTime<chrono::Utc>)>,
+        >,
+        s: chrono::DateTime<chrono::Utc>,
+        e: chrono::DateTime<chrono::Utc>,
+    ) -> Result<Vec<EwsCalendarItem>> {
+        calls.borrow_mut().push((s, e));
+        Ok(items
+            .into_iter()
+            .filter(|(at, _)| *at >= s && *at < e)
+            .map(|(_, i)| i)
+            .take(cap)
+            .collect())
+    }
+
+    #[tokio::test]
+    async fn uid_scan_splits_a_truncated_window_until_it_finds_the_item() {
+        use chrono::TimeZone;
+        let start = chrono::Utc.with_ymd_and_hms(2026, 1, 1, 0, 0, 0).unwrap();
+        let end = start + chrono::Duration::days(60);
+        // Twelve busy items, six in each half, push the chunk past the cap
+        // of 10, so the target near its end is truncated away. Each half on
+        // its own stays under the cap.
+        let mut items: Vec<_> = (0..12)
+            .map(|n| {
+                let at = start + chrono::Duration::days(n % 6 + 31 * (n / 6));
+                (at, item(&format!("busy{n}"), Some("other@calrs")))
+            })
+            .collect();
+        items.push((
+            start + chrono::Duration::days(50),
+            item("TARGET", Some("wanted@calrs")),
+        ));
+        let calls = std::cell::RefCell::new(Vec::new());
+        let found = scan_windows_for_uid(
+            start,
+            end,
+            "wanted@calrs",
+            10,
+            chrono::Duration::days(1),
+            |s, e| {
+                let r = fake_view(items.clone(), 10, &calls, s, e);
+                async move { r }
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(found, ["TARGET"]);
+        let calls = calls.into_inner();
+        assert_eq!(calls[0], (start, end), "the whole chunk is tried first");
+        assert_eq!(
+            calls[1],
+            (start, start + chrono::Duration::days(30)),
+            "then its older half"
+        );
+        assert_eq!(calls[2], (start + chrono::Duration::days(30), end));
+    }
+
+    #[tokio::test]
+    async fn uid_scan_errors_instead_of_reporting_not_found_when_still_truncated() {
+        use chrono::TimeZone;
+        let start = chrono::Utc.with_ymd_and_hms(2026, 1, 1, 0, 0, 0).unwrap();
+        let end = start + chrono::Duration::days(60);
+        // Ten items inside the same minute: no split can get below the cap.
+        let items: Vec<_> = (0..10)
+            .map(|n| {
+                let at = start + chrono::Duration::seconds(n);
+                (at, item(&format!("busy{n}"), Some("other@calrs")))
+            })
+            .collect();
+        let calls = std::cell::RefCell::new(Vec::new());
+        let result = scan_windows_for_uid(
+            start,
+            end,
+            "wanted@calrs",
+            10,
+            chrono::Duration::days(1),
+            |s, e| {
+                let r = fake_view(items.clone(), 10, &calls, s, e);
+                async move { r }
+            },
+        )
+        .await;
+        let err = result.expect_err("a truncated minimum window must not read as not found");
+        assert!(err.to_string().contains("cap"), "{err}");
+        let last = *calls.borrow().last().unwrap();
+        assert!(last.1 - last.0 <= chrono::Duration::days(1));
+    }
+
+    #[tokio::test]
+    async fn uid_scan_returns_empty_when_no_window_is_truncated() {
+        use chrono::TimeZone;
+        let start = chrono::Utc.with_ymd_and_hms(2026, 1, 1, 0, 0, 0).unwrap();
+        let end = start + chrono::Duration::days(130);
+        let items = vec![(start, item("A", Some("other@calrs")))];
+        let calls = std::cell::RefCell::new(Vec::new());
+        let found = scan_windows_for_uid(
+            start,
+            end,
+            "wanted@calrs",
+            10,
+            chrono::Duration::days(1),
+            |s, e| {
+                let r = fake_view(items.clone(), 10, &calls, s, e);
+                async move { r }
+            },
+        )
+        .await
+        .unwrap();
+        assert!(found.is_empty());
+        // 130 days in 60-day chunks, oldest first, no splitting.
+        assert_eq!(calls.borrow().len(), 3);
+        assert_eq!(calls.borrow()[2].1, end);
+    }
+
+    #[test]
+    fn calendar_view_response_is_filtered_through_the_shared_parser() {
+        let xml = r#"<m:FindItemResponse><m:ResponseMessages><m:FindItemResponseMessage ResponseClass="Success"><m:ResponseCode>NoError</m:ResponseCode><m:RootFolder TotalItemsInView="2" IncludesLastItemInRange="true"><t:Items>
+<t:CalendarItem><t:ItemId Id="AAA" ChangeKey="x"/><t:UID>keep@calrs</t:UID></t:CalendarItem>
+<t:CalendarItem><t:ItemId Id="BBB" ChangeKey="y"/><t:UID>drop@calrs</t:UID></t:CalendarItem>
+</t:Items></m:RootFolder></m:FindItemResponseMessage></m:ResponseMessages></m:FindItemResponse>"#;
+        let page = parse_calendar_items_response(xml).unwrap();
+        assert_eq!(item_ids_with_uid(&page.items, "keep@calrs"), ["AAA"]);
+    }
 }

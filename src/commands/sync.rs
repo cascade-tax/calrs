@@ -51,6 +51,7 @@ pub async fn run(pool: &SqlitePool, key: &[u8; 32], full: bool) -> Result<()> {
         return Ok(());
     }
 
+    let mut failed: Vec<(String, String)> = Vec::new();
     for (
         source_id,
         name,
@@ -75,67 +76,159 @@ pub async fn run(pool: &SqlitePool, key: &[u8; 32], full: bool) -> Result<()> {
             .await;
         }
 
-        // Non-CalDAV sources use the provider abstraction. CalDAV retains its
-        // protocol-specific ctag and sync-token optimisations below.
-        if provider_type != kinds::CALDAV {
-            let provider = match crate::providers::build_provider_for_source(
-                pool,
-                key,
-                source_id,
-                provider_type,
-                url,
-                username,
-                password_enc.as_deref(),
-                auth_type,
-                access_token_enc.as_deref(),
-                token_expires_at.as_deref(),
-            )
-            .await
-            {
-                Ok(p) => p,
-                Err(e) => {
-                    println!("  {} Provider build failed: {}", "✗".red(), e);
-                    continue;
-                }
-            };
-            if let Err(e) = sync_provider_source(pool, key, provider.as_ref(), source_id).await {
-                println!("  {} Sync failed: {}", "✗".red(), e);
-            }
-            continue;
-        }
-
-        let client = crate::oauth2_caldav::build_client_for_source(
+        if let Err(e) = sync_one_source(
             pool,
             key,
             source_id,
             url,
-            auth_type,
             username,
             password_enc.as_deref(),
+            auth_type,
             access_token_enc.as_deref(),
             token_expires_at.as_deref(),
+            provider_type,
         )
-        .await?;
-
-        if let Err(e) = sync_source(pool, key, &client, source_id).await {
-            println!("  {} Sync failed: {}", "✗".red(), e);
-            continue;
+        .await
+        {
+            println!("  {} Sync failed: {:#}", "✗".red(), e);
+            failed.push((name.clone(), format!("{e:#}")));
         }
     }
 
-    println!("{} Sync complete.", "✓".green());
-    Ok(())
+    // A failing source may have queued an email to its owner.
+    crate::web::drain_emails(std::time::Duration::from_secs(30)).await;
+
+    if failed.is_empty() {
+        println!("{} Sync complete.", "✓".green());
+        return Ok(());
+    }
+    // #162: this used to print "Sync complete." after a failure and exit 0,
+    // so a cron job or a monitoring check could not tell anything was wrong.
+    println!(
+        "{} Sync failed for {} of {} source(s):",
+        "✗".red(),
+        failed.len(),
+        sources.len()
+    );
+    for (name, error) in &failed {
+        println!("  {} {}: {}", "✗".red(), name, error);
+    }
+    println!(
+        "  {}",
+        "Availability keeps being served from the last successful sync of these sources.".dimmed()
+    );
+    anyhow::bail!(
+        "{} of {} source(s) failed to sync",
+        failed.len(),
+        sources.len()
+    )
+}
+
+/// Build the right client for a source row and sync it, recording the
+/// outcome on the source (see [`crate::commands::sync_health`]), including
+/// failures that happen before any request is sent. EWS sources go through
+/// the provider trait (no OAuth2, no CalDAV-only sync-collection); CalDAV
+/// sources keep the CalDAV flow.
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn sync_one_source(
+    pool: &SqlitePool,
+    key: &[u8; 32],
+    source_id: &str,
+    url: &str,
+    username: &str,
+    password_enc: Option<&str>,
+    auth_type: &str,
+    access_token_enc: Option<&str>,
+    token_expires_at: Option<&str>,
+    provider_type: &str,
+) -> Result<()> {
+    // Non-CalDAV sources (EWS, Microsoft Graph, published ICS) use the
+    // provider abstraction. CalDAV retains its protocol-specific ctag and
+    // sync-token optimisations below.
+    if provider_type != kinds::CALDAV {
+        let provider = match crate::providers::build_provider_for_source(
+            pool,
+            key,
+            source_id,
+            provider_type,
+            url,
+            username,
+            password_enc,
+            auth_type,
+            access_token_enc,
+            token_expires_at,
+        )
+        .await
+        {
+            Ok(p) => p,
+            Err(e) => {
+                crate::commands::sync_health::record_sync_failure(pool, key, source_id, &e).await;
+                return Err(e);
+            }
+        };
+        return sync_provider_source(pool, key, provider.as_ref(), source_id).await;
+    }
+
+    let client = match crate::oauth2_caldav::build_client_for_source(
+        pool,
+        key,
+        source_id,
+        url,
+        auth_type,
+        username,
+        password_enc,
+        access_token_enc,
+        token_expires_at,
+    )
+    .await
+    {
+        Ok(c) => c,
+        Err(e) => {
+            crate::commands::sync_health::record_sync_failure(pool, key, source_id, &e).await;
+            return Err(e);
+        }
+    };
+    sync_source(pool, key, &client, source_id).await
 }
 
 /// Sync a single CalDAV source: discover calendars and fetch events.
 /// Uses ctag comparison to skip unchanged calendars.
 /// Uses sync-token (RFC 6578) for delta sync when available, with fallback to full fetch.
+///
+/// The outcome is recorded on the source. A calendar that fails to fetch
+/// fails the whole sync (after the others are synced), so the error is
+/// visible instead of a silently stale calendar.
 pub async fn sync_source(
     pool: &SqlitePool,
     key: &[u8; 32],
     client: &CaldavClient,
     source_id: &str,
 ) -> Result<()> {
+    let result = sync_caldav_calendars(pool, key, client, source_id).await;
+    crate::commands::sync_health::record_sync_outcome(pool, key, source_id, &result).await;
+    result
+}
+
+/// Turn the calendars that failed during a sync into the sync's error.
+fn calendar_failures_result(failures: &[String]) -> Result<()> {
+    if failures.is_empty() {
+        Ok(())
+    } else {
+        anyhow::bail!(
+            "{} calendar(s) failed: {}",
+            failures.len(),
+            failures.join("; ")
+        )
+    }
+}
+
+async fn sync_caldav_calendars(
+    pool: &SqlitePool,
+    key: &[u8; 32],
+    client: &CaldavClient,
+    source_id: &str,
+) -> Result<()> {
+    let mut calendar_failures: Vec<String> = Vec::new();
     let principal = client.discover_principal().await?;
     let calendar_home = client.discover_calendar_home(&principal).await?;
     let calendars = client.list_calendars(&calendar_home).await?;
@@ -283,6 +376,7 @@ pub async fn sync_source(
                 }
                 Err(e) => {
                     println!("  {} {} — failed: {}", "✗".red(), cal_label, e);
+                    calendar_failures.push(format!("{cal_label}: {e:#}"));
                 }
             }
         }
@@ -308,12 +402,16 @@ pub async fn sync_source(
 
     tracing::info!(source_id = %source_id, "CalDAV sync completed");
 
-    Ok(())
+    calendar_failures_result(&calendar_failures)
 }
 
 /// Sync calendars for a user if any of their sources are stale (last_synced > STALE_SECS ago).
 /// Uses sync-token delta when available, with fallback to full fetch.
-/// Silently skips on errors (best-effort for guest-facing pages).
+/// Errors do not reach the caller (best-effort for guest-facing pages): slots
+/// are served from the last good sync, and the failure is recorded on the
+/// source. A source that failed within the last `STALE_SECS` is not retried
+/// on demand, so a dead server costs a guest page one timeout every five
+/// minutes rather than one per page load.
 pub async fn sync_if_stale(pool: &SqlitePool, key: &[u8; 32], user_id: &str) {
     let cutoff = Utc::now() - chrono::Duration::seconds(STALE_SECS);
     // Must match SQLite datetime('now') format: "YYYY-MM-DD HH:MM:SS" (space, not T)
@@ -324,7 +422,8 @@ pub async fn sync_if_stale(pool: &SqlitePool, key: &[u8; 32], user_id: &str) {
          FROM caldav_sources cs
          JOIN accounts a ON a.id = cs.account_id
          WHERE a.user_id = ? AND cs.enabled = 1
-           AND (cs.last_synced IS NULL OR cs.last_synced < ?)",
+           AND (cs.last_synced IS NULL OR cs.last_synced < ?2)
+           AND (cs.last_sync_error_at IS NULL OR cs.last_sync_error_at < ?2)",
     )
     .bind(user_id)
     .bind(&cutoff_str)
@@ -355,64 +454,41 @@ pub async fn sync_if_stale(pool: &SqlitePool, key: &[u8; 32], user_id: &str) {
         let lock = source_lock(source_id).await;
         let _guard = lock.lock().await;
 
-        let last_synced: Option<String> = sqlx::query_scalar::<_, Option<String>>(
-            "SELECT last_synced FROM caldav_sources WHERE id = ?",
+        // MAX() of the two: whichever of the last success and the last
+        // failure is more recent says whether the source was just tried.
+        let last_attempt: Option<String> = sqlx::query_scalar::<_, Option<String>>(
+            "SELECT MAX(COALESCE(last_synced, ''), COALESCE(last_sync_error_at, '')) \
+             FROM caldav_sources WHERE id = ?",
         )
         .bind(source_id)
         .fetch_optional(pool)
         .await
         .unwrap_or(None)
         .flatten();
-        if last_synced
+        if last_attempt
             .as_deref()
             .is_some_and(|ls| ls >= cutoff_str.as_str())
         {
             tracing::debug!(
                 source_id = %source_id,
-                "skipping on-demand sync, another task already refreshed this source"
+                "skipping on-demand sync, another task already tried this source"
             );
             continue;
         }
 
-        if provider_type != kinds::CALDAV {
-            let provider = match crate::providers::build_provider_for_source(
-                pool,
-                key,
-                source_id,
-                provider_type,
-                url,
-                username,
-                password_enc.as_deref(),
-                auth_type,
-                access_token_enc.as_deref(),
-                token_expires_at.as_deref(),
-            )
-            .await
-            {
-                Ok(p) => p,
-                Err(_) => continue,
-            };
-            let _ = sync_provider_source(pool, key, provider.as_ref(), source_id).await;
-            continue;
-        }
-
-        let client = match crate::oauth2_caldav::build_client_for_source(
+        let _ = sync_one_source(
             pool,
             key,
             source_id,
             url,
-            auth_type,
             username,
             password_enc.as_deref(),
+            auth_type,
             access_token_enc.as_deref(),
             token_expires_at.as_deref(),
+            provider_type,
         )
-        .await
-        {
-            Ok(c) => c,
-            Err(_) => continue,
-        };
-        let _ = sync_source(pool, key, &client, source_id).await;
+        .await;
     }
 }
 
@@ -459,55 +535,48 @@ pub async fn sync_source_by_id(pool: &SqlitePool, key: &[u8; 32], source_id: &st
                 .await;
     }
 
-    if provider_type != kinds::CALDAV {
-        let provider = match crate::providers::build_provider_for_source(
-            pool,
-            key,
-            source_id,
-            &provider_type,
-            &url,
-            &username,
-            password_enc.as_deref(),
-            &auth_type,
-            access_token_enc.as_deref(),
-            token_expires_at.as_deref(),
-        )
-        .await
-        {
-            Ok(p) => p,
-            Err(_) => return,
-        };
-        let _ = sync_provider_source(pool, key, provider.as_ref(), source_id).await;
-        return;
-    }
-
-    let client = match crate::oauth2_caldav::build_client_for_source(
+    let _ = sync_one_source(
         pool,
         key,
         source_id,
         &url,
-        &auth_type,
         &username,
         password_enc.as_deref(),
+        &auth_type,
         access_token_enc.as_deref(),
         token_expires_at.as_deref(),
+        &provider_type,
     )
-    .await
-    {
-        Ok(c) => c,
-        Err(_) => return,
-    };
-    let _ = sync_source(pool, key, &client, source_id).await;
+    .await;
 }
 
-/// Generic non-CalDAV sync path. Providers expose a bounded calendar view,
-/// which is reconciled against the local cache by UID and recurrence ID.
+/// Generic non-CalDAV sync path (EWS, Microsoft Graph, published ICS) using
+/// the [`crate::providers::CalendarProvider`] trait. CalDAV sources keep going
+/// through [`sync_source`], which retains CalDAV-only optimisations (ctag,
+/// RFC 6578 sync-token, time-range queries, hardened orphan reconciliation).
+/// Providers expose a bounded calendar view, reconciled against the local
+/// cache by UID and recurrence ID; providers with a native delta cursor use it
+/// between bounded snapshots.
+///
+/// The outcome is recorded on the source, as for [`sync_source`].
 pub async fn sync_provider_source(
     pool: &SqlitePool,
     key: &[u8; 32],
     provider: &dyn crate::providers::CalendarProvider,
     source_id: &str,
 ) -> Result<()> {
+    let result = sync_provider_calendars(pool, key, provider, source_id).await;
+    crate::commands::sync_health::record_sync_outcome(pool, key, source_id, &result).await;
+    result
+}
+
+async fn sync_provider_calendars(
+    pool: &SqlitePool,
+    key: &[u8; 32],
+    provider: &dyn crate::providers::CalendarProvider,
+    source_id: &str,
+) -> Result<()> {
+    let mut calendar_failures: Vec<String> = Vec::new();
     let calendars = provider.list_calendars().await?;
     let mut did_full_sync = false;
 
@@ -624,6 +693,7 @@ pub async fn sync_provider_source(
             }
             Err(e) => {
                 println!("  {} {} — failed: {}", "✗".red(), cal_label, e);
+                calendar_failures.push(format!("{cal_label}: {e:#}"));
             }
         }
     }
@@ -640,7 +710,7 @@ pub async fn sync_provider_source(
         .execute(pool)
         .await?;
     tracing::info!(source_id = %source_id, "calendar provider sync completed");
-    Ok(())
+    calendar_failures_result(&calendar_failures)
 }
 
 /// Provider-trait equivalent of [`upsert_calendar`]. Opaque remote calendar
@@ -698,18 +768,20 @@ async fn upsert_provider_events(
     for raw in raw_events {
         let vevent_blocks = split_vevents(&raw.ical);
         for vevent in &vevent_blocks {
+            // Unfolded once for the field reads below (#267).
+            let fields = crate::utils::unfold_ical(vevent);
             let uid =
-                extract_vevent_field(vevent, "UID").unwrap_or_else(|| Uuid::new_v4().to_string());
-            let summary = extract_vevent_field(vevent, "SUMMARY");
-            let start_at = extract_vevent_field(vevent, "DTSTART").unwrap_or_default();
-            let end_at = extract_vevent_field(vevent, "DTEND").unwrap_or_default();
-            let location = extract_vevent_field(vevent, "LOCATION");
-            let description = extract_vevent_field(vevent, "DESCRIPTION");
-            let status = extract_vevent_field(vevent, "STATUS");
-            let rrule = extract_vevent_field(vevent, "RRULE");
-            let recurrence_id = extract_vevent_field(vevent, "RECURRENCE-ID");
-            let transp = extract_vevent_field(vevent, "TRANSP");
-            let timezone = extract_vevent_tzid(vevent, "DTSTART");
+                extract_vevent_field(&fields, "UID").unwrap_or_else(|| Uuid::new_v4().to_string());
+            let summary = extract_vevent_field(&fields, "SUMMARY");
+            let start_at = extract_vevent_field(&fields, "DTSTART").unwrap_or_default();
+            let end_at = extract_vevent_field(&fields, "DTEND").unwrap_or_default();
+            let location = extract_vevent_field(&fields, "LOCATION");
+            let description = extract_vevent_field(&fields, "DESCRIPTION");
+            let status = extract_vevent_field(&fields, "STATUS");
+            let rrule = extract_vevent_field(&fields, "RRULE");
+            let recurrence_id = extract_vevent_field(&fields, "RECURRENCE-ID");
+            let transp = extract_vevent_field(&fields, "TRANSP");
+            let timezone = extract_vevent_tzid(&fields, "DTSTART");
 
             let event_id = Uuid::new_v4().to_string();
             let _ = sqlx::query(
@@ -853,9 +925,11 @@ async fn remove_orphaned_provider_events(
 /// Simplified booking-cancel for EWS orphan reconciliation: looks up a
 /// confirmed booking by UID and marks it cancelled. Skips the
 /// `cancel_orphaned_booking` HTTP confirm step (CalDAV-specific).
+/// It sends no CANCEL, but bumps the SEQUENCE like every cancellation, so
+/// none that a later path sends can fall behind a copy.
 async fn cancel_orphaned_booking_simple(pool: &SqlitePool, _key: &[u8; 32], uid: &str) {
     let _ = sqlx::query(
-        "UPDATE bookings SET status = 'cancelled' WHERE uid = ? AND status = 'confirmed'",
+        "UPDATE bookings SET status = 'cancelled', ics_sequence = ics_sequence + 1 WHERE uid = ? AND status = 'confirmed'",
     )
     .bind(uid)
     .execute(pool)
@@ -913,18 +987,20 @@ async fn upsert_raw_events(pool: &SqlitePool, cal_id: &str, raw_events: &[RawEve
     for raw in raw_events {
         let vevent_blocks = split_vevents(&raw.ical_data);
         for vevent in &vevent_blocks {
+            // Unfolded once for the field reads below (#267).
+            let fields = crate::utils::unfold_ical(vevent);
             let uid =
-                extract_vevent_field(vevent, "UID").unwrap_or_else(|| Uuid::new_v4().to_string());
-            let summary = extract_vevent_field(vevent, "SUMMARY");
-            let start_at = extract_vevent_field(vevent, "DTSTART").unwrap_or_default();
-            let end_at = extract_vevent_field(vevent, "DTEND").unwrap_or_default();
-            let location = extract_vevent_field(vevent, "LOCATION");
-            let description = extract_vevent_field(vevent, "DESCRIPTION");
-            let status = extract_vevent_field(vevent, "STATUS");
-            let rrule = extract_vevent_field(vevent, "RRULE");
-            let recurrence_id = extract_vevent_field(vevent, "RECURRENCE-ID");
-            let transp = extract_vevent_field(vevent, "TRANSP");
-            let timezone = extract_vevent_tzid(vevent, "DTSTART");
+                extract_vevent_field(&fields, "UID").unwrap_or_else(|| Uuid::new_v4().to_string());
+            let summary = extract_vevent_field(&fields, "SUMMARY");
+            let start_at = extract_vevent_field(&fields, "DTSTART").unwrap_or_default();
+            let end_at = extract_vevent_field(&fields, "DTEND").unwrap_or_default();
+            let location = extract_vevent_field(&fields, "LOCATION");
+            let description = extract_vevent_field(&fields, "DESCRIPTION");
+            let status = extract_vevent_field(&fields, "STATUS");
+            let rrule = extract_vevent_field(&fields, "RRULE");
+            let recurrence_id = extract_vevent_field(&fields, "RECURRENCE-ID");
+            let transp = extract_vevent_field(&fields, "TRANSP");
+            let timezone = extract_vevent_tzid(&fields, "DTSTART");
 
             let event_id = Uuid::new_v4().to_string();
             let _ = sqlx::query(
@@ -1143,9 +1219,11 @@ async fn cancel_orphaned_booking(
         String,
         Option<String>,
         Option<String>,
+        Option<String>,
     )> = sqlx::query_as(
         "SELECT b.id, b.guest_name, b.guest_email, COALESCE(b.guest_timezone, 'UTC'), CASE b.time_version WHEN 1 THEN b.start_at ELSE rtrim(b.start_at, 'Z') END AS start_at, CASE b.time_version WHEN 1 THEN b.end_at ELSE rtrim(b.end_at, 'Z') END AS end_at, b.uid,
-                et.title, u.name, COALESCE(u.booking_email, u.email), b.caldav_calendar_href, u.timezone
+                et.title, u.name, COALESCE(u.booking_email, u.email), b.caldav_calendar_href, u.timezone,
+                u.language
          FROM bookings b
          JOIN event_types et ON et.id = b.event_type_id
          JOIN accounts a ON a.id = et.account_id
@@ -1179,7 +1257,9 @@ async fn cancel_orphaned_booking(
         host_email,
         caldav_calendar_href,
         host_timezone,
+        host_language,
     ) = booking;
+    let host_language = crate::email::supported_language(host_language);
 
     // Confirm-before-cancel: if we have a client and a stored calendar href for
     // this booking, verify that the resource is actually 404 on the server.
@@ -1214,9 +1294,10 @@ async fn cancel_orphaned_booking(
         }
     }
 
-    // Cancel the booking
+    // Cancel the booking. The SEQUENCE bump makes the CANCEL outrank the
+    // copy its holders have (RFC 5546, migration 072).
     let updated = sqlx::query(
-        "UPDATE bookings SET status = 'cancelled' WHERE id = ? AND status = 'confirmed'",
+        "UPDATE bookings SET status = 'cancelled', ics_sequence = ics_sequence + 1 WHERE id = ? AND status = 'confirmed'",
     )
     .bind(&booking_id)
     .execute(pool)
@@ -1249,6 +1330,9 @@ async fn cancel_orphaned_booking(
     let start_time = extract_time(&start_at);
     let end_time = extract_time(&end_at);
 
+    // The guest and the host each read the reason in their own language.
+    let guest_language = crate::email::stored_booking_language(pool, &booking_id).await;
+    let sequence = crate::web::booking_ics_sequence(pool, &booking_uid).await;
     let details = crate::email::CancellationDetails {
         utc_times,
         event_title,
@@ -1261,17 +1345,49 @@ async fn cancel_orphaned_booking(
         host_name,
         host_email,
         uid: booking_uid,
-        reason: Some("The calendar event was deleted by the host.".to_string()),
+        reason: Some(crate::email::calendar_deleted_reason(
+            guest_language.as_deref(),
+        )),
         cancelled_by_host: true,
+        guest_language,
         host_timezone: host_timezone.unwrap_or_default(),
+        sequence,
         ..Default::default()
     };
+    let host_details = crate::email::CancellationDetails {
+        reason: Some(crate::email::calendar_deleted_reason(
+            host_language.as_deref(),
+        )),
+        host_language,
+        ..details.clone()
+    };
+    // The guest's CANCEL must carry the invite's ORGANIZER, or calendar
+    // clients that match on UID + ORGANIZER ignore it. For a collective
+    // booking that is the stored organizer (#161), not whichever member's
+    // calendar lost the event.
+    let details = match crate::web::booking_host_identity(pool, &details.uid).await {
+        Some((host_name, host_email, _)) => crate::email::CancellationDetails {
+            host_name,
+            host_email,
+            ..details
+        },
+        None => details,
+    };
+    // Its attendees hold the invite too (#267).
+    let details = crate::web::with_invite_holders(pool, details, false).await;
 
     if let Err(e) = crate::email::send_guest_cancellation(&smtp_config, &details).await {
-        tracing::warn!(error = %e, "failed to send external cancellation email to guest");
+        tracing::warn!(
+            error = format!("{e:#}"),
+            "failed to send external cancellation email to guest"
+        );
     }
-    if let Err(e) = crate::email::send_host_cancellation(&smtp_config, &details).await {
-        tracing::warn!(error = %e, "failed to send external cancellation email to host");
+    let _ = crate::email::send_guest_attendee_cancellations(&smtp_config, &details).await;
+    if let Err(e) = crate::email::send_host_cancellation(&smtp_config, &host_details).await {
+        tracing::warn!(
+            error = format!("{e:#}"),
+            "failed to send external cancellation email to host"
+        );
     }
 }
 
@@ -1397,7 +1513,7 @@ mod tests {
 
         // Booking in the exact state produced by guest_reschedule_booking's pending
         // branch: status='pending', caldav_calendar_href still set from the prior
-        // confirmed push (fix A in web/mod.rs clears this — but the sweep must also
+        // confirmed push (fix A in web/booking_actions.rs clears this — but the sweep must also
         // be safe even if a legacy booking row still has the href set).
         let booking_id = Uuid::new_v4().to_string();
         sqlx::query(
@@ -1849,6 +1965,10 @@ mod tests {
         }
 
         async fn delete_event(&self, _calendar_id: &str, _uid: &str) -> anyhow::Result<()> {
+            anyhow::bail!("read-only")
+        }
+
+        async fn event_exists(&self, _calendar_id: &str, _uid: &str) -> anyhow::Result<bool> {
             anyhow::bail!("read-only")
         }
     }

@@ -22,6 +22,286 @@ pub async fn connect(data_dir: &Path) -> Result<SqlitePool> {
     Ok(pool)
 }
 
+/// Every schema migration, in application order. Names are the stable
+/// records written to `_migrations`; Cascade renumbers upstream migrations
+/// after its own `064_microsoft_graph` (see CASCADE.md).
+const MIGRATIONS: &[(&str, &str)] = &[
+    ("001_initial", include_str!("../migrations/001_initial.sql")),
+    ("002_auth", include_str!("../migrations/002_auth.sql")),
+    (
+        "003_username",
+        include_str!("../migrations/003_username.sql"),
+    ),
+    ("004_oidc", include_str!("../migrations/004_oidc.sql")),
+    (
+        "005_requires_confirmation",
+        include_str!("../migrations/005_requires_confirmation.sql"),
+    ),
+    (
+        "006_group_event_types",
+        include_str!("../migrations/006_group_event_types.sql"),
+    ),
+    (
+        "007_caldav_write",
+        include_str!("../migrations/007_caldav_write.sql"),
+    ),
+    (
+        "008_recurrence_id",
+        include_str!("../migrations/008_recurrence_id.sql"),
+    ),
+    (
+        "009_uid_recurrence_unique",
+        include_str!("../migrations/009_uid_recurrence_unique.sql"),
+    ),
+    (
+        "010_confirm_token",
+        include_str!("../migrations/010_confirm_token.sql"),
+    ),
+    (
+        "011_event_type_calendars",
+        include_str!("../migrations/011_event_type_calendars.sql"),
+    ),
+    (
+        "012_reminders",
+        include_str!("../migrations/012_reminders.sql"),
+    ),
+    (
+        "013_booking_email",
+        include_str!("../migrations/013_booking_email.sql"),
+    ),
+    (
+        "014_team_links",
+        include_str!("../migrations/014_team_links.sql"),
+    ),
+    (
+        "015_user_profile",
+        include_str!("../migrations/015_user_profile.sql"),
+    ),
+    (
+        "016_booking_unique",
+        include_str!("../migrations/016_booking_unique.sql"),
+    ),
+    (
+        "017_events_per_calendar",
+        include_str!("../migrations/017_events_per_calendar.sql"),
+    ),
+    (
+        "018_private_invites",
+        include_str!("../migrations/018_private_invites.sql"),
+    ),
+    (
+        "019_team_link_reusable",
+        include_str!("../migrations/019_team_link_reusable.sql"),
+    ),
+    (
+        "020_booking_attendees",
+        include_str!("../migrations/020_booking_attendees.sql"),
+    ),
+    (
+        "021_accent_color",
+        include_str!("../migrations/021_accent_color.sql"),
+    ),
+    ("022_theme", include_str!("../migrations/022_theme.sql")),
+    (
+        "023_team_link_windows",
+        include_str!("../migrations/023_team_link_windows.sql"),
+    ),
+    (
+        "024_team_link_features",
+        include_str!("../migrations/024_team_link_features.sql"),
+    ),
+    (
+        "025_reschedule_by_host",
+        include_str!("../migrations/025_reschedule_by_host.sql"),
+    ),
+    (
+        "026_visibility",
+        include_str!("../migrations/026_visibility.sql"),
+    ),
+    (
+        "027_calendar_sync_token",
+        include_str!("../migrations/027_calendar_sync_token.sql"),
+    ),
+    (
+        "028_company_link",
+        include_str!("../migrations/028_company_link.sql"),
+    ),
+    (
+        "029_scheduling_mode",
+        include_str!("../migrations/029_scheduling_mode.sql"),
+    ),
+    (
+        "030_member_weight",
+        include_str!("../migrations/030_member_weight.sql"),
+    ),
+    (
+        "031_fix_legacy_timezones",
+        include_str!("../migrations/031_fix_legacy_timezones.sql"),
+    ),
+    (
+        "032_event_type_member_weights",
+        include_str!("../migrations/032_event_type_member_weights.sql"),
+    ),
+    (
+        "033_group_profile",
+        include_str!("../migrations/033_group_profile.sql"),
+    ),
+    ("034_teams", include_str!("../migrations/034_teams.sql")),
+    (
+        "035_drop_legacy_team_links",
+        include_str!("../migrations/035_drop_legacy_team_links.sql"),
+    ),
+    (
+        "036_default_calendar_view",
+        include_str!("../migrations/036_default_calendar_view.sql"),
+    ),
+    (
+        "037_booking_frequency_limits",
+        include_str!("../migrations/037_booking_frequency_limits.sql"),
+    ),
+    (
+        "038_first_slot_only",
+        include_str!("../migrations/038_first_slot_only.sql"),
+    ),
+    (
+        "039_allow_dynamic_group",
+        include_str!("../migrations/039_allow_dynamic_group.sql"),
+    ),
+    (
+        "040_user_availability",
+        include_str!("../migrations/040_user_availability.sql"),
+    ),
+    (
+        "041_last_full_sync",
+        include_str!("../migrations/041_last_full_sync.sql"),
+    ),
+    (
+        "042_event_transp",
+        include_str!("../migrations/042_event_transp.sql"),
+    ),
+    (
+        "043_event_type_watchers",
+        include_str!("../migrations/043_event_type_watchers.sql"),
+    ),
+    (
+        "044_booking_claim",
+        include_str!("../migrations/044_booking_claim.sql"),
+    ),
+    (
+        "045_slot_interval",
+        include_str!("../migrations/045_slot_interval.sql"),
+    ),
+    (
+        "046_event_type_timezone",
+        include_str!("../migrations/046_event_type_timezone.sql"),
+    ),
+    (
+        "047_user_language",
+        include_str!("../migrations/047_user_language.sql"),
+    ),
+    (
+        "048_booking_language",
+        include_str!("../migrations/048_booking_language.sql"),
+    ),
+    (
+        "049_smtp_decouple_account",
+        include_str!("../migrations/049_smtp_decouple_account.sql"),
+    ),
+    (
+        "050_min_notice_cancel_reschedule",
+        include_str!("../migrations/050_min_notice_cancel_reschedule.sql"),
+    ),
+    (
+        "051_per_member_frequency_limit",
+        include_str!("../migrations/051_per_member_frequency_limit.sql"),
+    ),
+    (
+        "052_smtp_tls_mode",
+        include_str!("../migrations/052_smtp_tls_mode.sql"),
+    ),
+    (
+        "053_oauth2_caldav",
+        include_str!("../migrations/053_oauth2_caldav.sql"),
+    ),
+    ("054_captcha", include_str!("../migrations/054_captcha.sql")),
+    (
+        "055_provider_type",
+        include_str!("../migrations/055_provider_type.sql"),
+    ),
+    (
+        "056_meeting_links",
+        include_str!("../migrations/056_meeting_links.sql"),
+    ),
+    (
+        "057_runtime_settings",
+        include_str!("../migrations/057_runtime_settings.sql"),
+    ),
+    (
+        "058_resources",
+        include_str!("../migrations/058_resources.sql"),
+    ),
+    (
+        "059_resource_sync_error",
+        include_str!("../migrations/059_resource_sync_error.sql"),
+    ),
+    (
+        "060_resource_teams",
+        include_str!("../migrations/060_resource_teams.sql"),
+    ),
+    (
+        "061_booking_unique_per_member",
+        include_str!("../migrations/061_booking_unique_per_member.sql"),
+    ),
+    (
+        "062_sms_notifications",
+        include_str!("../migrations/062_sms_notifications.sql"),
+    ),
+    (
+        "063_booking_horizon",
+        include_str!("../migrations/063_booking_horizon.sql"),
+    ),
+    (
+        "064_microsoft_graph",
+        include_str!("../migrations/064_microsoft_graph.sql"),
+    ),
+    (
+        "065_booking_time_version",
+        include_str!("../migrations/065_booking_time_version.sql"),
+    ),
+    (
+        "066_pending_slot_hold",
+        include_str!("../migrations/066_pending_slot_hold.sql"),
+    ),
+    (
+        "067_public_page_language",
+        include_str!("../migrations/067_public_page_language.sql"),
+    ),
+    (
+        "068_captcha_wasm_url",
+        include_str!("../migrations/068_captcha_wasm_url.sql"),
+    ),
+    (
+        "069_writeback_failures",
+        include_str!("../migrations/069_writeback_failures.sql"),
+    ),
+    (
+        "070_source_sync_errors",
+        include_str!("../migrations/070_source_sync_errors.sql"),
+    ),
+    (
+        "071_booking_organizer",
+        include_str!("../migrations/071_booking_organizer.sql"),
+    ),
+    (
+        "072_booking_first_confirmed",
+        include_str!("../migrations/072_booking_first_confirmed.sql"),
+    ),
+    (
+        "073_booking_ics_sequence",
+        include_str!("../migrations/073_booking_ics_sequence.sql"),
+    ),
+];
+
 pub async fn migrate(pool: &SqlitePool) -> Result<()> {
     // Create migration tracking table
     sqlx::raw_sql(
@@ -33,253 +313,8 @@ pub async fn migrate(pool: &SqlitePool) -> Result<()> {
     .execute(pool)
     .await?;
 
-    let migrations: &[(&str, &str)] = &[
-        ("001_initial", include_str!("../migrations/001_initial.sql")),
-        ("002_auth", include_str!("../migrations/002_auth.sql")),
-        (
-            "003_username",
-            include_str!("../migrations/003_username.sql"),
-        ),
-        ("004_oidc", include_str!("../migrations/004_oidc.sql")),
-        (
-            "005_requires_confirmation",
-            include_str!("../migrations/005_requires_confirmation.sql"),
-        ),
-        (
-            "006_group_event_types",
-            include_str!("../migrations/006_group_event_types.sql"),
-        ),
-        (
-            "007_caldav_write",
-            include_str!("../migrations/007_caldav_write.sql"),
-        ),
-        (
-            "008_recurrence_id",
-            include_str!("../migrations/008_recurrence_id.sql"),
-        ),
-        (
-            "009_uid_recurrence_unique",
-            include_str!("../migrations/009_uid_recurrence_unique.sql"),
-        ),
-        (
-            "010_confirm_token",
-            include_str!("../migrations/010_confirm_token.sql"),
-        ),
-        (
-            "011_event_type_calendars",
-            include_str!("../migrations/011_event_type_calendars.sql"),
-        ),
-        (
-            "012_reminders",
-            include_str!("../migrations/012_reminders.sql"),
-        ),
-        (
-            "013_booking_email",
-            include_str!("../migrations/013_booking_email.sql"),
-        ),
-        (
-            "014_team_links",
-            include_str!("../migrations/014_team_links.sql"),
-        ),
-        (
-            "015_user_profile",
-            include_str!("../migrations/015_user_profile.sql"),
-        ),
-        (
-            "016_booking_unique",
-            include_str!("../migrations/016_booking_unique.sql"),
-        ),
-        (
-            "017_events_per_calendar",
-            include_str!("../migrations/017_events_per_calendar.sql"),
-        ),
-        (
-            "018_private_invites",
-            include_str!("../migrations/018_private_invites.sql"),
-        ),
-        (
-            "019_team_link_reusable",
-            include_str!("../migrations/019_team_link_reusable.sql"),
-        ),
-        (
-            "020_booking_attendees",
-            include_str!("../migrations/020_booking_attendees.sql"),
-        ),
-        (
-            "021_accent_color",
-            include_str!("../migrations/021_accent_color.sql"),
-        ),
-        ("022_theme", include_str!("../migrations/022_theme.sql")),
-        (
-            "023_team_link_windows",
-            include_str!("../migrations/023_team_link_windows.sql"),
-        ),
-        (
-            "024_team_link_features",
-            include_str!("../migrations/024_team_link_features.sql"),
-        ),
-        (
-            "025_reschedule_by_host",
-            include_str!("../migrations/025_reschedule_by_host.sql"),
-        ),
-        (
-            "026_visibility",
-            include_str!("../migrations/026_visibility.sql"),
-        ),
-        (
-            "027_calendar_sync_token",
-            include_str!("../migrations/027_calendar_sync_token.sql"),
-        ),
-        (
-            "028_company_link",
-            include_str!("../migrations/028_company_link.sql"),
-        ),
-        (
-            "029_scheduling_mode",
-            include_str!("../migrations/029_scheduling_mode.sql"),
-        ),
-        (
-            "030_member_weight",
-            include_str!("../migrations/030_member_weight.sql"),
-        ),
-        (
-            "031_fix_legacy_timezones",
-            include_str!("../migrations/031_fix_legacy_timezones.sql"),
-        ),
-        (
-            "032_event_type_member_weights",
-            include_str!("../migrations/032_event_type_member_weights.sql"),
-        ),
-        (
-            "033_group_profile",
-            include_str!("../migrations/033_group_profile.sql"),
-        ),
-        ("034_teams", include_str!("../migrations/034_teams.sql")),
-        (
-            "035_drop_legacy_team_links",
-            include_str!("../migrations/035_drop_legacy_team_links.sql"),
-        ),
-        (
-            "036_default_calendar_view",
-            include_str!("../migrations/036_default_calendar_view.sql"),
-        ),
-        (
-            "037_booking_frequency_limits",
-            include_str!("../migrations/037_booking_frequency_limits.sql"),
-        ),
-        (
-            "038_first_slot_only",
-            include_str!("../migrations/038_first_slot_only.sql"),
-        ),
-        (
-            "039_allow_dynamic_group",
-            include_str!("../migrations/039_allow_dynamic_group.sql"),
-        ),
-        (
-            "040_user_availability",
-            include_str!("../migrations/040_user_availability.sql"),
-        ),
-        (
-            "041_last_full_sync",
-            include_str!("../migrations/041_last_full_sync.sql"),
-        ),
-        (
-            "042_event_transp",
-            include_str!("../migrations/042_event_transp.sql"),
-        ),
-        (
-            "043_event_type_watchers",
-            include_str!("../migrations/043_event_type_watchers.sql"),
-        ),
-        (
-            "044_booking_claim",
-            include_str!("../migrations/044_booking_claim.sql"),
-        ),
-        (
-            "045_slot_interval",
-            include_str!("../migrations/045_slot_interval.sql"),
-        ),
-        (
-            "046_event_type_timezone",
-            include_str!("../migrations/046_event_type_timezone.sql"),
-        ),
-        (
-            "047_user_language",
-            include_str!("../migrations/047_user_language.sql"),
-        ),
-        (
-            "048_booking_language",
-            include_str!("../migrations/048_booking_language.sql"),
-        ),
-        (
-            "049_smtp_decouple_account",
-            include_str!("../migrations/049_smtp_decouple_account.sql"),
-        ),
-        (
-            "050_min_notice_cancel_reschedule",
-            include_str!("../migrations/050_min_notice_cancel_reschedule.sql"),
-        ),
-        (
-            "051_per_member_frequency_limit",
-            include_str!("../migrations/051_per_member_frequency_limit.sql"),
-        ),
-        (
-            "052_smtp_tls_mode",
-            include_str!("../migrations/052_smtp_tls_mode.sql"),
-        ),
-        (
-            "053_oauth2_caldav",
-            include_str!("../migrations/053_oauth2_caldav.sql"),
-        ),
-        ("054_captcha", include_str!("../migrations/054_captcha.sql")),
-        (
-            "055_provider_type",
-            include_str!("../migrations/055_provider_type.sql"),
-        ),
-        (
-            "056_meeting_links",
-            include_str!("../migrations/056_meeting_links.sql"),
-        ),
-        (
-            "057_runtime_settings",
-            include_str!("../migrations/057_runtime_settings.sql"),
-        ),
-        (
-            "058_resources",
-            include_str!("../migrations/058_resources.sql"),
-        ),
-        (
-            "059_resource_sync_error",
-            include_str!("../migrations/059_resource_sync_error.sql"),
-        ),
-        (
-            "060_resource_teams",
-            include_str!("../migrations/060_resource_teams.sql"),
-        ),
-        (
-            "061_booking_unique_per_member",
-            include_str!("../migrations/061_booking_unique_per_member.sql"),
-        ),
-        (
-            "062_sms_notifications",
-            include_str!("../migrations/062_sms_notifications.sql"),
-        ),
-        (
-            "063_booking_horizon",
-            include_str!("../migrations/063_booking_horizon.sql"),
-        ),
-        (
-            "064_microsoft_graph",
-            include_str!("../migrations/064_microsoft_graph.sql"),
-        ),
-        (
-            "065_booking_time_version",
-            include_str!("../migrations/065_booking_time_version.sql"),
-        ),
-    ];
-
     let mut applied_count = 0u32;
-    for (name, sql) in migrations {
+    for (name, sql) in MIGRATIONS {
         let mut applied: Option<(String,)> =
             sqlx::query_as("SELECT name FROM _migrations WHERE name = ?")
                 .bind(name)
@@ -932,7 +967,7 @@ mod tests {
             .fetch_one(&pool)
             .await
             .unwrap();
-        assert_eq!(count.0, 65, "All 65 migrations should be tracked");
+        assert_eq!(count.0, 73, "All 73 migrations should be tracked");
     }
 
     #[tokio::test]
@@ -964,6 +999,164 @@ mod tests {
         );
     }
 
+    /// Upgrading to 066 (upstream 065, #234) must not start expiring requests that were
+    /// already waiting: their deadline stays NULL (never), while event types
+    /// get the slot hold on and no expiry.
+    #[tokio::test]
+    async fn pending_slot_hold_migration_leaves_existing_requests_unexpired() {
+        let pool = memory_pool().await;
+        migrate(&pool).await.unwrap();
+        // Roll the schema back to just before 066.
+        sqlx::raw_sql(
+            "DROP INDEX idx_bookings_pending_expiry;
+             ALTER TABLE bookings DROP COLUMN pending_expires_at;
+             ALTER TABLE bookings DROP COLUMN pending_since;
+             ALTER TABLE bookings DROP COLUMN pending_reminder_sent_at;
+             ALTER TABLE event_types DROP COLUMN pending_blocks_slot;
+             ALTER TABLE event_types DROP COLUMN pending_expiry_hours;
+             DELETE FROM _migrations WHERE name = '066_pending_slot_hold';",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::raw_sql(
+            "INSERT INTO users (id, email, name, role, auth_provider, username, enabled)
+                 VALUES ('u1', 'h@example.com', 'Host', 'admin', 'local', 'host', 1);
+             INSERT INTO accounts (id, name, email, timezone, user_id)
+                 VALUES ('a1', 'Host', 'h@example.com', 'UTC', 'u1');
+             INSERT INTO event_types (id, account_id, slug, title, duration_min, requires_confirmation)
+                 VALUES ('et1', 'a1', 'demo', 'Demo', 30, 1);
+             INSERT INTO bookings (id, event_type_id, uid, guest_name, guest_email, guest_timezone, start_at, end_at, status, cancel_token, reschedule_token, confirm_token)
+                 VALUES ('b1', 'et1', 'uid-b1', 'Guest', 'g@example.com', 'UTC', '2030-03-18T10:00:00', '2030-03-18T10:30:00', 'pending', 'c1', 'r1', 'k1');",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        migrate(&pool).await.unwrap();
+
+        let (expires, since, nudged): (Option<String>, Option<String>, Option<String>) =
+            sqlx::query_as(
+                "SELECT pending_expires_at, pending_since, pending_reminder_sent_at FROM bookings WHERE id = 'b1'",
+            )
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!((expires, since, nudged), (None, None, None));
+        let (blocks, hours): (i64, Option<i64>) = sqlx::query_as(
+            "SELECT pending_blocks_slot, pending_expiry_hours FROM event_types WHERE id = 'et1'",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!((blocks, hours), (1, None));
+    }
+
+    /// #266: a confirmed booking its guest moved to a time awaiting
+    /// approval is pending when 072 runs, and must be stamped as confirmed
+    /// before, or its approval tells the attendees "added" again. A pending
+    /// window opened after creation is not proof of that: a request moved
+    /// before its first approval opens one too, and must stay NULL, or its
+    /// decline cancels an invite its attendees never got.
+    #[tokio::test]
+    async fn backfill_072_stamps_pending_bookings_confirmed_before() {
+        let pool = memory_pool().await;
+        migrate(&pool).await.unwrap();
+        // Roll the schema back to just before 072.
+        sqlx::raw_sql(
+            "DROP TRIGGER booking_first_confirmed_insert;
+             DROP TRIGGER booking_first_confirmed_update;
+             ALTER TABLE bookings DROP COLUMN first_confirmed_at;
+             DELETE FROM _migrations WHERE name = '072_booking_first_confirmed';",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::raw_sql(
+            "INSERT INTO users (id, email, name, role, auth_provider, username, enabled)
+                 VALUES ('u1', 'h@example.com', 'Host', 'admin', 'local', 'host', 1);
+             INSERT INTO accounts (id, name, email, timezone, user_id)
+                 VALUES ('a1', 'Host', 'h@example.com', 'UTC', 'u1');
+             INSERT INTO event_types (id, account_id, slug, title, duration_min, requires_confirmation)
+                 VALUES ('et1', 'a1', 'demo', 'Demo', 30, 1);",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        // (id, status, the trace set on the row)
+        let rows = [
+            ("confirmed", "confirmed", None),
+            (
+                "new-request",
+                "pending",
+                Some("pending_since = '2030-01-01T09:00:30Z'"),
+            ),
+            (
+                "meeting",
+                "pending",
+                Some("meeting_url = 'https://meet.example/x'"),
+            ),
+            ("claimed", "pending", Some("claimed_by_user_id = 'u1'")),
+            ("writeback", "pending", Some("writeback_attempts = 2")),
+            (
+                "moved-request",
+                "pending",
+                Some("pending_since = '2030-01-02T15:00:00Z'"),
+            ),
+            ("offered", "pending", None),
+            ("untraced", "pending", None),
+            (
+                "cancelled",
+                "cancelled",
+                Some("meeting_url = 'https://meet.example/y'"),
+            ),
+        ];
+        for (i, (id, status, set)) in rows.iter().enumerate() {
+            sqlx::query(
+                "INSERT INTO bookings (id, event_type_id, uid, guest_name, guest_email, guest_timezone, start_at, end_at, status, cancel_token, reschedule_token, confirm_token, created_at)
+                 VALUES (?, 'et1', ?, 'Guest', 'g@example.com', 'UTC', ?, ?, ?, ?, ?, ?, '2030-01-01 09:00:00')",
+            )
+            .bind(id)
+            .bind(format!("uid-{id}"))
+            .bind(format!("2030-03-{:02}T10:00:00", i + 1))
+            .bind(format!("2030-03-{:02}T10:30:00", i + 1))
+            .bind(status)
+            .bind(format!("c-{id}"))
+            .bind(format!("r-{id}"))
+            .bind(format!("k-{id}"))
+            .execute(&pool)
+            .await
+            .unwrap();
+            if let Some(set) = set {
+                sqlx::query(&format!("UPDATE bookings SET {set} WHERE id = ?"))
+                    .bind(id)
+                    .execute(&pool)
+                    .await
+                    .unwrap();
+            }
+        }
+        sqlx::query(
+            "INSERT INTO booking_claim_tokens (id, booking_id, user_id, token, expires_at)
+             VALUES ('t1', 'offered', 'u1', 'tok', '2030-01-08 09:00:00')",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        migrate(&pool).await.unwrap();
+
+        let stamped: Vec<String> = sqlx::query_scalar(
+            "SELECT id FROM bookings WHERE first_confirmed_at IS NOT NULL ORDER BY start_at",
+        )
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+        assert_eq!(
+            stamped,
+            ["confirmed", "meeting", "claimed", "writeback", "offered"]
+        );
+    }
+
     #[tokio::test]
     async fn migrate_is_idempotent() {
         let pool = memory_pool().await;
@@ -975,7 +1168,7 @@ mod tests {
             .fetch_one(&pool)
             .await
             .unwrap();
-        assert_eq!(count.0, 65, "Still 65 migrations after second run");
+        assert_eq!(count.0, 73, "Still 73 migrations after second run");
     }
 
     #[tokio::test]
@@ -1011,7 +1204,109 @@ mod tests {
 
         assert_eq!(legacy, 0, "the legacy migration record must be retired");
         assert_eq!(current, 1, "the renumbered migration must be tracked");
-        assert_eq!(count, 65, "renumbering must not add a duplicate record");
+        assert_eq!(count, 73, "renumbering must not add a duplicate record");
+    }
+
+    /// Production on 1.18.0-cascade recorded 001–063, `064_microsoft_graph`
+    /// and `065_booking_time_version` (upstream's 064). Upgrading to the
+    /// 1.20.0 port must apply exactly upstream's eight new migrations, under
+    /// their renumbered 066–073 names, and nothing else. The second pass
+    /// covers a database still carrying the legacy `062_microsoft_graph`
+    /// record, which must be adopted rather than replayed.
+    #[tokio::test]
+    async fn production_baseline_applies_only_the_renumbered_upstream_migrations() {
+        const BASELINE_STAMP: &str = "2026-09-28 00:00:00";
+        let expected_new = [
+            "066_pending_slot_hold",
+            "067_public_page_language",
+            "068_captcha_wasm_url",
+            "069_writeback_failures",
+            "070_source_sync_errors",
+            "071_booking_organizer",
+            "072_booking_first_confirmed",
+            "073_booking_ics_sequence",
+        ];
+        let baseline_end = MIGRATIONS
+            .iter()
+            .position(|(name, _)| *name == "065_booking_time_version")
+            .expect("065_booking_time_version is registered");
+        assert_eq!(baseline_end, 64, "production baseline is 65 migrations");
+        let registered_after: Vec<&str> = MIGRATIONS[baseline_end + 1..]
+            .iter()
+            .map(|(name, _)| *name)
+            .collect();
+        assert_eq!(registered_after, expected_new);
+
+        for legacy_microsoft_name in [false, true] {
+            let pool = memory_pool().await;
+            sqlx::raw_sql(
+                "CREATE TABLE _migrations (
+                    name TEXT PRIMARY KEY,
+                    applied_at TEXT NOT NULL DEFAULT (datetime('now'))
+                )",
+            )
+            .execute(&pool)
+            .await
+            .unwrap();
+            for (name, sql) in &MIGRATIONS[..=baseline_end] {
+                sqlx::raw_sql(sql).execute(&pool).await.unwrap();
+                let recorded = if legacy_microsoft_name && *name == "064_microsoft_graph" {
+                    "062_microsoft_graph"
+                } else {
+                    name
+                };
+                sqlx::query("INSERT INTO _migrations (name, applied_at) VALUES (?, ?)")
+                    .bind(recorded)
+                    .bind(BASELINE_STAMP)
+                    .execute(&pool)
+                    .await
+                    .unwrap();
+            }
+
+            migrate(&pool).await.unwrap();
+
+            let applied: Vec<String> = sqlx::query_scalar(
+                "SELECT name FROM _migrations WHERE applied_at != ? ORDER BY name",
+            )
+            .bind(BASELINE_STAMP)
+            .fetch_all(&pool)
+            .await
+            .unwrap();
+            assert_eq!(
+                applied, expected_new,
+                "legacy Microsoft name: {legacy_microsoft_name}"
+            );
+
+            let recorded: Vec<String> =
+                sqlx::query_scalar("SELECT name FROM _migrations ORDER BY name")
+                    .fetch_all(&pool)
+                    .await
+                    .unwrap();
+            let registered: Vec<String> = MIGRATIONS
+                .iter()
+                .map(|(name, _)| (*name).to_string())
+                .collect();
+            let mut registered_sorted = registered.clone();
+            registered_sorted.sort();
+            assert_eq!(recorded, registered_sorted);
+
+            let microsoft_columns: i64 = sqlx::query_scalar(
+                "SELECT COUNT(*) FROM pragma_table_info('auth_config')
+                 WHERE name LIKE 'microsoft_oauth2_%'",
+            )
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+            assert_eq!(microsoft_columns, 3);
+
+            // A second start applies nothing further.
+            migrate(&pool).await.unwrap();
+            let total: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM _migrations")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+            assert_eq!(total, 73);
+        }
     }
 
     #[tokio::test]

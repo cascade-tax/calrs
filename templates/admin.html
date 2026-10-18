@@ -647,6 +647,11 @@
       <input type="url" id="captcha_widget_url" name="captcha_widget_url" value="{{ captcha_widget_url }}" placeholder="https://cdn.jsdelivr.net/npm/cap-widget">
       <span class="field-hint">Override if the CDN is blocked. Changes take effect immediately after saving.</span>
     </div>
+    <div class="form-group">
+      <label for="captcha_wasm_url">{{ t("admin-wasm-url") }} <span class="hint">{{ t("team-form-optional") }}</span></label>
+      <input type="url" id="captcha_wasm_url" name="captcha_wasm_url" value="{{ captcha_wasm_url }}" placeholder="https://captcha.example.com/assets/cap_wasm_bg.wasm">
+      <span class="field-hint">{{ t("admin-wasm-url-help") }}</span>
+    </div>
     <p class="admin-note">Leave instance URL, site key and secret empty to disable the captcha on booking pages.</p>
     <div class="admin-actions">
       <button type="submit" class="btn btn-sm">Save captcha settings</button>

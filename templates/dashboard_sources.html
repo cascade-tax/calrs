@@ -51,6 +51,7 @@
           </div>
           <div class="src-url">{% if s.provider_type == "published_ics" %}Private published feed{% else %}{{ s.url }}{% endif %}</div>
           <div class="src-meta">{% if s.username %}{{ s.username }} &middot; {% endif %}Last sync: <span class="mono">{{ s.last_synced }}</span></div>
+          {% if s.sync_error %}<div class="src-meta source-sync-error" style="color: var(--error-text); overflow-wrap: anywhere;">{{ t("sources-sync-failing", since=s.sync_failing_since, error=s.sync_error) }}</div>{% endif %}
         </div>
         <div class="et-actions">
           <form method="post" action="/dashboard/sources/{{ s.id }}/sync" style="margin: 0;">

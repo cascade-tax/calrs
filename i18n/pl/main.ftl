@@ -33,6 +33,19 @@ slots-location-google-meet = Google Meet
 
 slots-tz-label = Twoja strefa czasowa
 slots-time-format-label = Format czasu
+tz-group-common = Popularne strefy czasowe
+tz-region-africa = Afryka
+tz-region-america = Ameryka
+tz-region-antarctica = Antarktyda
+tz-region-arctic = Arktyka
+tz-region-asia = Azja
+tz-region-atlantic = Ocean Atlantycki
+tz-region-australia = Australia
+tz-region-europe = Europa
+tz-region-indian = Ocean Indyjski
+tz-region-pacific = Ocean Spokojny
+slots-offset-note-day = Godziny w dniu %1 są w %2 (zmiana czasu %3).
+slots-offset-note-range = Zmiana czasu %1: od tego dnia godziny są w %2.
 
 slots-view-month = Widok miesiąca
 slots-view-week = Widok tygodnia
@@ -395,6 +408,8 @@ bookings-reschedule = Przenieś
 bookings-decline = Odrzuć
 bookings-claim = Przejmij
 bookings-badge-awaiting-reschedule = oczekuje na przeniesienie
+bookings-badge-writeback-failed = brak w twoim kalendarzu
+bookings-writeback-failed-detail = Zapis do kalendarza nie powiódł się: { $error }
 bookings-cancel = Odwołaj
 bookings-reason-placeholder = Powód (opcjonalnie)
 bookings-confirm-cancel = Potwierdź odwołanie
@@ -446,6 +461,7 @@ sources-page-title = Źródła kalendarzy
 sources-heading = Źródła kalendarzy
 sources-add = Dodaj
 sources-last-sync = Ostatnia synchronizacja:
+sources-sync-failing = Synchronizacja nie działa od { $since } UTC: { $error }
 sources-sync = Synchronizuj
 sources-full-resync = Pełna resynchronizacja
 sources-full-resync-title = Wyczyść pamięć podręczną i pobierz ponownie wszystkie wydarzenia z serwera
@@ -529,6 +545,11 @@ settings-timezone-help = Twoje reguły dostępności i godziny rezerwacji są li
 settings-language = Język
 settings-language-auto = Automatycznie (język przeglądarki)
 settings-language-help = Wybierz język interfejsu albo zostaw Automatycznie, aby podążać za ustawieniem przeglądarki.
+settings-public-page-language = Język publicznych stron rezerwacji
+settings-public-page-language-visitor = Język każdego odwiedzającego
+settings-public-page-language-host = Zawsze mój język
+settings-public-page-language-help = Język Twojego publicznego profilu, stron rezerwacji i e-maili wysyłanych do gości. „Zawsze mój język” używa języka wybranego powyżej.
+settings-error-public-page-language = Wybierz prawidłowy język publicznych stron rezerwacji.
 settings-dynamic-group = Pozwól innym dodawać mnie do dynamicznych linków grupowych
 settings-dynamic-group-help = Po włączeniu inni użytkownicy mogą tworzyć doraźne adresy spotkań zbiorowych, które obejmują ciebie (np. { $example }).
 settings-lend-resource = Udostępnij mój dostęp do kalendarza na potrzeby rezerwacji zasobów
@@ -1009,6 +1030,7 @@ etf-webhook-hint = Adres spotkania dla każdej rezerwacji pobierany jest z webho
 admin-page-title = Administracja
 admin-heading = Panel administracyjny
 admin-action-refused = Odmowa wykonania:
+admin-error-last-admin = To ostatni aktywny administrator. Najpierw nadaj uprawnienia administratora innemu użytkownikowi lub włącz innego administratora.
 admin-logo = Logo firmy
 admin-logo-help = Wyświetlane na publicznych stronach rezerwacji. Zalecane: PNG lub SVG, maks. 2 MB.
 admin-company-link = Link firmowy
@@ -1089,6 +1111,9 @@ admin-site-key = Klucz witryny
 admin-secret = Sekret
 admin-widget-url = Adres skryptu widżetu
 admin-widget-url-help = Zmień, jeśli CDN jest zablokowany. Zmiany działają od razu po zapisaniu.
+admin-wasm-url = Adres pliku WASM widżetu
+admin-wasm-url-help = Skąd widżet pobiera swój solver. Wskaż plik WASM udostępniany przez twój serwer Cap, aby strony rezerwacji nie łączyły się z cdn.jsdelivr.net. Zostaw puste, aby użyć wartości domyślnej.
+admin-captcha-wasm-url-invalid = Adres pliku WASM widżetu musi być bezwzględnym adresem http(s).
 admin-captcha-disable-help = Zostaw adres instancji, klucz witryny i sekret puste, aby wyłączyć captchę na stronach rezerwacji.
 admin-save-captcha = Zapisz ustawienia captchy
 admin-resources = Zasoby
@@ -1195,7 +1220,7 @@ admin-show-fewer = Pokaż mniej
 admin-delete-user-confirm = Trwale usunąć użytkownika { $email }?{"\u000A"}{"\u000A"}Usunie to jego konto, profil planowania, źródła kalendarzy, typy wydarzeń oraz wszystkie dane należące wyłącznie do niego. Przeszłe rezerwacje zostaną usunięte razem z jego typami wydarzeń.{"\u000A"}{"\u000A"}W przypadku użytkowników OIDC/SSO: jeśli automatyczna rejestracja jest włączona, ta osoba zostanie utworzona ponownie przy następnym logowaniu.{"\u000A"}{"\u000A"}Tej operacji nie można cofnąć.
 admin-system-settings-help = Publiczny adres i ustawienia bezpieczeństwa sieci. Można je też ustawić zmiennymi środowiskowymi <code>CALRS_BASE_URL</code> i <code>CALRS_ALLOW_PRIVATE_HOSTS</code>. Gdy zmienna środowiskowa jest ustawiona, <strong>ma pierwszeństwo</strong> przed wartością poniżej.
 admin-set-by-env = — ustawione przez środowisko ({ $var }), ma pierwszeństwo przed zapisaną wartością
-admin-google-help = Aby włączyć integrację z Kalendarzem Google, utwórz dane OAuth2 w <a href="https://console.cloud.google.com/apis/credentials" target="_blank" style="color: var(--accent);">Google Cloud Console</a>. Włącz <strong>Google Calendar API</strong>, a następnie dodaj { $redirect_uri } jako dozwolony adres przekierowania.
+admin-google-help = Aby włączyć integrację z Kalendarzem Google, utwórz dane OAuth2 w <a href="https://console.cloud.google.com/apis/credentials" target="_blank" style="color: var(--accent);">Google Cloud Console</a>. Włącz <strong>CalDAV API</strong> (odczyt zajętości i zapis rezerwacji) oraz <strong>Google Calendar API</strong> (linki Google Meet), a następnie dodaj { $redirect_uri } jako dozwolony adres przekierowania.
 admin-room-pattern-help = Dostępne znaczniki: <code>{"{"}username{"}"}</code> (gospodarz), <code>{"{"}event{"}"}</code> (identyfikator typu wydarzenia), <code>{"{"}date{"}"}</code> (RRRRMMDD), <code>{"{"}random{"}"}</code> (8 znaków). Domyślnie: { $default }.
 admin-room-pattern-warning = Bez <code>{"{"}random{"}"}</code> nazwa pokoju jest przewidywalna: dwoje gości rezerwujących ten sam typ wydarzenia tego samego dnia trafi do jednego pokoju i zobaczy nawzajem swoje spotkania. Stałe pokoje są dozwolone (na przykład jeden pokój osobisty na gospodarza), ale włączaj to tylko wtedy, gdy rozumiesz konsekwencje.
 admin-meeting-webhook-help = Gdy miejscem typu wydarzenia jest „Webhook (własny dostawca)”, calrs wysyła przy potwierdzeniu dane rezerwacji metodą POST na ten adres i oczekuje w odpowiedzi treści JSON <code>{"{"}"url": "https://..."{"}"}</code>.
@@ -1236,6 +1261,11 @@ form-error-team-slug-taken = Zespół o tym identyfikatorze już istnieje.
 form-error-title-required = Do wygenerowania identyfikatora potrzebny jest tytuł.
 form-error-event-type-slug-taken = Typ wydarzenia o tym identyfikatorze już istnieje.
 form-error-event-type-slug-taken-team = W tym zespole istnieje już typ wydarzenia o tym identyfikatorze.
+form-error-event-type-title-required = Tytuł jest wymagany.
+form-error-event-type-title-length = Tytuł może mieć najwyżej 255 znaków.
+form-error-event-type-duration = Czas trwania musi być liczbą całkowitą minut od 1 do 1440 (24 godziny).
+form-error-event-type-number = Bufory, minimalne wyprzedzenie, przypomnienie i liczba dodatkowych gości muszą być liczbami całkowitymi, 0 lub więcej.
+form-error-event-type-horizon = Horyzont rezerwacji musi być liczbą całkowitą dni, 0 lub więcej. Zostaw puste pole, aby nie ustawiać limitu.
 form-error-location-required = Szczegóły miejsca są wymagane (na przykład link do rozmowy wideo, numer telefonu albo adres).
 form-error-not-team-admin = Nie jesteś administratorem tego zespołu.
 form-error-no-account = Nie znaleziono profilu planowania. Proszę skontaktować się z administracją.
@@ -1288,6 +1318,8 @@ error-too-many-requests = Zbyt wiele żądań. Proszę spróbować ponownie pó�
 error-no-members-available = Żaden członek zespołu nie jest dostępny w tym terminie.
 error-dynamic-group-public-only = Dynamiczne linki grupowe są dostępne tylko dla publicznych typów wydarzeń.
 error-user-not-found = Nie znaleziono użytkownika.
+error-title-not-found = Nie znaleziono
+error-title-too-many-attempts = Zbyt wiele prób
 
 # Booking action error page: titles (templates/booking_action_error.html)
 
@@ -1347,3 +1379,116 @@ dynamic-group-user-not-found = Nie znaleziono użytkownika „{ $username }”.
 dynamic-group-user-opted-out = Użytkownik „{ $username }” nie włączył linków grupy dynamicznej.
 
 error-slot-unavailable-member = Ten termin nie jest już dostępny ({ $username } ma konflikt).
+
+# Pending requests: slot hold, expiry and approval re-check (#234)
+
+sms-expired = Prośba wygasła: { $event }, { $date } o { $time } ({ $tz }). Brak odpowiedzi, wybierz inny termin.
+email-pending-expired-status = Prośba wygasła
+email-pending-expired-headline = Twoja prośba o rezerwację wygasła: gospodarz nie odpowiedział na czas. Wybierz inny termin.
+email-pending-expired-action = Wybierz inny termin
+bae-body-host-busy = Gospodarz (lub wymagany członek zespołu) nie jest już wolny o tej porze. Poproś gościa o wybranie innego terminu.
+bookings-error-generic = Coś poszło nie tak.
+troubleshoot-detail-pending-request = { $title } (oczekująca prośba)
+etf-pending-blocks-slot = Oczekujące prośby blokują termin
+etf-pending-blocks-slot-help = Dopóki prośba czeka na twoją odpowiedź, nikt inny nie może zarezerwować tego czasu, ani w tym, ani w innych twoich typach wydarzeń.
+etf-pending-expiry = Wygasanie próśb
+etf-pending-expiry-help = Prośba, na którą do tego czasu nie odpowiesz, zostaje automatycznie odrzucona, a gość zostaje poproszony o wybranie innego terminu. Termin kończy się wcześniej, gdy spotkanie jest zbyt blisko, by ktoś inny mógł jeszcze zarezerwować ten czas. W połowie czasu dostajesz jedno przypomnienie.
+etf-pending-expiry-never = Nigdy
+
+etf-pending-expiry-hours =
+    { $hours ->
+        [one] Po { $hours } godzinie
+        [few] Po { $hours } godzinach
+        [many] Po { $hours } godzinach
+       *[other] Po { $hours } godziny
+    }
+
+# Host, watcher and remaining guest emails (src/email.rs, #209)
+
+email-footer-sent-by = Wysłane przez
+email-footer-note = Automatyczne powiadomienie o rezerwacji. Zarządzaj swoimi rezerwacjami w panelu Cascade.
+email-sender-via = { $host } przez { $instance }
+email-date-at-time = { $date } o { $time }
+email-detail-phone = Telefon:
+email-detail-expires = Wygasa:
+email-detail-new-date = Nowa data:
+email-detail-new-time = Nowa godzina:
+email-detail-previous = Poprzednio:
+email-detail-requested = Proponowany termin:
+email-detail-originally = Pierwotnie:
+email-detail-organizer = Organizator:
+email-detail-booked-by = Zarezerwowane przez:
+email-detail-invited-by = Zaproszenie od:
+email-detail-message = Wiadomość:
+email-action-approve = Zatwierdź
+email-action-decline = Odrzuć
+email-action-pick-new-time = Wybierz nowy termin
+email-host-approve-line = Zatwierdź: { $url }
+email-host-decline-line = Odrzuć: { $url }
+email-host-approval-dashboard = Zaloguj się do panelu, aby potwierdzić lub odrzucić tę rezerwację.
+email-host-new-subject = Nowa rezerwacja: { $event }, { $guest } ({ $date })
+email-host-new-heading = Nowa rezerwacja!
+email-host-new-message = { $guest } zarezerwował(a) u Ciebie termin.
+email-host-confirmed-subject = Potwierdzono: { $event }, { $guest } ({ $date })
+email-host-confirmed-heading = Rezerwacja potwierdzona
+email-host-confirmed-message = Zatwierdziłeś tę rezerwację ({ $guest }).
+email-host-confirmed-footer = Wydarzenie zostało dodane do Twojego kalendarza.
+email-host-sync-failure-subject = Wymagane działanie: kalendarz nie został zaktualizowany dla { $event } ({ $date })
+email-host-sync-failure-heading = Twój kalendarz nie został zaktualizowany
+email-host-sync-failure-intro = Termin tej rezerwacji został zmieniony, ale Cascade nie mógł zaktualizować wydarzenia w Twoim Kalendarzu Google. Gość ma nowy termin, a Twój kalendarz wciąż pokazuje stary.
+email-host-sync-failure-action = Otwórz wydarzenie w Kalendarzu Google i przenieś je na powyższy termin. Przenieś istniejące wydarzenie zamiast tworzyć je od nowa, inaczej link Google Meet, który gość już ma, przestanie działać.
+email-writeback-failure-subject = Wymagane działanie: { $event } ({ $date }) nie ma w twoim kalendarzu
+email-writeback-failure-heading = W twoim kalendarzu brakuje rezerwacji
+email-writeback-failure-intro = Cascade nie udało się dodać tej rezerwacji do twojego kalendarza, nawet po kilku próbach. Rezerwacja jest potwierdzona, a gość ma zaproszenie.
+email-writeback-failure-action = Dodaj wydarzenie do kalendarza samodzielnie, żeby go nie przegapić, i sprawdź źródło kalendarza w Cascade. Cascade będzie próbować jeszcze przez kilka godzin; tego e-maila dla tej rezerwacji już nie dostaniesz.
+email-detail-error = Błąd:
+email-source-failure-subject = Wymagane działanie: źródło kalendarza „{ $source }” się nie synchronizuje
+email-source-failure-heading = Źródło kalendarza przestało się synchronizować
+email-source-failure-intro = Cascade od ponad godziny nie może zsynchronizować tego źródła kalendarza. Twoje strony rezerwacji nadal pokazują terminy, ale opierają się na ostatniej udanej synchronizacji, więc wydarzenia dodane lub przeniesione od tego czasu nie są brane pod uwagę.
+email-source-failure-action = Sprawdź źródło na stronie Źródła kalendarzy: zwykle przyczyną jest wygasłe hasło lub cofnięty dostęp. O tym źródle usłyszysz ponownie tylko wtedy, gdy wróci do działania i znów przestanie działać.
+email-detail-source = Źródło kalendarza:
+email-detail-failing-since = Błędy od:
+email-host-reminder-subject = Przypomnienie: { $event }, { $guest } ({ $date })
+email-host-reminder-heading = Nadchodząca rezerwacja
+email-host-reminder-message = Przypomnienie: wkrótce masz rezerwację. Gość: { $guest }.
+email-host-cancel-subject = Anulowano: { $event }, { $guest } ({ $date })
+email-host-cancel-message-by-host = Anulowałeś tę rezerwację.
+email-host-cancel-message-by-guest = { $guest } anulował(a) swoją rezerwację.
+email-host-approval-subject = Wymagane działanie: { $event }, { $guest } ({ $date })
+email-host-approval-heading = Wymagane działanie
+email-host-approval-message = { $guest } chce zarezerwować u Ciebie termin.
+email-host-approval-reminder-subject = Przypomnienie: { $guest } czeka na Twoją odpowiedź ({ $event }, { $date })
+email-host-approval-reminder-heading = Przypomnienie: wymagane działanie
+email-host-approval-reminder-message = { $guest } wciąż czeka na Twoją odpowiedź. Jeśli nie odpowiesz, prośba zostanie automatycznie odrzucona { $deadline }.
+email-host-approval-footer = Możesz tym też zarządzać w swoim panelu.
+email-host-expired-subject = Wygasła: { $event }, { $guest } ({ $date })
+email-host-expired-heading = Prośba o rezerwację wygasła
+email-host-expired-message = Nikt nie odpowiedział na prośbę ({ $guest }) przed terminem, więc została automatycznie odrzucona, a gość został poproszony o wybranie innego terminu.
+email-host-expired-footer = Czas oczekiwania próśb możesz zmienić w ustawieniach typu wydarzenia.
+email-host-reschedule-request-subject = Prośba o zmianę terminu: { $event }, { $guest } ({ $email })
+email-host-reschedule-request-message = { $guest } chce zmienić termin swojej rezerwacji.
+email-watcher-claim-subject = Do przejęcia: { $event }, { $guest } ({ $date })
+email-watcher-claim-message = Nowa rezerwacja jest dostępna do przejęcia. Kliknij poniżej, aby dołączyć jako uczestnik.
+email-watcher-claim-link = Przejmij tę rezerwację: { $url }
+email-watcher-claim-footer = Możesz ją też przejąć w swoim panelu.
+email-claim-confirmed-subject = Rezerwacja przejęta: { $event }, { $guest } ({ $date })
+email-claim-confirmed-footer = Zostaniesz dodany jako uczestnik tego spotkania.
+email-attendee-greeting = Cześć,
+email-attendee-message = Dodano Cię jako uczestnika rezerwacji.
+email-attendee-rescheduled-message = Termin rezerwacji, w której uczestniczysz, został zmieniony.
+email-attendee-cancelled-message = Rezerwacja, w której uczestniczysz, została anulowana.
+email-attendee-cancelled-subject = Anulowano: { $event }
+email-original-booking-cancelled = Twoja pierwotna rezerwacja również została anulowana.
+email-pick-new-time-subject = Zmiana terminu: { $event }, wybierz nowy termin
+email-pick-new-time-message = { $host } musi zmienić termin Twojej rezerwacji. Wybierz nowy termin.
+email-pick-new-time-link = Wybierz nowy termin: { $url }
+email-rescheduled-message = { $host } zmienił(a) termin Twojej rezerwacji.
+email-reschedule-approved-message = { $host } potwierdził(a) nowy termin Twojej rezerwacji.
+email-rescheduled-ics-attached-plain = Zaktualizowane zaproszenie do kalendarza w załączniku.
+email-rescheduled-ics-attached-html = Zaktualizowane zaproszenie do kalendarza w załączniku tego e-maila.
+email-need-to-reschedule = Chcesz zmienić termin? { $url }
+email-invite-subject = { $host } zaprasza Cię do rezerwacji: { $event }
+email-invite-message = { $host } zaprasza Cię do rezerwacji: { $event }
+email-invite-link = Kliknij poniższy link, aby wybrać termin:
+email-invite-action = Wybierz termin
+email-cancel-reason-calendar-deleted = Gospodarz usunął wydarzenie z kalendarza.
