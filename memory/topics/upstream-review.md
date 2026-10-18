@@ -42,7 +42,7 @@ every possible personal value is redacted. The EWS orphan-cancellation helper
 still only updates status/sequence and sends no cancellation; do not infer that
 the new attendee notification coverage includes that path.
 
-Disposition: retain `1.18.0-cascade.1` and all custom work. Target 1.20.0 at the
+Disposition: retain production `1.18.0-cascade.2` (Oct 15; `82cff5e2`) and all custom work. Target 1.20.0 at the
 next separately authorized upgrade, carrying forward October 11–13 constraints.
 Renumber upstream migrations 065–072 after Cascade's existing 065, registering
 the resulting 066–073 entries together. Rehearse the backfill and restore path
@@ -57,7 +57,10 @@ check passed the eight-row backfill fixture, confirmation insert/update triggers
 nine sequence defaults and registration checks. No Rust compilation, upstream
 test-suite run, browser/provider delivery, port, image build, production database
 migration or deployment was performed. The September 28 deployment remains the
-last verified production baseline in this record.
+last verified production baseline in this record. Correction: the
+October 15 `1.18.0-cascade.2` deployment is the current baseline (deployment
+repository record). The October 18 weekly review found the upgrade warranted
+and opened pending approval `66ea467f05dc46808e048ec7843b9db2`.
 
 ## October 13, 2026 — post-1.19.0 guest-detail fixes reviewed
 
