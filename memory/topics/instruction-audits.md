@@ -25,3 +25,9 @@ Source: supplied historical archive slice, saved October 11, 2026. Truncated rep
 The weekly final report explicitly listed **Cal.rs no-op**. This is a guidance-review outcome, not new port, release, test-suite or deployment evidence. The maintained fork remains on `cascade-main`; production and upgrade gates remain owned by `upstream-review.md`.
 
 Source: supplied October 17–18 historical archive. This records reported work; the memory save did not repeat the audit, alter runtime settings, or verify deployment.
+
+## October 18, 2026 — archive supplement
+
+Cal.rs was explicitly included in the seven-repository root/nested-guidance audit, with cascade-main identified as its default branch. The group report says all seven repositories were fetched/pruned, synchronized and clean before and after, with four changed and three unchanged. Its preserved per-repository detail ends in the Discord bridge result; no Cal.rs-specific finding, no-op verdict or commit receipt is supplied. This does not change the production baseline or upstream-port gates.
+
+Source: supplied October 18, 2026 historical archive slice. Reports are historical evidence; truncated details remain unknown. This save did not repeat the instruction audit, product tests, feature-lane operations or deployment.
