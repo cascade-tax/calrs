@@ -317,3 +317,9 @@ remain open.
 The daily-hygiene final report says the **1.19.0 source review and maintenance records were committed and pushed**. It explicitly left production unchanged. This corroborates the reviewed/not-ported disposition at the top of this topic; it supplies no additional compile, runtime, image-build, migration-rehearsal or deployment proof. Fleet audit totals and Drawbridge's 79 tests belong to the hygiene report, not Cal.rs test coverage.
 
 Source: supplied October 11–12 historical archive, saved October 12, 2026. This memory save did not repeat the operational work or verify live product, mailbox, runtime or deployment state.
+
+## October 18, 2026 — archived daily-hygiene closeout
+
+The hygiene closeout corroborates the **1.20.0 reviewed/not-ported** disposition above: booking-email fixes, timezone picker changes and two migrations reviewed; in-memory migration checks passed, including the old pending-booking case with no prior-confirmation evidence. Review and maintenance records were reportedly committed/pushed. **No upgrade was deployed.** This adds no Rust compile, upstream suite, provider delivery, backup-rehearsal or production-migration proof beyond the owning review's explicitly recorded evidence. Preserve `1.18.0-cascade.1` and the separate production-upgrade authorization requirement.
+
+Source: supplied October 17–18 historical archive. This records reported work; the memory save did not repeat the audit, alter runtime settings, or verify deployment.
