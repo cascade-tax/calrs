@@ -1,5 +1,37 @@
 # Cal.rs upstream review and production baseline
 
+## October 21, 2026 — 1.20.1 reviewed, not ported
+
+Reviewed the complete five-commit range after
+`5cb4fac26c1bcaf7fa447f965d848188b22c882e` through
+`9bb1e86c6a345a5dbd75f7fb780c3fd59f62d062`, including
+[PR #276](https://github.com/olivierlambert/calrs/pull/276) and
+[the 1.20.1 release](https://github.com/olivierlambert/calrs/releases/tag/v1.20.1).
+The release metadata dates publication to October 20, 2026.
+
+The booking form's Back to times link now preserves an invitation token,
+including when embed parameters precede it. Existing public-page handlers
+supply that token; this changes navigation, not invitation validation.
+Reset to my default now returns the authenticated user's profile timezone
+with their availability. The form selects it, adding an option for a retained
+alias when necessary, and emits a change event. An empty profile schedule
+still leaves the form unchanged.
+
+The complete delta changes eight files. Cargo changes only the application
+version; no dependency, migration, migration registration or configuration
+changes are present. Upstream adds route tests for the timezone response and
+both embedded and ordinary invitation back links. Those tests were reviewed,
+not run. A disposable Node check of the actual added timezone-selection code
+passed five cases: existing zone, missing alias option, unchanged zone,
+missing timezone and absent selector. No Rust build, browser test, provider
+check or production check was performed.
+
+Disposition: retain the documented `1.20.0-cascade.1` production baseline and
+all fork customizations. Include these two fixes in the next separately
+authorized upgrade, preserving the customized booking template and event-type
+form. This source review authorizes no port, build, migration or deployment.
+The assistant maintenance record pins the exact reviewed revision above.
+
 ## October 18, 2026 — 1.20.0 ported and deployed
 
 `cascade-main` merged upstream v1.20.0 at `1f8229d` and production runs
