@@ -1,5 +1,30 @@
 # Cal.rs upstream review and production baseline
 
+## October 22, 2026 — 1.20.0-cascade.2 deployed (event type duplication)
+
+Production runs `1.20.0-cascade.2`, built from `cascade-main` at
+`6848f9538b1d2e04b226e5222f0b04db3dda838d` (fork-only feature on top of the
+1.20.0 baseline; upstream 1.20.1 still reviewed, not ported) and pinned to
+digest `sha256:50cb4fa2d22b2294bc4391eef3dae425d369b3a0e4b25cbf99d605b7201ffa4b`.
+Cloud Build `47c8336e-5c40-4c80-9dcf-5848cb5c4fd5` succeeded; its source
+archive matched the commit (only `.gitignore` and two empty untracked
+directories differ, as before). Fork CI passed on the release commit.
+
+The release adds **Duplicate** to each event type's dashboard menu (upstream
+issue #235 has no implementation). It uses the edit routes' permissions and
+CSRF, copies every `event_types` column and settings table, leaves bookings
+and invite links, and starts the copy disabled with a `-copy` slug. It also
+moves two guest-phone tests off weekend dates. No migration (still 73 rows).
+
+Authorization: Arthur's Discord request of October 22, 2026 ("add a copy
+event type feature so i can do this going forward"), relayed by the
+coordinating session, following the August 26 fork-patch precedent. The
+deploy tooling requires no Workflow Runtime approval and none was created.
+Pre-deploy backup:
+`gs://cascade-calendar-backups-cascade-calendar-prod/cascade-calendar-20261022T205203Z.tar.gz`
+(checksums and integrity verified). Live proof is in the deployment
+repository's `memory/topics/calrs-upstream-review.md`.
+
 ## October 21, 2026 — 1.20.1 reviewed, not ported
 
 Reviewed the complete five-commit range after
