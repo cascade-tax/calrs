@@ -500,6 +500,10 @@ event-types-view-public = View public page
 event-types-view-page = View page
 event-types-delete = Delete
 event-types-delete-confirm = Delete event type '{ $title }'? This cannot be undone.
+event-types-duplicate = Duplicate
+event-types-duplicate-title = { $title } (copy)
+event-types-duplicate-failed-title = Could not duplicate
+event-types-duplicate-no-slug = No free link is left for another copy of this event type.
 event-types-empty = No event types yet. { $link } to start accepting bookings.
 event-types-empty-link-label = Create one
 

@@ -499,6 +499,10 @@ event-types-view-public = Öffentliche Seite ansehen
 event-types-view-page = Seite ansehen
 event-types-delete = Löschen
 event-types-delete-confirm = Terminart „{ $title }“ löschen? Dies kann nicht rückgängig gemacht werden.
+event-types-duplicate = Duplizieren
+event-types-duplicate-title = { $title } (Kopie)
+event-types-duplicate-failed-title = Duplizieren nicht möglich
+event-types-duplicate-no-slug = Für eine weitere Kopie dieser Terminart ist kein freies Kürzel mehr verfügbar.
 event-types-empty = Noch keine Terminarten. { $link }, um Buchungen anzunehmen.
 event-types-empty-link-label = Lege eine an
 

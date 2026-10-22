@@ -191,6 +191,10 @@ Saving an event type as `google_meet` is rejected unless every scheduling-releva
 
 Event types can be toggled on/off from the dashboard without deleting them. Disabled event types don't show up on your public profile and return 404 on their booking page.
 
+## Duplicating
+
+**Duplicate** in an event type's **▾** menu copies it with every setting: availability schedule and overrides, conflict calendars, team member priorities, watcher teams, frequency limits, required resources, location, confirmation, notice, reminder, guest and SMS settings. Bookings and invite links stay with the original. The copy is named "<title> (copy)", gets the first free slug of `<slug>-copy`, `<slug>-copy-2`, ..., and opens in the edit form. It starts **disabled**, so it is not listed or bookable until you enable it from the dashboard. Anyone who can edit the original can duplicate it (the owner for a personal event type; team admins and global admins for a team one).
+
 ## Visibility
 
 Event types have three visibility levels, set from the **Visibility** dropdown in the event type form:

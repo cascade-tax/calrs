@@ -36,6 +36,11 @@ branch is based on the production release pinned by
 - Collective co-hosts are listed as attendees on the guest's invitation,
   confirmation and reschedule alike, without receiving the guest-style
   attendee email.
+- Event types can be duplicated from the dashboard row menu (upstream issue
+  #235 has no implementation). The copy carries every `event_types` column
+  and every settings table, starts disabled with a `-copy` slug, and leaves
+  bookings and invite links behind. A guard test fails when a migration adds
+  an `event_type_id` table without deciding whether it is copied.
 - Meeting-provider webhooks always send explicit UTC start and end times
   (`...Z`), including for bookings stored before 1.18.0; the Teams bridge in
   `cascade-tax/cascade-calendar` reads them as UTC.

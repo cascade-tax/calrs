@@ -499,6 +499,10 @@ event-types-view-public = Voir la page publique
 event-types-view-page = Voir la page
 event-types-delete = Supprimer
 event-types-delete-confirm = Supprimer le type d'événement « { $title } » ? Cette action est irréversible.
+event-types-duplicate = Dupliquer
+event-types-duplicate-title = { $title } (copie)
+event-types-duplicate-failed-title = Duplication impossible
+event-types-duplicate-no-slug = Il ne reste aucun identifiant libre pour une nouvelle copie de ce type d'événement.
 event-types-empty = Aucun type d'événement pour le moment. { $link } pour commencer à accepter des réservations.
 event-types-empty-link-label = Créez-en un
 

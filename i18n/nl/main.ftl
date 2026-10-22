@@ -500,6 +500,10 @@ event-types-view-public = Openbare pagina bekijken
 event-types-view-page = Pagina bekijken
 event-types-delete = Verwijderen
 event-types-delete-confirm = Afspraaktype '{ $title }' verwijderen? Dit kan niet ongedaan worden gemaakt.
+event-types-duplicate = Dupliceren
+event-types-duplicate-title = { $title } (kopie)
+event-types-duplicate-failed-title = Dupliceren mislukt
+event-types-duplicate-no-slug = Er is geen vrije slug meer voor nog een kopie van dit afspraaktype.
 event-types-empty = Nog geen afspraaktypes. { $link } om boekingen te gaan ontvangen.
 event-types-empty-link-label = Maak er een aan
 

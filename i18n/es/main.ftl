@@ -499,6 +499,10 @@ event-types-view-public = Ver la página pública
 event-types-view-page = Ver la página
 event-types-delete = Eliminar
 event-types-delete-confirm = ¿Eliminar el tipo de evento «{ $title }»? Esta acción no se puede deshacer.
+event-types-duplicate = Duplicar
+event-types-duplicate-title = { $title } (copia)
+event-types-duplicate-failed-title = No se pudo duplicar
+event-types-duplicate-no-slug = No queda ningún identificador libre para otra copia de este tipo de evento.
 event-types-empty = Aún no hay tipos de evento. { $link } para empezar a aceptar reservas.
 event-types-empty-link-label = Crea uno
 

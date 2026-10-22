@@ -84,6 +84,7 @@ Every user-facing string goes through Fluent (`i18n/`).
 | `captcha.rs` | Cap captcha config and server-side verification |
 | `dashboard.rs` | Dashboard overview, event types and bookings lists, host cancel/confirm, settings, avatar |
 | `event_types.rs` | Event type forms (personal and team), availability overrides, form parsing helpers |
+| `event_type_duplicate.rs` | Duplicating an event type with its settings rows (Cascade fork) |
 | `invites.rs` | Invite Links page, invite management, bulk invites, quick links |
 | `teams.rs` | Teams listing, creation, settings, avatars |
 | `sources.rs` | Calendar sources: add, edit, test, sync, remove, write-back setup, Google connect |

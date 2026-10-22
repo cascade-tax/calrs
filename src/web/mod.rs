@@ -6,6 +6,7 @@ mod branding;
 mod calendar_push;
 pub mod captcha;
 mod dashboard;
+mod event_type_duplicate;
 mod event_types;
 mod format;
 mod hosts;
@@ -55,6 +56,7 @@ pub(crate) use calendar_push::{
     booking_guest_input, booking_ics_sequence, with_invite_holders,
 };
 use dashboard::*;
+use event_type_duplicate::*;
 use event_types::*;
 pub(crate) use format::format_time_12h;
 use format::*;
@@ -740,6 +742,10 @@ pub async fn create_router(pool: SqlitePool, data_dir: PathBuf, secret_key: [u8;
             "/dashboard/event-types/{slug}/delete",
             post(delete_event_type),
         )
+        .route(
+            "/dashboard/event-types/{slug}/duplicate",
+            post(duplicate_event_type),
+        )
         // Invite management
         .route(
             "/dashboard/invites/{event_type_id}",
@@ -924,6 +930,10 @@ pub async fn create_router(pool: SqlitePool, data_dir: PathBuf, secret_key: [u8;
         .route(
             "/dashboard/group-event-types/{team_id}/{slug}/delete",
             post(delete_group_event_type),
+        )
+        .route(
+            "/dashboard/group-event-types/{team_id}/{slug}/duplicate",
+            post(duplicate_group_event_type),
         )
         .route(
             "/dashboard/group-event-types/{team_id}/{slug}/embed",

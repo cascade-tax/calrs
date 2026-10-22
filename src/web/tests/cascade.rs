@@ -1,8 +1,8 @@
 //! Cascade-fork behaviour: Sunday-first weeks, the 12-hour clock, the
 //! Cascade palette and branding, styled error pages, team conflict
-//! calendars, collective troubleshooting and attendees, and published
-//! calendar sources. Kept in one file so an upstream port can see at a
-//! glance what the fork guarantees.
+//! calendars, collective troubleshooting and attendees, published
+//! calendar sources, and duplicating event types. Kept in one file so an
+//! upstream port can see at a glance what the fork guarantees.
 
 use super::*;
 
@@ -912,4 +912,343 @@ async fn cascade_utc_booking_pages_keep_twelve_hour_and_styled_errors() {
     // problem, the message the specific one.
     assert!(body.contains("<h1>Invalid booking details</h1>"), "{body}");
     assert!(body.contains("Invalid time."), "{body}");
+}
+
+// --- Duplicate an event type ---
+
+async fn post_duplicate(pool: &SqlitePool, uri: &str, session: &str) -> axum::response::Response {
+    let csrf = "test-csrf-duplicate";
+    create_router(pool.clone(), std::env::temp_dir(), [0u8; 32])
+        .await
+        .oneshot(post_form(uri, session, csrf, &format!("_csrf={csrf}")))
+        .await
+        .unwrap()
+}
+
+async fn event_type_id_by(pool: &SqlitePool, team_id: Option<&str>, slug: &str) -> Option<String> {
+    sqlx::query_scalar("SELECT id FROM event_types WHERE slug = ? AND team_id IS ?")
+        .bind(slug)
+        .bind(team_id)
+        .fetch_optional(pool)
+        .await
+        .unwrap()
+}
+
+async fn column_names(pool: &SqlitePool, table: &str) -> Vec<String> {
+    sqlx::query_scalar("SELECT name FROM pragma_table_info(?) ORDER BY cid")
+        .bind(table)
+        .fetch_all(pool)
+        .await
+        .unwrap()
+}
+
+/// Assert that `table` holds the same rows, ids aside, for both event types.
+async fn assert_same_child_rows(pool: &SqlitePool, table: &str, source: &str, copy: &str) {
+    let cols: Vec<String> = column_names(pool, table)
+        .await
+        .into_iter()
+        .filter(|c| c != "id" && c != "event_type_id")
+        .collect();
+    let select = |id: &str| {
+        format!(
+            "SELECT {} FROM {table} WHERE event_type_id = '{id}'",
+            cols.join(", ")
+        )
+    };
+    let count = |id: String| {
+        let sql = format!("SELECT COUNT(*) FROM {table} WHERE event_type_id = '{id}'");
+        async move {
+            sqlx::query_scalar::<_, i64>(&sql)
+                .fetch_one(pool)
+                .await
+                .unwrap()
+        }
+    };
+    let source_rows = count(source.to_string()).await;
+    assert!(source_rows > 0, "fixture leaves {table} empty");
+    assert_eq!(
+        count(copy.to_string()).await,
+        source_rows,
+        "{table} row count"
+    );
+    for (a, b) in [(source, copy), (copy, source)] {
+        let missing: i64 = sqlx::query_scalar(&format!(
+            "SELECT COUNT(*) FROM ({} EXCEPT {})",
+            select(a),
+            select(b)
+        ))
+        .fetch_one(pool)
+        .await
+        .unwrap();
+        assert_eq!(missing, 0, "{table} rows differ between source and copy");
+    }
+}
+
+#[tokio::test]
+async fn every_event_type_child_table_is_either_duplicated_or_left_behind() {
+    let pool = setup_test_db().await;
+    let tables: Vec<String> = sqlx::query_scalar(
+        "SELECT m.name FROM sqlite_master m
+         WHERE m.type = 'table'
+           AND EXISTS (SELECT 1 FROM pragma_table_info(m.name) WHERE name = 'event_type_id')
+         ORDER BY m.name",
+    )
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+    for table in &tables {
+        assert!(
+            DUPLICATED_CHILD_TABLES.contains(&table.as_str())
+                || NOT_DUPLICATED_TABLES.contains(&table.as_str()),
+            "{table} references event types: decide whether Duplicate copies it"
+        );
+    }
+    for listed in DUPLICATED_CHILD_TABLES.iter().chain(NOT_DUPLICATED_TABLES) {
+        assert!(
+            tables.iter().any(|t| t == listed),
+            "{listed} no longer exists"
+        );
+    }
+}
+
+#[tokio::test]
+async fn duplicating_a_team_event_type_copies_every_setting_and_child_row() {
+    let (_app, pool, _admin_session, _) = setup_test_app().await;
+    let (team_id, source_id) = seed_team_event_type(&pool).await;
+    let (editor_id, editor_session) =
+        insert_test_user_with_session(&pool, "Editor", "editor@example.com", "editor").await;
+    let (member_id, member_session) =
+        insert_test_user_with_session(&pool, "Member", "member@example.com", "member").await;
+    for (uid, role) in [(&editor_id, "admin"), (&member_id, "member")] {
+        sqlx::query(
+            "INSERT INTO team_members (team_id, user_id, role, source) VALUES (?, ?, ?, 'direct')",
+        )
+        .bind(&team_id)
+        .bind(uid)
+        .bind(role)
+        .execute(&pool)
+        .await
+        .unwrap();
+    }
+
+    // Settings on the row itself.
+    sqlx::query(
+        "UPDATE event_types SET description = 'Agenda', duration_min = 45, buffer_before = 5,
+             buffer_after = 10, min_notice_min = 120, requires_confirmation = 1,
+             location_type = 'custom', location_value = 'Teams', reminder_minutes = 1440,
+             max_additional_guests = 3, visibility = 'internal', scheduling_mode = 'collective',
+             default_calendar_view = 'week', first_slot_only = 1, slot_interval_min = 15,
+             timezone = 'America/Los_Angeles', cancel_notice_min = 240,
+             reschedule_notice_min = 480, meeting_pattern_override = 'x-{id}',
+             resource_scheduling_mode = 'any', sms_phone_mode = 'required',
+             booking_horizon_days = 30, pending_blocks_slot = 0, pending_expiry_hours = 48
+         WHERE id = ?",
+    )
+    .bind(&source_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    // One row in every settings table.
+    let account_id: String = sqlx::query_scalar("SELECT account_id FROM event_types WHERE id = ?")
+        .bind(&source_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    let calendar_id = seed_synced_event(
+        &pool,
+        &account_id,
+        "20300107T100000",
+        "20300107T110000",
+        "UTC",
+        "OPAQUE",
+    )
+    .await;
+    sqlx::query("INSERT INTO event_type_calendars (event_type_id, calendar_id) VALUES (?, ?)")
+        .bind(&source_id)
+        .bind(&calendar_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+    sqlx::query("INSERT INTO availability_overrides (id, event_type_id, date, start_time, end_time, is_blocked) VALUES (?, ?, '2030-01-08', '10:00', '12:00', 0)")
+        .bind(uuid::Uuid::new_v4().to_string())
+        .bind(&source_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+    sqlx::query(
+        "INSERT INTO event_type_member_weights (event_type_id, user_id, weight) VALUES (?, ?, 7)",
+    )
+    .bind(&source_id)
+    .bind(&editor_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+    let (watcher_team, _) = insert_team_with_et(&pool, "watchers", "w", &[]).await;
+    sqlx::query("INSERT INTO event_type_watchers (event_type_id, team_id) VALUES (?, ?)")
+        .bind(&source_id)
+        .bind(&watcher_team)
+        .execute(&pool)
+        .await
+        .unwrap();
+    sqlx::query("INSERT INTO booking_frequency_limits (id, event_type_id, max_bookings, period, per_member) VALUES (?, ?, 2, 'week', 1)")
+        .bind(uuid::Uuid::new_v4().to_string())
+        .bind(&source_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+    attach_resource(&pool, &source_id, &insert_resource(&pool, "Room").await).await;
+
+    // Guest records stay with the original.
+    insert_booking(&pool, &source_id, None, dt(2030, 1, 7, 10, 0), "confirmed").await;
+    sqlx::query("INSERT INTO booking_invites (id, event_type_id, token, guest_name, guest_email, created_by_user_id) VALUES (?, ?, ?, 'G', 'g@e.com', ?)")
+        .bind(uuid::Uuid::new_v4().to_string())
+        .bind(&source_id)
+        .bind(uuid::Uuid::new_v4().to_string())
+        .bind(&editor_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let uri = format!("/dashboard/group-event-types/{team_id}/team-sync/duplicate");
+
+    // A plain team member cannot edit the event type, so cannot copy it.
+    let response = post_duplicate(&pool, &uri, &member_session).await;
+    assert_eq!(response.status(), axum::http::StatusCode::NOT_FOUND);
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM event_types WHERE team_id = ?")
+        .bind(&team_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(count, 1, "a refused duplicate creates nothing");
+
+    // A team admin can, and lands on the copy's edit page.
+    let response = post_duplicate(&pool, &uri, &editor_session).await;
+    assert!(response.status().is_redirection(), "{}", response.status());
+    assert_eq!(
+        response.headers()["location"],
+        format!("/dashboard/group-event-types/{team_id}/team-sync-copy/edit").as_str()
+    );
+    let copy_id = event_type_id_by(&pool, Some(&team_id), "team-sync-copy")
+        .await
+        .expect("copy created");
+
+    let (title, enabled, created_by): (String, i32, Option<String>) =
+        sqlx::query_as("SELECT title, enabled, created_by_user_id FROM event_types WHERE id = ?")
+            .bind(&copy_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(title, "Team Sync (copy)");
+    assert_eq!(enabled, 0, "the copy starts disabled");
+    assert_eq!(created_by.as_deref(), Some(editor_id.as_str()));
+
+    for column in column_names(&pool, "event_types").await {
+        if [
+            "id",
+            "slug",
+            "title",
+            "enabled",
+            "created_at",
+            "created_by_user_id",
+        ]
+        .contains(&column.as_str())
+        {
+            continue;
+        }
+        let same: bool = sqlx::query_scalar(&format!(
+            "SELECT a.\"{column}\" IS b.\"{column}\" FROM event_types a, event_types b
+             WHERE a.id = ? AND b.id = ?"
+        ))
+        .bind(&source_id)
+        .bind(&copy_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert!(same, "event_types.{column} was not copied");
+    }
+
+    for table in DUPLICATED_CHILD_TABLES {
+        assert_same_child_rows(&pool, table, &source_id, &copy_id).await;
+    }
+    for table in NOT_DUPLICATED_TABLES {
+        let copied: i64 = sqlx::query_scalar(&format!(
+            "SELECT COUNT(*) FROM {table} WHERE event_type_id = ?"
+        ))
+        .bind(&copy_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(copied, 0, "{table} must not be copied");
+    }
+}
+
+#[tokio::test]
+async fn duplicating_a_personal_event_type_picks_a_free_slug_and_refuses_others() {
+    let (_app, pool, session, source_id) = setup_test_app().await;
+    let uri = "/dashboard/event-types/test-meeting/duplicate";
+
+    let response = post_duplicate(&pool, uri, &session).await;
+    assert_eq!(
+        response.headers()["location"],
+        "/dashboard/event-types/test-meeting-copy/edit"
+    );
+    let response = post_duplicate(&pool, uri, &session).await;
+    assert_eq!(
+        response.headers()["location"],
+        "/dashboard/event-types/test-meeting-copy-2/edit"
+    );
+    let edit = create_router(pool.clone(), std::env::temp_dir(), [0u8; 32])
+        .await
+        .oneshot(get_authed(
+            "/dashboard/event-types/test-meeting-copy-2/edit",
+            &session,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(edit.status(), axum::http::StatusCode::OK);
+    assert!(body_string(edit).await.contains("Test Meeting (copy)"));
+    let copy_id = event_type_id_by(&pool, None, "test-meeting-copy-2")
+        .await
+        .unwrap();
+    assert_same_child_rows(&pool, "availability_rules", &source_id, &copy_id).await;
+
+    // Another user's personal event type is not theirs to edit or copy.
+    let (_, other_session) =
+        insert_test_user_with_session(&pool, "Other", "other@example.com", "other").await;
+    let response = post_duplicate(&pool, uri, &other_session).await;
+    assert_eq!(response.status(), axum::http::StatusCode::NOT_FOUND);
+
+    // Without the CSRF token nothing happens.
+    let response = create_router(pool.clone(), std::env::temp_dir(), [0u8; 32])
+        .await
+        .oneshot(post_form(
+            uri,
+            &session,
+            "cookie-token",
+            "_csrf=other-token",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), axum::http::StatusCode::FORBIDDEN);
+
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM event_types WHERE team_id IS NULL")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(count, 3, "the original and exactly two copies");
+}
+
+#[tokio::test]
+async fn event_type_list_offers_duplicate_in_the_row_menu() {
+    let (app, _pool, session, _) = setup_test_app().await;
+    let body = body_string(
+        app.oneshot(get_authed("/dashboard/event-types", &session))
+            .await
+            .unwrap(),
+    )
+    .await;
+    let body = body.replace("&#x2f;", "/");
+    assert!(body.contains(r#"action="/dashboard/event-types/test-meeting/duplicate""#));
+    assert!(body.contains(">Duplicate</button>"));
 }

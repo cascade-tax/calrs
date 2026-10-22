@@ -499,6 +499,10 @@ event-types-view-public = Vaata avalikku lehte
 event-types-view-page = Vaata lehte
 event-types-delete = Kustuta
 event-types-delete-confirm = Kas kustutada sündmuse tüüp „{ $title }“? Seda ei saa tagasi võtta.
+event-types-duplicate = Dubleeri
+event-types-duplicate-title = { $title } (koopia)
+event-types-duplicate-failed-title = Dubleerimine ebaõnnestus
+event-types-duplicate-no-slug = Selle sündmuse tüübi uue koopia jaoks pole vaba identifikaatorit.
 event-types-empty = Sündmuse tüüpe veel pole. { $link }, et hakata broneeringuid vastu võtma.
 event-types-empty-link-label = Loo üks
 

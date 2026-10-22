@@ -501,6 +501,10 @@ event-types-view-public = Zobacz stronę publiczną
 event-types-view-page = Zobacz stronę
 event-types-delete = Usuń
 event-types-delete-confirm = Usunąć typ wydarzenia „{ $title }”? Tej operacji nie można cofnąć.
+event-types-duplicate = Duplikuj
+event-types-duplicate-title = { $title } (kopia)
+event-types-duplicate-failed-title = Nie udało się zduplikować
+event-types-duplicate-no-slug = Brak wolnego identyfikatora dla kolejnej kopii tego typu wydarzenia.
 event-types-empty = Nie ma jeszcze typów wydarzeń. { $link }, aby zacząć przyjmować rezerwacje.
 event-types-empty-link-label = Utwórz jakiś
 
