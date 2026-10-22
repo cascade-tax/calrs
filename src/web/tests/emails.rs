@@ -79,12 +79,13 @@ async fn approval_request_email_includes_the_guest_phone() {
     .await
     .unwrap();
 
-    let base = chrono::Utc::now() + chrono::Duration::days(3);
+    // A weekday the seeded Mon-Fri availability offers, whatever today is.
+    let date = far_future_monday();
     let csrf = "test-csrf-231-email";
     let form = format!(
         "_csrf={}&date={}&time=10%3A00&name=Phone+Guest&email=phone-guest%40test.com&notes=&phone=06+12+34+56+78",
         csrf,
-        base.format("%Y-%m-%d")
+        date
     );
     let response = app
         .oneshot(post_form_unauthed(

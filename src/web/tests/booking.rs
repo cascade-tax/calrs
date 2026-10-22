@@ -818,14 +818,15 @@ async fn optional_phone_mode_stores_a_normalized_number_and_tolerates_an_empty_o
     .await
     .unwrap();
 
-    let base = chrono::Utc::now() + chrono::Duration::days(3);
+    // A weekday the seeded Mon-Fri availability offers, whatever today is.
+    let date = far_future_monday();
     let csrf = "test-csrf-phone-optional";
 
     // A national number is normalized to E.164 with the configured country.
     let form = format!(
         "_csrf={}&date={}&time=10%3A00&name=With+Phone&email=with%40test.com&notes=&phone=06+12+34+56+78",
         csrf,
-        base.format("%Y-%m-%d")
+        date
     );
     let response = app
         .clone()
@@ -851,8 +852,7 @@ async fn optional_phone_mode_stores_a_normalized_number_and_tolerates_an_empty_o
     // Leaving it empty is fine: the guest simply gets no SMS.
     let form = format!(
         "_csrf={}&date={}&time=11%3A00&name=No+Phone&email=without%40test.com&notes=&phone=",
-        csrf,
-        base.format("%Y-%m-%d")
+        csrf, date
     );
     let response = app
         .oneshot(post_form_unauthed(
