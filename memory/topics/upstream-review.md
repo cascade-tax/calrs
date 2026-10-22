@@ -46,6 +46,30 @@ live verification are in the deployment repository's
 `memory/topics/calrs-upstream-review.md`. Next upstream review starts after
 `5cb4fac`.
 
+
+### Archived deployment verification receipt (saved October 22, 2026)
+
+The supplied archive corroborates the completed 1.20.0 upgrade above. The
+port's tests reportedly passed. Rehearsal against a production-backup copy
+applied exactly eight new migrations, preserved all bookings, passed database
+integrity checks, and made a second run a no-op. No pending bookings existed
+in that copy, so the reviewed old-pending-reschedule backfill risk was absent
+from this dataset. A fresh pre-deployment backup was verified against the
+rehearsal copy before approval was bound to the exact built image.
+
+The deployment report says all three services were healthy and production
+matched the image built from the reviewed source. All nine bookings remained
+unchanged after the eight migrations, with a clean database check. Live checks
+preserved Sunday-first weeks, forced 12-hour display without a 24-hour option,
+and the exact pre-upgrade Cascade colors. A bad link returned the styled error
+page; Google and login callback routes responded; a real Teams meeting was
+created and cleaned up. Service logs showed no errors. Invite titles and UTC
+webhook times were also reported retained during the port.
+
+Source: supplied historical archive, saved October 22. These are reported
+results, not checks rerun by this memory job. This receipt supplements the
+October 18 deployment; the later 1.20.1 review remains reviewed/not ported.
+
 ## October 18, 2026 — 1.20.0 reviewed, not ported
 
 Reviewed `c3ac84a4ab36dd0db6fa01c4c9eb86fa38a96663` through

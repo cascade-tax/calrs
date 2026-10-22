@@ -44,7 +44,8 @@ before committing; no hook enforces it in this checkout.
 ## Durable memory
 
 - [Upstream review status](memory/topics/upstream-review.md) records reviewed
-  release gaps, porting constraints, daily-hygiene review closeouts, defect status, the confirmed production
-  baseline, and approval gates. Read it before porting upstream work or
+  release gaps, porting constraints, daily-hygiene review closeouts, defect
+  status, the confirmed production baseline, archived migration and live-check
+  evidence, and approval gates. Read it before porting upstream work or
   changing release status.
 - [Instruction audit history](memory/topics/instruction-audits.md) records dated guidance-review outcomes and no-op checkpoints.
