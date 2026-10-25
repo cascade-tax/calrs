@@ -1501,8 +1501,17 @@ pub(super) async fn google_callback(
     Query(query): Query<GoogleCallbackQuery>,
 ) -> impl IntoResponse {
     // Check for errors from Google
+    // Cascade: every failure here renders the styled error card with a real
+    // status. Its template auto-escapes, so echoed text (the query-string
+    // `error`, provider error messages) cannot carry markup (upstream #299).
     if let Some(error) = &query.error {
-        return Html(format!("Google authorization failed: {}", error)).into_response();
+        return render_error_page_no_headers(
+            &state,
+            axum::http::StatusCode::BAD_REQUEST,
+            "Authorization failed",
+            &format!("Google authorization failed: {error}"),
+        )
+        .into_response();
     }
 
     // Verify CSRF state
@@ -1534,9 +1543,11 @@ pub(super) async fn google_callback(
             cookie_user = %stored_user,
             "Google OAuth2 callback: user cookie missing or does not match session"
         );
-        return Html(
-            "Session changed during Google authorization. Please start the connect flow again."
-                .to_string(),
+        return render_error_page_no_headers(
+            &state,
+            axum::http::StatusCode::BAD_REQUEST,
+            "Authorization failed",
+            "Session changed during Google authorization. Please start the connect flow again.",
         )
         .into_response();
     }
@@ -1600,7 +1611,15 @@ pub(super) async fn google_callback(
         .await
         {
             Ok(t) => t,
-            Err(e) => return Html(format!("Token exchange failed: {}", e)).into_response(),
+            Err(e) => {
+                return render_error_page_no_headers(
+                    &state,
+                    axum::http::StatusCode::BAD_GATEWAY,
+                    "Authorization failed",
+                    &format!("Token exchange failed: {e}"),
+                )
+                .into_response();
+            }
         };
 
     // Identify the Google account that authorized us; its email is what goes in the CalDAV URL.
@@ -1608,7 +1627,13 @@ pub(super) async fn google_callback(
     let google_email = match crate::oauth2_caldav::fetch_google_email(&access_token).await {
         Ok(e) => e,
         Err(e) => {
-            return Html(format!("Failed to fetch Google account email: {}", e)).into_response();
+            return render_error_page_no_headers(
+                &state,
+                axum::http::StatusCode::BAD_GATEWAY,
+                "Authorization failed",
+                &format!("Failed to fetch Google account email: {e}"),
+            )
+            .into_response();
         }
     };
     let caldav_url = crate::oauth2_caldav::google_caldav_url_for_email(&google_email);

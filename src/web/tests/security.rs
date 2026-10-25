@@ -689,3 +689,38 @@ fn build_csp_embed_swap_preserves_captcha_allowances() {
     assert!(embed_csp.contains("https://cap.example.com"));
     assert!(embed_csp.contains("https://cdn.jsdelivr.net"));
 }
+
+/// The Google OAuth callback echoes the provider's `error` parameter. It is
+/// read from the query string before the state check, so a link carrying
+/// markup must come back escaped, not rendered.
+#[tokio::test]
+async fn google_callback_escapes_the_error_parameter() {
+    let (app, _pool, session, _) = setup_test_app().await;
+    let uri = "/dashboard/sources/google/callback?error=%3Cimg%20src%3Dx%20onerror%3Dalert(1)%3E";
+    let response = app.oneshot(get_authed(uri, &session)).await.unwrap();
+    let body = body_string(response).await;
+    assert!(!body.contains("<img"), "{body}");
+    assert!(
+        body.contains("&lt;img src=x onerror=alert(1)&gt;"),
+        "{body}"
+    );
+}
+
+/// Cascade: the callback's failures render the styled error card, so the
+/// escaping must hold on that page too: a `<script>` error parameter comes
+/// back as text inside the card, with a 400 rather than a bare 200 body.
+#[tokio::test]
+async fn google_callback_error_card_escapes_a_script_error() {
+    let (app, _pool, session, _) = setup_test_app().await;
+    let uri = "/dashboard/sources/google/callback?error=%3Cscript%3Ealert(document.cookie)%3C%2Fscript%3E";
+    let response = app.oneshot(get_authed(uri, &session)).await.unwrap();
+    assert_eq!(response.status(), axum::http::StatusCode::BAD_REQUEST);
+    let body = body_string(response).await;
+    assert!(!body.contains("<script>alert"), "{body}");
+    assert!(
+        body.contains("&lt;script&gt;alert(document.cookie)"),
+        "{body}"
+    );
+    assert!(body.contains("Authorization failed"), "{body}");
+    assert!(body.contains("Cascade"), "the styled Cascade page: {body}");
+}
