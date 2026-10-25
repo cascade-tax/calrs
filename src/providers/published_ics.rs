@@ -35,11 +35,15 @@ impl PublishedIcsProvider {
     }
 }
 
-fn event_datetime_utc(vevent: &str, field: &str) -> Option<DateTime<Utc>> {
-    let value = crate::utils::extract_vevent_field(vevent, field)?;
-    let naive = crate::utils::parse_ical_datetime(&value)?;
-    let tzid = crate::utils::extract_vevent_tzid(vevent, field);
-    match tzid.and_then(|value| value.parse::<Tz>().ok()) {
+/// The zone a property's TZID names, resolved the same way sync stores it
+/// (Windows names, vendor prefixes, display names; see `crate::tzid`).
+fn field_zone(vevent: &str, field: &str) -> Option<Tz> {
+    crate::utils::extract_vevent_tzid(vevent, field)
+        .and_then(|value| crate::tzid::resolve_or_offset(&value))
+}
+
+fn local_to_utc(naive: NaiveDateTime, zone: Option<Tz>) -> Option<DateTime<Utc>> {
+    match zone {
         Some(tz) => tz
             .from_local_datetime(&naive)
             .earliest()
@@ -48,9 +52,28 @@ fn event_datetime_utc(vevent: &str, field: &str) -> Option<DateTime<Utc>> {
     }
 }
 
+fn event_datetime_utc(vevent: &str, field: &str) -> Option<DateTime<Utc>> {
+    let value = crate::utils::extract_vevent_field(vevent, field)?;
+    let naive = crate::utils::parse_ical_datetime(&value)?;
+    local_to_utc(naive, field_zone(vevent, field))
+}
+
+/// The event's end: DTEND, or DTSTART plus DURATION (upstream #282).
+fn event_end_utc(vevent: &str) -> Option<DateTime<Utc>> {
+    if crate::utils::extract_vevent_field(vevent, "DTEND").is_some() {
+        return event_datetime_utc(vevent, "DTEND");
+    }
+    let zone = field_zone(vevent, "DTSTART");
+    let end = crate::utils::extract_vevent_end(vevent, zone)?;
+    let naive = crate::utils::parse_ical_datetime(&end)?;
+    if end.ends_with('Z') {
+        return Some(Utc.from_utc_datetime(&naive));
+    }
+    local_to_utc(naive, zone)
+}
+
 fn local_now_for_event(vevent: &str, now: DateTime<Utc>) -> NaiveDateTime {
-    crate::utils::extract_vevent_tzid(vevent, "DTSTART")
-        .and_then(|value| value.parse::<Tz>().ok())
+    field_zone(vevent, "DTSTART")
         .map(|tz| now.with_timezone(&tz).naive_local())
         .unwrap_or_else(|| now.naive_utc())
 }
@@ -66,14 +89,7 @@ fn rrule_until_utc(vevent: &str, rrule: &str) -> Option<DateTime<Utc>> {
     if raw.ends_with('Z') {
         return Some(Utc.from_utc_datetime(&naive));
     }
-    let tzid = crate::utils::extract_vevent_tzid(vevent, "DTSTART");
-    match tzid.and_then(|value| value.parse::<Tz>().ok()) {
-        Some(tz) => tz
-            .from_local_datetime(&naive)
-            .earliest()
-            .map(|value| value.with_timezone(&Utc)),
-        None => Some(Utc.from_utc_datetime(&naive)),
-    }
+    local_to_utc(naive, field_zone(vevent, "DTSTART"))
 }
 
 fn recurring_event_has_future_occurrence(vevent: &str, rrule: &str, now: DateTime<Utc>) -> bool {
@@ -100,7 +116,8 @@ fn recurring_event_has_future_occurrence(vevent: &str, rrule: &str, now: DateTim
     else {
         return false;
     };
-    let end = crate::utils::extract_vevent_field(vevent, "DTEND")
+    let start_tz = crate::utils::extract_vevent_tzid(vevent, "DTSTART");
+    let end = crate::utils::extract_vevent_end(vevent, field_zone(vevent, "DTSTART"))
         .and_then(|value| crate::utils::parse_ical_datetime(&value))
         .unwrap_or(start);
     let window_start = local_now_for_event(vevent, now);
@@ -109,7 +126,7 @@ fn recurring_event_has_future_occurrence(vevent: &str, rrule: &str, now: DateTim
         start,
         end,
         rrule,
-        &crate::rrule::extract_exdates(vevent),
+        &crate::rrule::extract_exdates(vevent, start_tz.as_deref()),
         window_start,
         window_end,
     )
@@ -125,7 +142,7 @@ fn filter_future_vevents(ical: &str, now: DateTime<Utc>) -> String {
             if let Some(rrule) = crate::utils::extract_vevent_field(vevent, "RRULE") {
                 recurring_event_has_future_occurrence(vevent, &rrule, now)
             } else {
-                event_datetime_utc(vevent, "DTEND")
+                event_end_utc(vevent)
                     .or_else(|| event_datetime_utc(vevent, "DTSTART"))
                     .is_some_and(|end| end > now)
             }
@@ -288,12 +305,18 @@ BEGIN:VEVENT\r\nUID:past\r\nDTSTART:20260818T100000Z\r\nDTEND:20260818T110000Z\r
 BEGIN:VEVENT\r\nUID:future\r\nDTSTART;TZID=Eastern Standard Time:20260819T100000\r\nDTEND;TZID=Eastern Standard Time:20260819T110000\r\nEND:VEVENT\r\n\
 BEGIN:VEVENT\r\nUID:expired-series\r\nDTSTART:20260801T100000Z\r\nDTEND:20260801T110000Z\r\nRRULE:FREQ=DAILY;UNTIL=20260818T100000Z\r\nEND:VEVENT\r\n\
 BEGIN:VEVENT\r\nUID:live-series\r\nDTSTART:20260801T100000Z\r\nDTEND:20260801T110000Z\r\nRRULE:FREQ=WEEKLY;UNTIL=20260930T100000Z\r\nEND:VEVENT\r\n\
+BEGIN:VEVENT\r\nUID:running-duration\r\nDTSTART;TZID=\"India Standard Time\":20260819T163000\r\nDURATION:PT2H\r\nEND:VEVENT\r\n\
+BEGIN:VEVENT\r\nUID:ended-duration\r\nDTSTART:20260819T090000Z\r\nDURATION:PT2H\r\nEND:VEVENT\r\n\
 END:VCALENDAR\r\n";
         let filtered = filter_future_vevents(body, now);
         assert!(!filtered.contains("UID:past"));
         assert!(filtered.contains("UID:future"));
         assert!(!filtered.contains("UID:expired-series"));
         assert!(filtered.contains("UID:live-series"));
+        // DURATION ends: 16:30-18:30 Kolkata is 11:00-13:00 UTC, still
+        // running at noon; 09:00-11:00 UTC has ended.
+        assert!(filtered.contains("UID:running-duration"));
+        assert!(!filtered.contains("UID:ended-duration"));
         assert!(!filtered.contains("BEGIN:VCALENDAR"));
     }
 }

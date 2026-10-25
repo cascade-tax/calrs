@@ -24,6 +24,33 @@
   }
   .src-write select { flex: 1 1 200px; max-width: 320px; font-size: 0.8125rem; padding: 0.375rem 2.125rem 0.375rem 0.625rem; }
   .src-write .field-label { margin-bottom: 0; color: var(--text-muted); font-weight: 500; white-space: nowrap; }
+  /* Upstream #281: wrap long names, URLs and errors; give the error room. */
+  .src-row .et-row { flex-wrap: wrap; }
+  .src-row .et-info { flex: 1 1 18rem; overflow-wrap: anywhere; }
+  .src-actions .btn { white-space: normal; overflow-wrap: anywhere; }
+  .source-sync-error {
+    margin-top: 0.75rem;
+    padding: 0.75rem;
+    border-left: 3px solid var(--error-text);
+    border-radius: var(--radius);
+    background: var(--error-bg);
+    color: var(--error-text);
+    font-size: 0.8125rem;
+    line-height: 1.6;
+    overflow-wrap: anywhere;
+  }
+  /* Upstream #281: on narrow screens stack the row, lay the actions out as a
+     two-column grid of 44px touch targets, and give the write-calendar picker
+     the full width (1rem text keeps iOS from zooming in). */
+  @media (max-width: 600px) {
+    .src-row .et-row { flex-direction: column; align-items: stretch; }
+    .src-row .et-info { flex-basis: auto; }
+    .src-row .et-row .src-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .src-actions form { width: 100%; }
+    .src-actions .btn { width: 100%; min-height: 44px; height: 100%; justify-content: center; }
+    .src-write { flex-direction: column; align-items: stretch; }
+    .src-write select { flex: auto; width: 100%; max-width: none; min-height: 44px; font-size: 1rem; }
+  }
 </style>
 
 <div class="page-head">
@@ -51,9 +78,8 @@
           </div>
           <div class="src-url">{% if s.provider_type == "published_ics" %}Private published feed{% else %}{{ s.url }}{% endif %}</div>
           <div class="src-meta">{% if s.username %}{{ s.username }} &middot; {% endif %}Last sync: <span class="mono">{{ s.last_synced }}</span></div>
-          {% if s.sync_error %}<div class="src-meta source-sync-error" style="color: var(--error-text); overflow-wrap: anywhere;">{{ t("sources-sync-failing", since=s.sync_failing_since, error=s.sync_error) }}</div>{% endif %}
         </div>
-        <div class="et-actions">
+        <div class="et-actions src-actions">
           <form method="post" action="/dashboard/sources/{{ s.id }}/sync" style="margin: 0;">
             <button type="submit" class="btn btn-sm">
               <svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg> Sync
@@ -70,6 +96,7 @@
           <form method="post" action="/dashboard/sources/{{ s.id }}/remove" class="remove-form" style="display: none;"></form>
         </div>
       </div>
+      {% if s.sync_error %}<div class="source-sync-error">{{ t("sources-sync-failing", since=s.sync_failing_since, error=s.sync_error) }}</div>{% endif %}
       {% if s.calendars and s.supports_write_back %}
         {% if not s.write_calendar_href %}
         <div class="notice notice-warning" style="margin: 0.75rem 0 0;">

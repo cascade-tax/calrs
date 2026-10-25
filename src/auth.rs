@@ -968,12 +968,72 @@ const OIDC_NONCE_COOKIE: &str = "calrs_oidc_nonce";
 const OIDC_PKCE_COOKIE: &str = "calrs_oidc_pkce";
 
 use axum::extract::Query;
-use openidconnect::core::{CoreClient, CoreProviderMetadata, CoreResponseType};
-use openidconnect::{
-    AuthenticationFlow, AuthorizationCode, ClientId, ClientSecret, CsrfToken, EndpointMaybeSet,
-    EndpointNotSet, EndpointSet, IssuerUrl, Nonce, PkceCodeChallenge, PkceCodeVerifier,
-    RedirectUrl, Scope, TokenResponse,
+use openidconnect::core::{
+    CoreClient, CoreClientAuthMethod, CoreProviderMetadata, CoreResponseType,
 };
+use openidconnect::{
+    AsyncHttpClient, AuthType, AuthenticationFlow, AuthorizationCode, ClientId, ClientSecret,
+    CsrfToken, EndpointMaybeSet, EndpointNotSet, EndpointSet, IssuerUrl, Nonce, PkceCodeChallenge,
+    PkceCodeVerifier, RedirectUrl, Scope, TokenResponse,
+};
+
+/// The status and declared media type of the last token endpoint response.
+/// Never its body: an error status does not prove a body holds no credential.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct TokenResponseMeta {
+    status: Option<StatusCode>,
+    content_type: Option<String>,
+}
+
+/// An HTTP client for `oauth2` that remembers the status (and media type) of
+/// the last response. `oauth2` reports any token endpoint reply that is not
+/// JSON as a parse failure, whatever its status, and a refusal (401, 400)
+/// reads very differently from a 200.
+struct StatusRecordingClient {
+    inner: openidconnect::reqwest::Client,
+    last: std::sync::Mutex<TokenResponseMeta>,
+}
+
+impl StatusRecordingClient {
+    fn new(inner: openidconnect::reqwest::Client) -> Self {
+        Self {
+            inner,
+            last: std::sync::Mutex::new(TokenResponseMeta::default()),
+        }
+    }
+
+    fn last_response(&self) -> TokenResponseMeta {
+        self.last.lock().map(|m| m.clone()).unwrap_or_default()
+    }
+}
+
+impl<'c> AsyncHttpClient<'c> for StatusRecordingClient {
+    type Error = openidconnect::HttpClientError<openidconnect::reqwest::Error>;
+    type Future = std::pin::Pin<
+        Box<
+            dyn std::future::Future<Output = Result<openidconnect::HttpResponse, Self::Error>>
+                + Send
+                + 'c,
+        >,
+    >;
+
+    fn call(&'c self, request: openidconnect::HttpRequest) -> Self::Future {
+        Box::pin(async move {
+            let response = self.inner.call(request).await?;
+            if let Ok(mut last) = self.last.lock() {
+                *last = TokenResponseMeta {
+                    status: Some(response.status()),
+                    content_type: response
+                        .headers()
+                        .get(axum::http::header::CONTENT_TYPE)
+                        .and_then(|v| v.to_str().ok())
+                        .map(redact_media_type),
+                };
+            }
+            Ok(response)
+        })
+    }
+}
 
 fn build_http_client() -> Result<openidconnect::reqwest::Client> {
     let client = openidconnect::reqwest::ClientBuilder::new()
@@ -1042,8 +1102,17 @@ async fn build_oidc_client_with_redirect(
     ))
     .map_err(|e| anyhow::anyhow!("Invalid redirect URL: {}", e))?;
 
-    let client = CoreClient::from_provider_metadata(provider_metadata, client_id, client_secret)
-        .set_redirect_uri(redirect_url);
+    let use_post = prefers_client_secret_post(
+        provider_metadata
+            .token_endpoint_auth_methods_supported()
+            .map(|m| m.as_slice()),
+    );
+    let mut client =
+        CoreClient::from_provider_metadata(provider_metadata, client_id, client_secret)
+            .set_redirect_uri(redirect_url);
+    if use_post {
+        client = client.set_auth_type(AuthType::RequestBody);
+    }
 
     Ok(client)
 }
@@ -1069,7 +1138,7 @@ async fn oidc_login(State(state): State<Arc<AppState>>) -> Response {
             CsrfToken::new_random,
             Nonce::new_random,
         )
-        .add_scope(Scope::new("openid".to_string()))
+        // `openid` is added by the library itself; adding it here sent it twice.
         .add_scope(Scope::new("email".to_string()))
         .add_scope(Scope::new("profile".to_string()))
         .set_pkce_challenge(pkce_challenge)
@@ -1184,9 +1253,13 @@ async fn oidc_callback(
         Ok(r) => r,
         Err(e) => return crate::web::oidc_error_response_with_source("oidc exchange_code", &e),
     };
+    // `oauth2` reports any token endpoint reply that is not JSON as a parse
+    // failure, whatever its HTTP status, so record the status on the way
+    // through: a refusal (401, 400) reads very differently from a 200.
+    let recording_client = StatusRecordingClient::new(http_client);
     let token_response = match token_request
         .set_pkce_verifier(PkceCodeVerifier::new(pkce_verifier_secret))
-        .request_async(&http_client)
+        .request_async(&recording_client)
         .await
     {
         Ok(t) => t,
@@ -1196,13 +1269,15 @@ async fn oidc_callback(
         // quoted values masked, and the body's shape without its values.
         // `path` is "." for any id_token or claim error, because the token
         // response flattens its extra fields; the claim name is in `reason`.
+        // Cascade: upstream #278 also logged the raw text of a short non-200
+        // body; that is not ported. Only the status, media type and the
+        // body's value-free shape are logged.
         Err(openidconnect::RequestTokenError::Parse(parse_err, body)) => {
-            tracing::error!(
-                context = "oidc token exchange",
-                path = %parse_err.path(),
-                reason = %redact_reason(&parse_err.inner().to_string()),
-                body = %summarize_token_response_body(&body),
-                "oidc auth failure: token response did not parse"
+            log_token_parse_failure(
+                &recording_client.last_response(),
+                &parse_err.path().to_string(),
+                &redact_reason(&parse_err.inner().to_string()),
+                &body,
             );
             return crate::web::oidc_failure_response();
         }
@@ -1759,6 +1834,52 @@ fn summarize_token_response_body(body: &[u8]) -> String {
     out
 }
 
+/// A `Content-Type` value reduced to its bare media type (`text/plain`), with
+/// parameters dropped. Anything that is not a short, plain `type/subtype`
+/// token is reported as `other`, so the header cannot smuggle text into logs.
+fn redact_media_type(value: &str) -> String {
+    let media = value.split(';').next().unwrap_or("").trim();
+    let plain = !media.is_empty()
+        && media.len() <= 64
+        && media.matches('/').count() == 1
+        && media
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '/' | '+' | '-' | '.'));
+    if plain {
+        media.to_ascii_lowercase()
+    } else {
+        "other".to_string()
+    }
+}
+
+/// The error line for a token endpoint reply `oauth2` could not parse: its
+/// status, declared media type, where serde stopped, the masked reason, and
+/// the body's value-free shape from `summarize_token_response_body`. Cascade
+/// deliberately never logs the body's text, whatever the status.
+fn log_token_parse_failure(meta: &TokenResponseMeta, path: &str, reason: &str, body: &[u8]) {
+    tracing::error!(
+        context = "oidc token exchange",
+        status = %meta.status.map_or_else(|| "unknown".to_string(), |s| s.to_string()),
+        content_type = %meta.content_type.as_deref().unwrap_or("none"),
+        path = %path,
+        reason = %reason,
+        body = %summarize_token_response_body(body),
+        "oidc auth failure: token response did not parse"
+    );
+}
+
+/// Whether to send the client credentials in the token request body
+/// (`client_secret_post`) rather than an HTTP Basic header. Only when the
+/// provider lists its methods, lists `client_secret_post` and not
+/// `client_secret_basic`: with no list, OIDC Discovery says the default is
+/// `client_secret_basic`.
+fn prefers_client_secret_post(methods: Option<&[CoreClientAuthMethod]>) -> bool {
+    methods.is_some_and(|m| {
+        m.contains(&CoreClientAuthMethod::ClientSecretPost)
+            && !m.contains(&CoreClientAuthMethod::ClientSecretBasic)
+    })
+}
+
 // --- OIDC group sync ---
 
 /// Extract the `groups` claim from a raw JWT ID token.
@@ -2017,6 +2138,93 @@ mod tests {
 
         let s = summarize_token_response_body(br#"{"id_token":null}"#);
         assert!(s.ends_with(r#"{"id_token": null}"#), "{s}");
+    }
+
+    #[test]
+    fn media_type_is_reduced_to_a_plain_token() {
+        assert_eq!(redact_media_type("text/plain; charset=utf-8"), "text/plain");
+        assert_eq!(redact_media_type("Application/JSON"), "application/json");
+        assert_eq!(
+            redact_media_type("application/problem+json"),
+            "application/problem+json"
+        );
+        assert_eq!(redact_media_type("client_secret=abc"), "other");
+        assert_eq!(redact_media_type("text/plain secret"), "other");
+        assert_eq!(redact_media_type(""), "other");
+    }
+
+    /// Cascade: upstream #278 echoed a short non-200, non-JSON token endpoint
+    /// body into the error log. A refusal can quote the credentials it was
+    /// sent, so only the status and the body's shape may reach the log.
+    #[test]
+    fn token_parse_failure_never_logs_a_refusal_body() {
+        use std::io::Write;
+        use std::sync::{Arc, Mutex};
+
+        #[derive(Clone, Default)]
+        struct Captured(Arc<Mutex<Vec<u8>>>);
+        impl Write for Captured {
+            fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+                self.0.lock().unwrap().extend_from_slice(buf);
+                Ok(buf.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+
+        let captured = Captured::default();
+        let writer = captured.clone();
+        let subscriber = tracing_subscriber::fmt()
+            .with_writer(move || writer.clone())
+            .with_ansi(false)
+            .with_max_level(tracing::Level::TRACE)
+            .finish();
+
+        let secret = "client_secret=SYNTHETIC_SENTINEL_9f8e7d";
+        let body = format!("invalid_client: {secret}");
+        let meta = TokenResponseMeta {
+            status: Some(StatusCode::UNAUTHORIZED),
+            content_type: Some(redact_media_type("text/plain; charset=utf-8")),
+        };
+        tracing::subscriber::with_default(subscriber, || {
+            log_token_parse_failure(&meta, ".", "expected value", body.as_bytes());
+        });
+
+        let log = String::from_utf8(captured.0.lock().unwrap().clone()).unwrap();
+        assert!(log.contains("token response did not parse"), "{log}");
+        assert!(log.contains("401"), "the status is logged: {log}");
+        assert!(
+            log.contains("text/plain"),
+            "the media type is logged: {log}"
+        );
+        assert!(
+            log.contains(&format!("{} bytes, not JSON", body.len())),
+            "the body's shape is logged: {log}"
+        );
+        assert!(
+            !log.contains("SYNTHETIC_SENTINEL"),
+            "body text leaked: {log}"
+        );
+        assert!(!log.contains("client_secret"), "body text leaked: {log}");
+        assert!(!log.contains("invalid_client"), "body text leaked: {log}");
+    }
+
+    #[test]
+    fn client_secret_post_only_when_basic_is_not_offered() {
+        use CoreClientAuthMethod::{ClientSecretBasic, ClientSecretPost, PrivateKeyJwt};
+        assert!(!prefers_client_secret_post(None));
+        assert!(!prefers_client_secret_post(Some(&[])));
+        assert!(prefers_client_secret_post(Some(&[ClientSecretPost])));
+        assert!(prefers_client_secret_post(Some(&[
+            PrivateKeyJwt,
+            ClientSecretPost
+        ])));
+        assert!(!prefers_client_secret_post(Some(&[
+            ClientSecretPost,
+            ClientSecretBasic
+        ])));
+        assert!(!prefers_client_secret_post(Some(&[PrivateKeyJwt])));
     }
 
     #[test]

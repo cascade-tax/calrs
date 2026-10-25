@@ -173,6 +173,78 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 | Every timezone in every picker | 1.20.0 | All IANA zones grouped by region, with the common ones first, and a slot-page note when the clocks change before the day shown (#265) |
 | Attendees follow the booking | 1.20.0 | Additional attendees get updates when a reschedule is confirmed and cancellations when a booking ends; invites carry a SEQUENCE and fold long lines (#267) |
 
+## [1.20.4] - 2026-10-25
+
+Patch release for Exchange (EWS) users: the sync could cancel confirmed bookings without telling anyone, and a busy Exchange calendar could lose its later events. Also, deleting a past meeting from any calendar no longer emails a cancellation. No migrations, no configuration change.
+
+Thanks to @adeg, who found the two Exchange bugs while working on native Microsoft 365 support (#290).
+
+### Fixed
+
+- **Exchange (EWS) could cancel confirmed bookings without telling anyone** (#291) - When an event vanished from an EWS calendar between two syncs, calrs marked every confirmed booking with that UID as cancelled, straight in the database: no check with Exchange that the event was really gone, no check that the booking belonged to this calendar's host, and no email to the guest or the host, so the guest still expected the meeting. EWS now goes through the same path as CalDAV: the booking must have been written to this source's calendar for this host, Exchange must confirm the event is gone (an inconclusive lookup cancels nothing and is checked again on the next sync), and both sides get the cancellation email. Found by @adeg while working on #290.
+- **A busy Exchange calendar could lose its later events** (#291) - The EWS sync fetched two years of events in one request, which Exchange cuts off at 1000 entries without an error. A calendar past that (recurring meetings count once per occurrence) lost its latest events from the cache, so they stopped blocking slots, and any calrs booking among them was cancelled by the bug above. The sync now notices an incomplete answer and fetches the window again in smaller pieces; a window that still cannot be read in full fails the sync for that calendar and leaves its cached events in place. Found by @adeg while working on #290.
+- **Deleting a past meeting from a calendar emailed a cancellation** (#291) - When a host cleared a meeting that had already taken place from their calendar, the next sync cancelled the booking and sent the guest and the host a "cancelled" email. A booking whose end has passed is now left as it is (CalDAV and EWS).
+
+## [1.20.3] - 2026-10-24
+
+Patch release. The main fix is for calendars that give an event's length as a `DURATION` instead of an end time, as Fastmail does: those events blocked nothing, so their slots were offered to guests. No migrations, no configuration change.
+
+**After upgrading, run a full sync** (`calrs sync --full`, or wait for the daily full resync) so events already in the cache get their end time.
+
+Thanks to @AudunBeck, @frenchcharly and @chetan for their pull requests, and to @Codrax for spotting the doubled scope.
+
+### Fixed
+
+- **Events with a `DURATION` instead of a `DTEND` blocked nothing** (#282) - Fastmail, among others, writes `DURATION:PT1H` rather than an end time, which RFC 5545 allows. calrs stored an empty end, so the event showed no end in `calrs calendar show` and, worse, the busy-time checks skipped it and its slot stayed bookable. The end is now derived from the start and the duration, in the event's own timezone (days keep the wall time across a clock change, hours count elapsed time), for calendar sources and shared resource feeds alike. An all-day event with neither lasts one day, as RFC 5545 says, and now blocks that day where it used to block nothing. Reported and fixed by @AudunBeck.
+- **OIDC token endpoint refusals are now readable in the logs** (#264, #278) - When a provider's token endpoint answers with something other than JSON, the `oidc auth failure: token response did not parse` line now carries the HTTP status and, for a short plain-text refusal, its text. A 200 body is still never echoed.
+- **`client_secret_post` providers** (#264, #278) - When the discovery document lists `client_secret_post` but not `client_secret_basic`, calrs now sends the client credentials in the token request body instead of an HTTP Basic header.
+- **`openid` was sent twice in the scope** (#264, #278) - Spotted by @Codrax.
+- **Calendar sources page on phones** (#281) - Source details and actions now stack on small screens, with larger buttons, a full-width sync error, and long URLs that wrap. By @chetan.
+- **French email subjects** (#288) - "Annulée :", "Confirmée :" and "Expirée :" read as agreeing with the event's name, which is usually masculine; they are now "Annulation :", "Confirmation :" and "Expiration :". By @frenchcharly.
+
+### Internal
+
+- Two booking tests booked three days out, which lands on a weekend on Wednesdays and Thursdays; they now book on the next Monday.
+
+## [1.20.2] - 2026-10-24
+
+Patch release. **Upgrade before 2026-11-01** if you or your guests use the British Columbia timezone (`America/Vancouver`): the bundled timezone data dated from 2024, and British Columbia stays on UTC-7 from that night instead of falling back. The rest are fixes to how synced calendar events are placed in time, starting with Outlook and DavMail calendars whose events were shown at the wrong hour. No migrations, no configuration change.
+
+**After upgrading, run a full sync** (`calrs sync --full`, or wait for the daily full resync) so events already in the cache are read again with the fixes below.
+
+Thanks to @jludwig for the report and the first fix.
+
+### Fixed
+
+- **Timezone data updated to IANA 2026b** (#285, #286) - calrs bundled tzdata 2024a, and no `chrono-tz` release carries newer data yet. British Columbia moves to permanent UTC-7 on 2026-11-01, so from that night every Vancouver time (slots, busy times, emails, invites) would have been an hour off. calrs now builds with a vendored `chrono-tz` carrying 2026b, which also brings Paraguay, Chile's Aysén Region and Moldova up to date. Longer-term options are discussed in #285.
+- **Events with a quoted timezone landed in the host's timezone** (#279, #280) - Outlook and DavMail write `TZID="America/New_York"` with quotes, which RFC 5545 allows. The quotes were kept, the timezone was not recognised, and the event was read as the host's local time, so it blocked the wrong hours and left its real slot open. Reported and fixed by @jludwig.
+- **More timezone forms are recognised** (#283, #284) - Synced events are now placed correctly when their timezone is:
+  - written alongside `VALUE=DATE-TIME`, which was mistaken for an all-day event;
+  - quoted and containing `:` or `;`, such as `"(UTC-05:00) Eastern Time"`, which cut the line short and could also break the date itself, exception dates and modified occurrences of recurring events;
+  - a Windows name such as `Eastern Standard Time` (Outlook, Exchange), mapped through the CLDR table;
+  - an IANA name behind a vendor prefix, such as `/mozilla.org/20050126_1/Europe/Paris` (older Thunderbird, Evolution);
+  - a Windows display name such as `(UTC+01:00) Amsterdam, Berlin, ...`;
+  - a custom name such as `Customized Time Zone`, matched at sync against the event's own `VTIMEZONE`.
+
+  Windows names, vendor prefixes and display names are also recognised on events already synced; the other cases need the full sync above.
+- **Cancelled occurrences of recurring events could still block time** (#283, #284) - An exception date or modified occurrence written in UTC or in another timezone than the event (`EXDATE:20260308T233000Z` on a weekly 00:30 Paris meeting) was compared without conversion, so the cancelled occurrence stayed busy. It is now converted to the event's timezone first.
+
+### Internal
+
+- One quote-aware iCal line parser (`parse_content_line`) now backs every property reader, and `src/tzid.rs` owns timezone resolution.
+- `vendor/chrono-tz/CALRS.md` lists the changes to the vendored crate and how to refresh its data.
+
+## [1.20.1] - 2026-10-20
+
+Patch release with two fixes reported after 1.20.0. No migrations, no configuration change.
+
+Thanks to @cephbo and @Codrax for the reports.
+
+### Fixed
+
+- **"Back to times" lost the invite on private event types** (#275) - On an internal or private event type opened from an invite link, the booking form's back link dropped the invite token, so going back to the time slots showed a "forbidden" page. The link now keeps it, embedded pages included. Reported by @cephbo.
+- **"Reset to my default" kept the event type's timezone** (#265) - The button on the event type form loaded your profile's default hours but left the timezone selector alone, so those hours were read in another timezone. It now selects your profile timezone too. Reported by @Codrax.
+
 ## [1.20.0] - 2026-10-17
 
 Minor release. **Every timezone is now offered in every picker**, and slot pages say when the clocks change between today and the day shown, so a guest in Bucharest no longer has to pick a city that merely shares today's offset (#265). **Additional attendees now follow the booking**: their calendar copy moves when a reschedule is confirmed and is removed when the booking ends, and calendar invites carry a `SEQUENCE` so clients apply updates and cancellations in order (#267). The guest's phone and notes now survive every path that rebuilds a booking (#261, #266), and OIDC sign-in failures log why the provider's response did not parse, without logging tokens or personal data (#264). Two migrations (071 and 072), no configuration change. **Back up your database before upgrading.**
