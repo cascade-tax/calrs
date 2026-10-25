@@ -1,5 +1,76 @@
 # Cal.rs upstream review and production baseline
 
+## October 25, 2026 — 1.20.2–1.20.4 reviewed, not ported
+
+Reviewed all 33 commits and the complete 22-file delta from
+`95e151a5bcdaf117c9d2d2e50cc3ef68ea1c9bb2` through
+`ac34551880b40b33277f52f6b925d4380c05d38d`. The latest published release is
+[1.20.4](https://github.com/olivierlambert/calrs/releases/tag/v1.20.4),
+published October 25 at 10:21 UTC. Sources are the fetched immutable Git
+objects, release metadata and checks on that revision.
+
+- [#284](https://github.com/olivierlambert/calrs/pull/284) replaces property
+  splitting with a quote-aware parser, handles explicit `VALUE=DATE-TIME`,
+  resolves Windows/vendor/display/custom VTIMEZONE names, and converts UTC
+  or differently zoned recurrence exceptions into the event's timezone.
+  Per-resource memoization avoids repeating custom-zone matching. The global
+  match cache clears at 256 entries. Unknown zones still degrade to floating;
+  fixed-offset display-name fallback supports only whole hours and cannot
+  reproduce DST. VTIMEZONE matching samples the event's start year, rather
+  than implementing arbitrary custom timezone rules indefinitely.
+- [#282](https://github.com/olivierlambert/calrs/pull/282) derives missing
+  DTEND from DURATION for calendar sources and shared feeds. Calendar days
+  preserve wall time, elapsed hours cross DST, a UTC start ignores adjacent
+  TZID for duration arithmetic, and all-day events without an end last one
+  day. A later upgrade needs a full sync to repair already cached events.
+- [#291](https://github.com/olivierlambert/calrs/pull/291) refuses incomplete
+  EWS snapshots, recursively splits truncated/find-limit windows, deduplicates
+  overlapping results, and errors at the minimum window instead of treating
+  missing rows as deletions. UID searches cover the full sync horizon.
+  Orphan cancellation checks source, host and write-calendar ownership and
+  confirms absence with the provider; inconclusive checks retain the cached
+  event for retry. Confirmed cancellations use the existing email path.
+  Meetings with known UTC ends in the past stay confirmed; legacy wall-clock
+  rows retain the previous behavior. No live Exchange behavior was tested.
+- [#278](https://github.com/olivierlambert/calrs/pull/278) records token
+  endpoint status, honors providers offering only `client_secret_post`, and
+  removes duplicate `openid` scope. Its new `token_error_excerpt` also logs
+  any short, non-JSON, non-control-character body with a known non-200 status.
+  A disposable test of that exact function proved a synthetic 401 body
+  containing `client_secret=SYNTHETIC_REVIEW_SENTINEL` is returned verbatim.
+  **Do not port the raw refusal-body logging.** Status and redacted shape
+  diagnostics can be retained; an error HTTP status does not prove a body
+  contains no credentials. No real credential or production log was used.
+- [#281](https://github.com/olivierlambert/calrs/pull/281) wraps source-page
+  details/actions on narrow screens. Preserve Cascade branding and the
+  Microsoft read-only write-calendar guard when porting this template.
+  [#288](https://github.com/olivierlambert/calrs/pull/288) changes French
+  email subject nouns and assertions. Two weekday-sensitive booking tests
+  now select the next Monday; Cascade already carries that test correction.
+
+The 142-entry upstream Windows mapping covers all 25 existing Cascade
+entries; the sole spelling change is India from `Asia/Kolkata` to
+`Asia/Calcutta`. Preserve the existing canonical spelling when reconciling
+that helper. No migrations, migration registrations, provider permission
+changes, dependency-version changes (apart from the application version),
+Dockerfile or vendor-data changes occur in this delta. The previously
+reviewed vendored IANA 2026b correction is now in release 1.20.2.
+
+Verification: **103 disposable offline Rust tests passed** against the exact
+upstream utils, timezone, Windows-map and recurrence modules with its vendored
+chrono-tz, plus the synthetic refusal-logging probe. Scratch files were removed.
+Upstream Format, Templates, Coverage, and Clippy + Tests were successful;
+two image-build checks were still running when inspected. Diff whitespace
+checks passed. No integrated Cascade build, database/provider test, browser
+check, live sync or deployment ran in this review.
+
+Disposition: preserve documented production `1.20.0-cascade.2` and every
+Cascade customization. Carry the reviewed fixes into a separately authorized
+upgrade, excluding raw refusal-body logging and retaining the canonical
+Windows mapping, 12-hour display, Sunday-first weeks, palettes, branding,
+read-only Microsoft behavior, and fork-only booking features. No source was
+ported, dependency installed, service restarted or production state changed.
+
 ## October 24, 2026 — quoted TZID and tzdata fixes reviewed, not ported
 
 Reviewed the complete four-commit upstream range after
