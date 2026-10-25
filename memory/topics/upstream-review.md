@@ -1,14 +1,31 @@
 # Cal.rs upstream review and production baseline
 
-## October 25, 2026 — 1.20.4 ported on branch `port-1.20.4`, not deployed
+## October 25, 2026 — 1.20.6 ported on branch `port-1.20.4`, not deployed
 
-Merge commit `f3e2641b8eb8bca0824c4aa36b43d6cc50616209` merges upstream tag
-v1.20.4 (`ac34551880b40b33277f52f6b925d4380c05d38d`) into fork head `f37d45b`,
-the same way `f9c60b5` merged 1.20.0. Target release `1.20.4-cascade.1`:
-as before, `Cargo.toml` carries the upstream version (`1.20.4`) and the
-`-cascade.N` suffix lives only in the image tag. Arthur approved the
-production upgrade from `1.20.0-cascade.2`; this branch is unbuilt, unmerged
-into `cascade-main` and undeployed.
+Two merges on branch `port-1.20.4`, the same way `f9c60b5` merged 1.20.0:
+`f3e2641b8eb8bca0824c4aa36b43d6cc50616209` merges upstream v1.20.4
+(`ac34551880b40b33277f52f6b925d4380c05d38d`) into fork head `f37d45b`, and
+`05dbb395ecf52657b2c8b02c8718f6b44eebcf29` merges v1.20.6
+(`95017cc171ca84f4fc34a0ec557f6cc349ed65cc`). Upstream main's later claims
+work (#302, after 1.20.6) is excluded. Target release `1.20.6-cascade.1`
+(coordinator decision; Arthur approved the production upgrade from
+`1.20.0-cascade.2`). As before, `Cargo.toml` carries the upstream version
+(`1.20.6`) and the `-cascade.N` suffix lives only in the image tag. The
+branch is unbuilt, unmerged into `cascade-main` and undeployed.
+
+1.20.5–1.20.6 merged without textual conflicts: CalDAV write-back
+verification falls back to PROPFIND on HEAD 400 and reads the 207 status
+(#293), propstat parsing accepts any namespace prefix (#296), German
+"Powered by" wording, and the Google OAuth callback escapes echoed values
+(#299). `src/caldav/mod.rs` equals upstream; the provider trait,
+write-back target selection and sync cancellation are unchanged, so the
+read-only boundary below still holds. Cascade addition: the callback's
+four remaining bare-text failures (provider error, session change, token
+exchange, account email) render the styled, auto-escaping error card with
+400/502 statuses; a test sends `<script>` as the error parameter and finds
+it escaped on that card.
+
+1.20.4 port details follow.
 
 Conflicts and resolutions:
 
@@ -44,11 +61,17 @@ output for a 401 body containing `client_secret=...` and asserts no body
 text appears. Fork follow-through: the published-feed provider uses the
 shared TZID resolver, DURATION ends and the new EXDATE signature.
 
-Unchanged and confirmed: vendor tree and Dockerfile identical to v1.20.4;
+Unchanged and confirmed: vendor tree and Dockerfile identical to v1.20.4
+and v1.20.6;
 `cloudbuild.yaml` builds the repository root and nothing ignores `vendor/`;
 migrations and `src/db.rs` identical to `cascade-main`.
 
-Verification at the merge commit (RUSTFLAGS `-D warnings`, as CI):
+Verification at the 1.20.6 merge commit (RUSTFLAGS `-D warnings`):
+fmt and clippy clean; `cargo test` **1306 passed, 0 failed, 1 ignored**;
+template balance 44/44; `tools/shots.sh` 68/68; scratch database 73 rows,
+second run applied none; binary reports 1.20.6.
+
+Verification at the 1.20.4 merge commit (RUSTFLAGS `-D warnings`, as CI):
 `cargo fmt --check` clean; `cargo clippy --profile=test` clean; `cargo test`
 **1294 passed, 0 failed, 1 ignored** (`ews_smoke`, needs a live Exchange
 server), including all 20 `web::tests::cascade` tests and the 12-hour,

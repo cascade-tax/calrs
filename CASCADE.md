@@ -30,7 +30,7 @@ branch is based on the production release pinned by
   `065_pending_slot_hold` through `072_booking_ics_sequence` are shifted by one
   to `066_pending_slot_hold` through `073_booking_ics_sequence`. A database at
   the 1.18.0-cascade baseline (001–065) applies exactly those eight on upgrade.
-  Upstream 1.20.1–1.20.4 add no migrations; the table stays at 73 rows.
+  Upstream 1.20.1–1.20.6 add no migrations; the table stays at 73 rows.
 - Windows timezone names in calendar data resolve through upstream's CLDR
   table (`src/windows_zones.rs`), except that India Standard Time keeps the
   canonical `Asia/Kolkata` rather than CLDR's alias `Asia/Calcutta`. Quoted
@@ -43,7 +43,9 @@ branch is based on the production release pinned by
   guest and host names are not appended.
 - Failures that upstream answers with a bare HTTP 200 text body render the
   styled Cascade error card with a truthful status (404, 409, 429, ...), in
-  the page's language on guest-facing pages.
+  the page's language on guest-facing pages. This includes every failure of
+  the Google Calendar connect callback, whose echoed provider text the card's
+  template escapes (upstream #299 escapes the bare-text version).
 - Collective co-hosts are listed as attendees on the guest's invitation,
   confirmation and reschedule alike, without receiving the guest-style
   attendee email.
@@ -70,7 +72,7 @@ builder layers across Cloud Build workers. Build release images with:
 gcloud builds submit . \
   --project cascade-calendar-prod \
   --config cloudbuild.yaml \
-  --substitutions _TAG=1.20.4-cascade.1
+  --substitutions _TAG=1.20.6-cascade.1
 ```
 
 The `build-cache` tag is build infrastructure, not a deployable release. Pin
