@@ -1,5 +1,65 @@
 # Cal.rs upstream review and production baseline
 
+## October 25, 2026 — 1.20.4 ported on branch `port-1.20.4`, not deployed
+
+Merge commit `f3e2641b8eb8bca0824c4aa36b43d6cc50616209` merges upstream tag
+v1.20.4 (`ac34551880b40b33277f52f6b925d4380c05d38d`) into fork head `f37d45b`,
+the same way `f9c60b5` merged 1.20.0. Target release `1.20.4-cascade.1`:
+as before, `Cargo.toml` carries the upstream version (`1.20.4`) and the
+`-cascade.N` suffix lives only in the image tag. Arthur approved the
+production upgrade from `1.20.0-cascade.2`; this branch is unbuilt, unmerged
+into `cascade-main` and undeployed.
+
+Conflicts and resolutions:
+
+- `src/commands/sync.rs`: the fork's generic provider sync (Graph delta,
+  published feeds) keeps its shape and adopts upstream #291's verified,
+  source/host/write-calendar-scoped `cancel_orphaned_booking` with
+  inconclusive checks retaining the cached row. The fork's delta-tombstone
+  path, which still used the removed unscoped `cancel_orphaned_booking_simple`,
+  now uses the same check. Read-only sources (`supports_write_back` false:
+  Microsoft 365, published feeds, or an unknown type) never look up, verify
+  or cancel a booking; their sweeps only update the event cache. A new test
+  drives a Graph source with a stale matching write calendar through both
+  the tombstone and snapshot paths: booking stays confirmed, zero lookups.
+- `src/utils.rs`: `canonical_ical_tzid` removed; upstream's `normalize_tzid`
+  via `tzid::resolve` and the CLDR table replace it. `src/windows_zones.rs`
+  maps India Standard Time to `Asia/Kolkata` (CLDR says `Asia/Calcutta`).
+  Quote removal happens in the parameter parser before mapping; the fork
+  test now covers quoted Windows names and India.
+- `src/web/availability.rs`: fork's per-member troubleshoot loop kept, with
+  upstream's timezone-aware `extract_exdates`.
+- `templates/dashboard_sources.html`: Cascade markup, copy and the read-only
+  write-calendar guard kept; #281's layout ported as page CSS (wrapping
+  details, boxed sync error, two-column 44px action grid and full-width
+  1rem picker at 600px and below).
+- `src/web/tests/booking.rs`, `src/web/tests/emails.rs`: fork's
+  `far_future_monday()` kept over upstream's next-Monday loop.
+
+Excluded: #278's `token_error_excerpt` (raw short non-200 body text in the
+error log). The parse-failure line now logs status, a redacted media type
+and the value-free body summary; status recording, `client_secret_post` and
+the duplicate-`openid` fix are ported. A test captures the real tracing
+output for a 401 body containing `client_secret=...` and asserts no body
+text appears. Fork follow-through: the published-feed provider uses the
+shared TZID resolver, DURATION ends and the new EXDATE signature.
+
+Unchanged and confirmed: vendor tree and Dockerfile identical to v1.20.4;
+`cloudbuild.yaml` builds the repository root and nothing ignores `vendor/`;
+migrations and `src/db.rs` identical to `cascade-main`.
+
+Verification at the merge commit (RUSTFLAGS `-D warnings`, as CI):
+`cargo fmt --check` clean; `cargo clippy --profile=test` clean; `cargo test`
+**1294 passed, 0 failed, 1 ignored** (`ews_smoke`, needs a live Exchange
+server), including all 20 `web::tests::cascade` tests and the 12-hour,
+Sunday-first and palette tests. CI's template balance check: 44 templates,
+none unbalanced. `tools/shots.sh`: 68/68 captured cleanly; sources page
+inspected at mobile and desktop. Scratch-database migration: 73 rows
+(`064_microsoft_graph`, `066`-`073` shifted), second run applied none.
+Not run: Docker or Cloud Build image build, production-backup migration
+rehearsal, live Exchange/Graph/Google/OIDC checks, deployment. A later full
+sync is needed to repair cached events that lacked DTEND.
+
 ## October 25, 2026 — 1.20.2–1.20.4 reviewed, not ported
 
 Reviewed all 33 commits and the complete 22-file delta from

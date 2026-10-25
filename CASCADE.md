@@ -19,7 +19,9 @@ branch is based on the production release pinned by
 - Microsoft 365 connections request delegated read-only calendar access and
   cannot be selected as booking write-back targets; the write-back path refuses
   read-only providers (Microsoft 365, published calendar feeds) outright. The
-  provider's `event_exists` is a read-only lookup.
+  provider's `event_exists` is a read-only lookup. Sync sweeps of read-only
+  sources (vanished events, delta tombstones) only update the local event
+  cache: they never look up, verify against the provider, or cancel a booking.
 - Cascade's Microsoft Graph schema extension is migration `064`, after
   upstream's SMS and booking-horizon migrations (`062` and `063`). Databases
   that recorded it under the legacy name `062_microsoft_graph` are adopted
@@ -28,6 +30,15 @@ branch is based on the production release pinned by
   `065_pending_slot_hold` through `072_booking_ics_sequence` are shifted by one
   to `066_pending_slot_hold` through `073_booking_ics_sequence`. A database at
   the 1.18.0-cascade baseline (001–065) applies exactly those eight on upgrade.
+  Upstream 1.20.1–1.20.4 add no migrations; the table stays at 73 rows.
+- Windows timezone names in calendar data resolve through upstream's CLDR
+  table (`src/windows_zones.rs`), except that India Standard Time keeps the
+  canonical `Asia/Kolkata` rather than CLDR's alias `Asia/Calcutta`. Quoted
+  TZID parameters are unquoted before the lookup. The vendored chrono-tz
+  (IANA 2026b) and its Dockerfile copy are kept exactly as upstream ships them.
+- A token endpoint reply that fails to parse during OIDC sign-in logs its
+  status, media type and value-free body shape only. Upstream 1.20.3's echo of
+  short non-200 body text is not ported: a refusal can quote credentials.
 - Calendar invitation titles are the event name only (for example `Demo`);
   guest and host names are not appended.
 - Failures that upstream answers with a bare HTTP 200 text body render the
@@ -59,7 +70,7 @@ builder layers across Cloud Build workers. Build release images with:
 gcloud builds submit . \
   --project cascade-calendar-prod \
   --config cloudbuild.yaml \
-  --substitutions _TAG=1.20.0-cascade.1
+  --substitutions _TAG=1.20.4-cascade.1
 ```
 
 The `build-cache` tag is build infrastructure, not a deployable release. Pin
