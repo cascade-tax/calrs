@@ -1,5 +1,67 @@
 # Cal.rs upstream review and production baseline
 
+## October 26, 2026 — upstream through 1.21.0 reviewed; fork preserved
+
+Reviewed the 41-commit, 43-file upstream delta from
+`ac34551880b40b33277f52f6b925d4380c05d38d` through
+[`62521c2b6f6a7e945a82e783b94a190dcdc08652`](https://github.com/olivierlambert/calrs/commit/62521c2b6f6a7e945a82e783b94a190dcdc08652).
+Runtime code, tests, templates, release notes and translation wiring were
+inspected; locale coverage was checked structurally, not linguistically.
+The existing fork head `e0a59ed530ae9de6b6a306a918fbebff99c3a663` already
+contains upstream 1.20.5/1.20.6: iCloud HEAD-400 fallback, resource-level
+PROPFIND status handling, broader propstat stripping and escaped Google
+callback errors. The deployment repository's October 25 production record
+confirms `1.20.6-cascade.1`; this review did not repeat live verification.
+The older port-in-progress section below is historical.
+
+New changes beyond that fork baseline:
+
+- [#302](https://github.com/olivierlambert/calrs/pull/302) keeps a booking
+  claimant's calendar copy aligned with reschedules, approvals and deletion.
+  A guarded update accepts only confirmed, unclaimed bookings; a fresh push
+  checks status again and deletes copies if cancellation won. Claimant
+  copies omit the guest phone, never replace the host's stored calendar
+  location, skip host-shared collections and leave the Meet owner's event
+  alone. Failures of claimant writes are logged without host retry tracking.
+  Copies in a formerly selected calendar remain a documented limitation.
+- [#295](https://github.com/olivierlambert/calrs/pull/295),
+  [#303](https://github.com/olivierlambert/calrs/pull/303) and
+  [#306](https://github.com/olivierlambert/calrs/pull/306) add admin favicon
+  upload/deletion, reserve both favicon routes from embedding, report upload
+  refusals, align browser/server size limits and sandbox legacy SVG logos.
+  Uploads require admin authentication and CSRF, use fixed filenames and
+  accept raster magic bytes. The upstream fallback is the crab: a Cascade
+  port must retain the Cascade mark and matching help text.
+- [#260](https://github.com/olivierlambert/calrs/pull/260) and its follow-ups
+  localize embed controls, host rescheduling, admin notices, auth/source
+  errors and remaining form text. Dynamic HTML arguments are escaped and
+  script strings use JSON encoding. Preserve Cascade titles, styled error
+  cards, 12-hour time, Sunday-first weeks and exact palettes during a port.
+
+No new migrations, provider-module changes or dependency-version changes
+occur in this upstream range; Cargo changes only the application version.
+The vendor tree and Dockerfile are unchanged. Preserve the fork's shifted
+migration numbering, Microsoft/published-feed read-only guards, canonical
+India timezone and value-free OIDC diagnostics. The claimant deletion added
+to sync must remain behind the fork's read-only exclusion.
+
+Verification used a disposable archive of the exact upstream revision,
+cached dependencies and `cargo test --offline --locked --no-run`.
+Focused tests: CalDAV 53/53, branding/uploads 27/27, hosts 9/9, security
+46/46, i18n 32/32 and the claimant orphan-deletion check 1/1 passed.
+Writeback tests passed 27/28. The remaining upstream test selects local
+today plus 12 days, a Saturday on this run, against a Monday-Friday fixture;
+the handler correctly rejects the unavailable slot. Changing only that
+test date to the existing `far_future_monday()` helper in the disposable
+archive made it pass. Carry that fixture correction with any future port.
+No production source was changed by the probe. Full suite, browser behavior,
+live providers and real claim/cancellation races were not exercised.
+
+Disposition: preserve the current customized fork and production baseline;
+reviewed does not mean ported or deployed. No install, restart or deployment
+occurred. A separately authorized upgrade must integrate the branding,
+localized error-card and sync differences and validate the resulting fork.
+
 ## October 25, 2026 — 1.20.6 ported on branch `port-1.20.4`, not deployed
 
 Two merges on branch `port-1.20.4`, the same way `f9c60b5` merged 1.20.0:
