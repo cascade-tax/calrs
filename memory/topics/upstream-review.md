@@ -1,5 +1,43 @@
 # Cal.rs upstream review and production baseline
 
+## October 31, 2026 — calendar discovery and background sync reviewed
+
+Reviewed all five commits and six changed files from
+`62521c2b6f6a7e945a82e783b94a190dcdc08652` through
+[`0e2bfced8440560fa30826286d535f253d979cbf`](https://github.com/olivierlambert/calrs/commit/0e2bfced8440560fa30826286d535f253d979cbf).
+
+- [#312](https://github.com/olivierlambert/calrs/pull/312) fixes Kerio Connect
+  calendar discovery by splitting response elements with attributes and mixed
+  namespace prefixes. Tests cover calendar discovery and separating each
+  response's properties. This changes the shared CalDAV XML parser, so a later
+  port should also validate existing providers; no live provider was contacted.
+- [#317](https://github.com/olivierlambert/calrs/pull/317) adds the optional
+  `CALRS_SYNC_MIN_AGE` setting to the background loop. Empty/unset or invalid
+  values retain the existing zero minimum; positive values are capped at one
+  day. Selection counts the latest successful or failed attempt and ignores
+  disabled sources. Healthy sources due a daily full resync bypass the minimum
+  age; recently failing sources still wait. On-demand five-minute freshness is
+  unchanged. Longer configured intervals also delay failure notifications.
+
+There are no dependency, migration, provider-module, template, vendor or
+Dockerfile changes in this range. The fork's provider-aware sync and read-only
+Microsoft/published-feed exclusions must survive any later integration. Keep
+the existing branding, 12-hour display, Sunday-first calendars, shifted
+migrations, India timezone and value-free OIDC diagnostics, plus the October 26
+port constraints. This review does not change configuration or sync cadence.
+
+Verification: an unmodified archive of the exact upstream revision compiled
+with cached dependencies using `cargo test --offline --locked --no-run`.
+All 72 focused tests passed: CalDAV 55, sync 14, settings 2 and notification
+sync-setting resolution 1. Upstream diff whitespace checks passed. Full-suite,
+live-provider, browser and fork-integration behavior were not tested.
+The disposable source archive was removed after verification.
+
+Disposition: preserve the customized fork and its recorded
+`1.20.6-cascade.1` production baseline. These changes are reviewed, not ported.
+No dependency installation, source integration, service restart or deployment
+occurred; a production upgrade still requires separate authorization.
+
 ## October 26, 2026 — upstream through 1.21.0 reviewed; fork preserved
 
 Reviewed the 41-commit, 43-file upstream delta from
