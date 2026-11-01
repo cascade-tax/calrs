@@ -1,5 +1,75 @@
 # Cal.rs upstream review and production baseline
 
+## November 1, 2026 — 1.22.0 maintenance review; retain custom fork
+
+Reviewed the upstream release delta from
+`0e2bfced8440560fa30826286d535f253d979cbf` through
+[`79f3942f3ed4978ded7bb76cdd3fbb43c2eec043`](https://github.com/olivierlambert/calrs/commit/79f3942f3ed4978ded7bb76cdd3fbb43c2eec043):
+46 commits and 84 changed files. This is a maintenance/portability assessment,
+not an approval to install or a complete security audit. Source inspection
+covered authentication, booking-window enforcement, event-type copying and
+form handling, migration SQL/registration, email formatting, localization
+wiring, affected templates, and the dependency delta.
+
+- [#214](https://github.com/olivierlambert/calrs/pull/214) adds optional local
+  TOTP MFA and an administrator-controlled enrollment requirement. Password
+  authentication creates a short-lived challenge before a session; secrets
+  are encrypted, recovery codes hashed, and code consumption transactional.
+  Account-wide throttling, session revocation, impersonation restrictions and
+  refusal to auto-link an MFA-enrolled local account to OIDC are present in
+  source. This review neither enables MFA nor changes account policy.
+- [#238](https://github.com/olivierlambert/calrs/pull/238) intersects inclusive
+  event-timezone date bounds with the rolling horizon. Slot lists, booking
+  submissions, guest reschedules and CLI paths use the shared window;
+  existing bookings remain intact. Preserve Cascade's Sunday-first calendar
+  while integrating the changed month/week navigation.
+- [#311](https://github.com/olivierlambert/calrs/pull/311) overlaps Cascade's
+  existing duplication feature. Upstream copies schema-derived event columns
+  and seven explicit child tables transactionally, starts disabled, credits
+  the copier, and disables copied SMS when the copier lacks that permission.
+  Reconcile this implementation with the fork's existing copy-completeness
+  guard; do not introduce a second duplicate action.
+- [#313](https://github.com/olivierlambert/calrs/issues/313) fixes team slug
+  uniqueness and reports rejected writes without dropping submitted fields.
+  Avatar failures become visible, group forms retain the saved phone mode,
+  and CalDAV/resource feeds normalize bare CR/LF to CRLF.
+- Email dates and deadlines are localized, and watcher/claimant notifications
+  use the recipient's zone. The new deadline formatter uses `%H:%M`; a port
+  must restore Cascade's 12-hour display. Formal German is an optional overlay
+  falling back to German, then English. Translation prose was not audited.
+
+Upstream migrations 073–076 add the German setting, a team-slug unique index,
+MFA state, and date bounds. All four are registered in `src/db.rs`. Cascade
+already uses 073 for booking ICS sequence: renumber these migrations and
+rehearse against a production-shaped backup before any upgrade.
+
+**Observed migration constraint:** the 074 repair appends the first eight ID
+characters to a duplicate slug without checking that the resulting slug is
+free. A disposable SQLite fixture with two team rows named `demo` and a third
+named `demo-22222222` fails the unique-index creation when the second row's ID
+begins `22222222`. The ordinary two-row fixture passes and preserves the
+oldest URL. A later port must handle suffix collisions before applying the
+index. This is a synthetic reproduction, not evidence of affected live data.
+
+Verification: all 76 upstream migration scripts applied to empty in-memory
+SQLite; the four new registrations and both slug fixtures were checked.
+All 13 unchanged `booking_window` tests passed in an isolated harness with
+cached dependencies and upstream's unchanged vendored timezone data.
+`git diff --check` passed. Full upstream compilation stopped before compiling
+the app: `cargo test --offline --locked --no-run` could not find the newly
+required `totp-rs` package in the local cache. No dependencies were downloaded
+or installed. The manifest adds `totp-rs`; the lockfile also adds its QR/image
+and cryptographic dependency graph and updates `zeroize`. MFA, HTTP/browser,
+email, provider and fork-integration tests were not run. Disposable source
+and test files were removed after the review.
+
+Disposition: preserve the customized fork and recorded `1.20.6-cascade.1`
+production baseline. Carry forward the October 26/31 port constraints,
+including read-only Microsoft/published-feed handling, shifted migrations,
+branding, styled errors and value-free OIDC diagnostics. Reviewed means
+assessed for maintenance, not verified for deployment. No application code,
+dependencies, services, credentials or production configuration changed.
+
 ## October 31, 2026 — calendar discovery and background sync reviewed
 
 Reviewed all five commits and six changed files from
