@@ -31,3 +31,9 @@ Source: supplied October 17–18 historical archive. This records reported work;
 Cal.rs was explicitly included in the seven-repository root/nested-guidance audit, with cascade-main identified as its default branch. The group report says all seven repositories were fetched/pruned, synchronized and clean before and after, with four changed and three unchanged. Its preserved per-repository detail ends in the Discord bridge result; no Cal.rs-specific finding, no-op verdict or commit receipt is supplied. This does not change the production baseline or upstream-port gates.
 
 Source: supplied October 18, 2026 historical archive slice. Reports are historical evidence; truncated details remain unknown. This save did not repeat the instruction audit, product tests, feature-lane operations or deployment.
+
+## November 1, 2026 — archived instruction-audit checkpoint
+
+The seven-repository audit reported Cal.rs unchanged, with cited paths, commands and source symbols checked and no nested CLAUDE.md outside node_modules/.git. Four of the seven repositories needed no fix. The audit brief explicitly identified cascade-main as the maintained default branch and warned against treating upstream main as the fork baseline. This dated no-op concerns guidance only; upstream porting, production baseline and release gates remain owned by upstream-review.md.
+
+Source: supplied November 1, 2026 historical audit archive. This records reported documentation work; truncated report details remain unknown. This memory save did not repeat the instruction audit, product tests, runtime operations, or deployment.
