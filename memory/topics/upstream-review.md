@@ -1,5 +1,51 @@
 # Cal.rs upstream review and production baseline
 
+## November 3, 2026 — week-start preferences reviewed; retain custom fork
+
+Reviewed the 15-commit, 37-file delta from
+`79f3942f3ed4978ded7bb76cdd3fbb43c2eec043` through
+[`c18f088076cfeab488e6c652858bf9d84bba74a6`](https://github.com/olivierlambert/calrs/commit/c18f088076cfeab488e6c652858bf9d84bba74a6).
+These changes are under Unreleased; the manifest remains 1.22.0.
+
+- [#332](https://github.com/olivierlambert/calrs/pull/332) adds event → account
+  owner → site week-start preferences, with Monday as the initial site and
+  fallback value. Availability editors, personal/team/dynamic-group booking,
+  embeds and rescheduling use that order. Stored availability keys remain
+  Sunday=0; weekly booking limits are unchanged. Copy-to-all selects the first
+  enabled day in displayed order. AJAX navigation updates headings and the
+  week anchor together. Forms distinguish absent (preserve), empty (inherit),
+  and invalid (reject) values; duplication copies the preference.
+- Migration 077 adds a required site setting and nullable user/event
+  overrides, constrained to seven named weekday keys. It is registered in
+  `src/db.rs`. A Cascade port must shift it to 078 after the previously
+  reviewed migrations and preserve fixed Sunday-first display and booking
+  limits. Adopting upstream's configurable controls or Monday defaults would
+  change the fork's recorded behavior; this review does not authorize that.
+- [#328](https://github.com/olivierlambert/calrs/pull/328) adds a noindex,
+  nofollow response header and HTML meta tag. Crawling is not blocked; this
+  is a search-indexing directive, not access control. [#331](https://github.com/olivierlambert/calrs/pull/331)
+  vertically centers the base container, requiring visual checking against
+  Cascade's customized pages before a port.
+- [#335](https://github.com/olivierlambert/calrs/pull/335) fixes test fixtures:
+  English browser assertions, available weekdays for pending reschedules,
+  and actually offered DST-crossing slots. No dependency or provider-module
+  changes occur in this range. Translation wiring was inspected; translation
+  prose was not linguistically audited.
+
+Verification: all 77 upstream migration scripts applied to in-memory SQLite.
+A populated fixture for migration 077 preserved availability rows and inherited
+user/event defaults, accepted seven weekday keys and rejected malformed values.
+The changed Python and JavaScript test scripts parse; `git diff --check`
+passed. Full compilation remains blocked before app compilation by missing
+cached `totp-rs` under `cargo test --offline --locked --no-run`. No package
+was installed. Rust/HTTP/browser tests, fork integration and live behavior
+were not verified; the disposable upstream archive was removed.
+
+Disposition: retain the customized fork and recorded `1.20.6-cascade.1`
+production baseline. Carry forward the November 1 slug-collision reproduction
+and other porting constraints. Only maintenance records changed; no source
+integration, configuration change, restart or deployment occurred.
+
 ## November 1, 2026 — 1.22.0 maintenance review; retain custom fork
 
 Reviewed the upstream release delta from
