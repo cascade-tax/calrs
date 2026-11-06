@@ -318,6 +318,7 @@ pub(super) async fn writeback_details(
     let details = crate::email::BookingDetails {
         utc_times: crate::booking_time::ics_times(&start_at, &end_at),
         event_title,
+        firm: crate::email::stored_booking_firm(pool, booking_uid).await,
         date,
         start_time,
         end_time,

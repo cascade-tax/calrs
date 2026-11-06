@@ -508,6 +508,7 @@ pub async fn run(pool: &SqlitePool, key: &[u8; 32], cmd: BookingCommands) -> Res
                             let details = crate::email::CancellationDetails {
                                 utc_times,
                                 event_title,
+                                firm: crate::email::stored_booking_firm(pool, &uid).await,
                                 date: date.to_string(),
                                 start_time: start_time.to_string(),
                                 end_time: end_time.to_string(),

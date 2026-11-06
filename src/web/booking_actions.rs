@@ -448,6 +448,7 @@ pub(super) async fn approve_booking_by_token(
         let details = crate::email::BookingDetails {
             utc_times: crate::booking_time::ics_times(&start_at, &end_at),
             event_title: event_title.clone(),
+            firm: crate::email::stored_booking_firm(&state.pool, &uid).await,
             date: date.clone(),
             start_time: start_time.clone(),
             end_time: end_time.clone(),
@@ -737,6 +738,10 @@ pub(super) async fn decline_booking_by_token(
         let details = crate::email::CancellationDetails {
             utc_times: crate::booking_time::ics_times(&start_at, &end_at),
             event_title: event_title.clone(),
+            firm: match &booking_uid {
+                Some(u) => crate::email::stored_booking_firm(&state.pool, u).await,
+                None => None,
+            },
             date: date.clone(),
             start_time: start_time.clone(),
             end_time: end_time.clone(),
@@ -971,6 +976,7 @@ pub(super) async fn booking_ics(
     let details = crate::email::BookingDetails {
         utc_times: crate::booking_time::ics_times(&start_at, &end_at),
         event_title,
+        firm: crate::email::stored_booking_firm(&state.pool, &uid).await,
         date,
         start_time,
         end_time,
@@ -1290,6 +1296,7 @@ pub(super) async fn guest_cancel_booking(
     let details = crate::email::CancellationDetails {
         utc_times: crate::booking_time::ics_times(&start_at, &end_at),
         event_title: event_title.clone(),
+        firm: crate::email::stored_booking_firm(&state.pool, &uid).await,
         date: date.clone(),
         start_time: start_time.clone(),
         end_time: end_time.clone(),
@@ -2305,6 +2312,7 @@ pub(super) async fn guest_reschedule_booking(
                 old_utc_times: crate::booking_time::ics_times(&old_start_at, &old_end_at),
                 utc_times: crate::booking_time::ics_times(&new_start_at, &new_end_at),
                 event_title: et_title.clone(),
+                firm: crate::email::stored_booking_firm(&state.pool, &uid).await,
                 old_date,
                 old_start_time,
                 old_end_time,
@@ -2346,6 +2354,7 @@ pub(super) async fn guest_reschedule_booking(
             let pending_details = crate::email::BookingDetails {
                 utc_times: crate::booking_time::ics_times(&new_start_at, &new_end_at),
                 event_title: et_title.clone(),
+                firm: crate::email::stored_booking_firm(&state.pool, &uid).await,
                 date: form.date.clone(),
                 start_time: form.time.clone(),
                 end_time: guest_end_time.clone(),
@@ -2406,6 +2415,7 @@ pub(super) async fn guest_reschedule_booking(
         let push_details = crate::email::BookingDetails {
             utc_times: crate::booking_time::ics_times(&new_start_at, &new_end_at),
             event_title: et_title.clone(),
+            firm: crate::email::stored_booking_firm(&state.pool, &uid).await,
             date: form.date.clone(),
             start_time: form.time.clone(),
             end_time: guest_end_time.clone(),
@@ -2461,6 +2471,7 @@ pub(super) async fn guest_reschedule_booking(
                 old_utc_times: crate::booking_time::ics_times(&old_start_at, &old_end_at),
                 utc_times: crate::booking_time::ics_times(&new_start_at, &new_end_at),
                 event_title: et_title.clone(),
+                firm: crate::email::stored_booking_firm(&state.pool, &uid).await,
                 old_date,
                 old_start_time,
                 old_end_time,
@@ -2771,6 +2782,7 @@ pub(super) async fn host_reschedule_booking(
         let details = crate::email::BookingDetails {
             utc_times: crate::booking_time::ics_times(&start_at, &end_at),
             event_title,
+            firm: crate::email::stored_booking_firm(&state.pool, &uid).await,
             date,
             start_time,
             end_time,
@@ -3162,6 +3174,7 @@ pub(super) async fn claim_booking(
     let mut details = crate::email::BookingDetails {
         utc_times: claim_utc_times.clone(),
         event_title: event_title.clone(),
+        firm: crate::email::stored_booking_firm(&state.pool, &uid).await,
         date: date.clone(),
         start_time: start_time.clone(),
         end_time: end_time.clone(),

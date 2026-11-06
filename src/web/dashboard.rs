@@ -16,12 +16,20 @@ pub(super) async fn dashboard(
 ) -> impl IntoResponse {
     let user = &auth_user.user;
 
-    let event_type_count: i64 =
-        sqlx::query_scalar("SELECT COUNT(*) FROM event_types et JOIN accounts a ON a.id = et.account_id WHERE a.user_id = ? AND et.team_id IS NULL")
-            .bind(&user.id)
-            .fetch_one(&state.pool)
-            .await
-            .unwrap_or(0);
+    // Cascade: count what the Event types page lists, personal and team
+    // alike (every team for an admin, the user's own teams otherwise).
+    let event_type_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM event_types et
+         LEFT JOIN accounts a ON a.id = et.account_id
+         WHERE (et.team_id IS NULL AND a.user_id = ?1)
+            OR (et.team_id IS NOT NULL
+                AND (?2 OR et.team_id IN (SELECT team_id FROM team_members WHERE user_id = ?1)))",
+    )
+    .bind(&user.id)
+    .bind(user.role == "admin")
+    .fetch_one(&state.pool)
+    .await
+    .unwrap_or(0);
 
     let pending_bookings: Vec<(
         String,
@@ -1231,6 +1239,7 @@ pub(super) async fn cancel_booking(
     let details = crate::email::CancellationDetails {
         utc_times: crate::booking_time::ics_times(&start_at, &end_at),
         event_title,
+        firm: crate::email::stored_booking_firm(&state.pool, &uid).await,
         date,
         start_time,
         end_time,
@@ -1551,6 +1560,7 @@ pub(super) async fn confirm_booking(
         let details = crate::email::BookingDetails {
             utc_times: crate::booking_time::ics_times(&start_at, &end_at),
             event_title,
+            firm: crate::email::stored_booking_firm(&state.pool, &uid).await,
             date,
             start_time,
             end_time,

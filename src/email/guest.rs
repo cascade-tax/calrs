@@ -1301,6 +1301,7 @@ pub async fn send_guest_reschedule_notification(
     let booking_details = BookingDetails {
         utc_times: details.utc_times.clone(),
         event_title: details.event_title.clone(),
+        firm: details.firm.clone(),
         date: details.new_date.clone(),
         start_time: details.new_start_time.clone(),
         end_time: details.new_end_time.clone(),

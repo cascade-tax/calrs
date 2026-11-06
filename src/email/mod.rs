@@ -87,6 +87,20 @@ pub async fn user_language(pool: &SqlitePool, user_id: &str) -> Option<String> {
         .and_then(supported_language)
 }
 
+/// Cascade: the firm the guest entered on the booking form
+/// (`bookings.firm`), which titles the invitation. Every invite, update and
+/// cancellation rebuilt from the booking row reads it from here.
+pub async fn stored_booking_firm(pool: &SqlitePool, uid: &str) -> Option<String> {
+    let firm = sqlx::query_scalar::<_, Option<String>>("SELECT firm FROM bookings WHERE uid = ?")
+        .bind(uid)
+        .fetch_optional(pool)
+        .await
+        .ok()
+        .flatten()
+        .flatten();
+    normalize_firm(firm.as_deref())
+}
+
 /// Cancellation reason recorded when the host deleted the booking's event
 /// from their calendar and a sync noticed, in `lang` (English when `None`).
 pub fn calendar_deleted_reason(lang: Option<&str>) -> String {
@@ -110,11 +124,36 @@ pub async fn stored_booking_language(pool: &SqlitePool, booking_id: &str) -> Opt
         .and_then(supported_language)
 }
 
+/// Cascade: the calendar title for a booking. A firm entered on the booking
+/// form replaces the event type name with `Cascade <> {firm}`.
+pub fn meeting_title(event_title: &str, firm: Option<&str>) -> String {
+    match firm.map(str::trim).filter(|f| !f.is_empty()) {
+        Some(firm) => format!("Cascade <> {firm}"),
+        None => event_title.to_string(),
+    }
+}
+
+/// Cascade: the trimmed firm from the booking form, at most
+/// `MAX_FIRM_CHARS` characters; `None` when left empty.
+pub fn normalize_firm(raw: Option<&str>) -> Option<String> {
+    let firm = raw?.split_whitespace().collect::<Vec<_>>().join(" ");
+    if firm.is_empty() {
+        return None;
+    }
+    Some(firm.chars().take(MAX_FIRM_CHARS).collect())
+}
+
+/// Longest firm name kept from the booking form (the input's `maxlength`).
+pub const MAX_FIRM_CHARS: usize = 200;
+
 #[derive(Clone, Default)]
 pub struct BookingDetails {
     /// Exact UTC endpoints for new bookings; legacy records use wall-clock fields.
     pub utc_times: Option<(String, String)>,
     pub event_title: String,
+    /// Cascade: the firm the guest entered on the booking form. When set,
+    /// the calendar invitation is titled `Cascade <> {firm}`.
+    pub firm: Option<String>,
     pub date: String,
     pub start_time: String,
     pub end_time: String,
@@ -167,6 +206,9 @@ pub struct CancellationDetails {
     /// Exact UTC endpoints for new bookings; legacy records use wall-clock fields.
     pub utc_times: Option<(String, String)>,
     pub event_title: String,
+    /// Cascade: the firm the guest entered on the booking form. When set,
+    /// the calendar invitation is titled `Cascade <> {firm}`.
+    pub firm: Option<String>,
     pub date: String,
     pub start_time: String,
     pub end_time: String,
@@ -210,6 +252,9 @@ pub struct RescheduleDetails {
     /// Exact UTC endpoints for new bookings; legacy records use wall-clock fields.
     pub utc_times: Option<(String, String)>,
     pub event_title: String,
+    /// Cascade: the firm the guest entered on the booking form. When set,
+    /// the calendar invitation is titled `Cascade <> {firm}`.
+    pub firm: Option<String>,
     pub old_date: String,
     pub old_start_time: String,
     pub old_end_time: String,

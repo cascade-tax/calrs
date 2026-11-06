@@ -397,6 +397,7 @@ async fn notify_pending_expired(
     let details = crate::email::CancellationDetails {
         utc_times: crate::booking_time::ics_times(&start_at, &end_at),
         event_title,
+        firm: crate::email::stored_booking_firm(pool, &uid).await,
         date,
         start_time,
         end_time,
@@ -496,6 +497,7 @@ async fn send_pending_nudge(
     let details = crate::email::BookingDetails {
         utc_times: crate::booking_time::ics_times(&start_at, &end_at),
         event_title,
+        firm: crate::email::stored_booking_firm(pool, &uid).await,
         date,
         start_time,
         end_time,

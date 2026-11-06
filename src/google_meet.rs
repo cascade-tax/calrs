@@ -1078,6 +1078,7 @@ async fn booking_details_for_meet(
     Some(crate::email::BookingDetails {
         utc_times,
         event_title: title,
+        firm: crate::email::stored_booking_firm(pool, &uid).await,
         date,
         start_time,
         end_time,

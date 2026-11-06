@@ -59,6 +59,8 @@ pub(super) fn compose_host_notification(details: &BookingDetails) -> ComposedEma
         "confirmed-detail-notes",
         details.notes.as_ref(),
     );
+    push_row(&mut rows, lang, "email-detail-firm", details.firm.as_ref());
+    push_additional_guests(&mut rows, lang, &details.additional_attendees);
     EmailParts {
         lang,
         subject: ta(
@@ -145,6 +147,8 @@ pub(super) fn compose_host_booking_confirmed(details: &BookingDetails) -> Compos
         "confirmed-detail-notes",
         details.notes.as_ref(),
     );
+    push_row(&mut rows, lang, "email-detail-firm", details.firm.as_ref());
+    push_additional_guests(&mut rows, lang, &details.additional_attendees);
     let footer = t(lang, "email-host-confirmed-footer");
     EmailParts {
         lang,
@@ -409,6 +413,8 @@ pub(super) fn compose_host_reminder(details: &BookingDetails) -> ComposedEmail {
         "confirmed-detail-notes",
         details.notes.as_ref(),
     );
+    push_row(&mut rows, lang, "email-detail-firm", details.firm.as_ref());
+    push_additional_guests(&mut rows, lang, &details.additional_attendees);
     EmailParts {
         lang,
         subject: ta(
@@ -602,6 +608,8 @@ pub(super) fn compose_host_approval_email(
         "confirmed-detail-notes",
         details.notes.as_ref(),
     );
+    push_row(&mut rows, lang, "email-detail-firm", details.firm.as_ref());
+    push_additional_guests(&mut rows, lang, &details.additional_attendees);
     if let Some(deadline) = expires {
         rows.push(row(t(lang, "email-detail-expires"), deadline));
     }
@@ -789,6 +797,7 @@ pub(super) fn compose_host_reschedule_request(
         "confirmed-detail-notes",
         details.notes.as_ref(),
     );
+    push_row(&mut rows, lang, "email-detail-firm", details.firm.as_ref());
 
     let (plain_lines, actions) = approval_actions(lang, approval_urls(confirm_token, base_url));
 

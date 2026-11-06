@@ -429,6 +429,7 @@ async fn send_due_reminders(pool: SqlitePool, secret_key: [u8; 32]) {
         let details = crate::email::BookingDetails {
             utc_times: crate::booking_time::ics_times(start_at, end_at),
             event_title: event_title.clone(),
+            firm: crate::email::stored_booking_firm(&pool, uid).await,
             date,
             start_time,
             end_time,

@@ -1418,3 +1418,147 @@ async fn decline_link_after_approval_says_already_approved() {
         .unwrap();
     assert!(body_string(unknown).await.contains("Invalid link"));
 }
+
+/// The overview's event-type tile counts what the Event types page lists:
+/// personal and team types alike, not only the personal ones.
+#[tokio::test]
+async fn overview_event_type_count_includes_team_event_types() {
+    let (app, pool, session, _) = setup_test_app().await;
+    let user_id: String = sqlx::query_scalar("SELECT id FROM users WHERE username = 'testuser'")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    sqlx::query(
+        "INSERT INTO teams (id, name, slug, visibility, created_by) VALUES ('count-team', 'Cascade', 'count-team', 'public', ?)",
+    )
+    .bind(&user_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO team_members (team_id, user_id, role, source) VALUES ('count-team', ?, 'admin', 'direct')",
+    )
+    .bind(&user_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+    let account_id: String = sqlx::query_scalar("SELECT id FROM accounts WHERE user_id = ?")
+        .bind(&user_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    for slug in ["team-demo", "team-intro"] {
+        sqlx::query(
+            "INSERT INTO event_types (id, account_id, team_id, slug, title, duration_min, buffer_before, buffer_after, min_notice_min, enabled) \
+             VALUES (?, ?, 'count-team', ?, 'Team', 30, 0, 0, 0, 1)",
+        )
+        .bind(uuid::Uuid::new_v4().to_string())
+        .bind(&account_id)
+        .bind(slug)
+        .execute(&pool)
+        .await
+        .unwrap();
+    }
+    // Another user's personal event type is not this user's to count.
+    let other = insert_role_user(&pool, "other@x", "user").await;
+    insert_personal_et(&pool, &other, "other-personal").await;
+
+    let body = body_string(
+        app.oneshot(get_authed("/dashboard", &session))
+            .await
+            .unwrap(),
+    )
+    .await;
+    let tile = body
+        .split("<div class=\"stat-value\">")
+        .nth(1)
+        .and_then(|rest| rest.split('<').next())
+        .unwrap();
+    assert_eq!(tile.trim(), "3", "one personal and two team event types");
+}
+
+/// The host's approval request lists the attendees the guest added and the
+/// firm, and a booking with a firm is invited as `Cascade <> {firm}`.
+#[tokio::test]
+async fn firm_titles_the_invite_and_approval_lists_added_attendees() {
+    let _env = crate::test_support::ENV_LOCK.lock().await;
+    let (app, pool, _, et_id) = setup_test_app().await;
+    let (port, mails) = spawn_capturing_mta().await;
+    use_capturing_mta(&pool, port).await;
+    sqlx::query(
+        "UPDATE event_types SET requires_confirmation = 1, max_additional_guests = 3 WHERE id = ?",
+    )
+    .bind(&et_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let csrf = "csrf-cascade-firm";
+    let form = format!(
+        "_csrf={}&date={}&time=10%3A00&name=Firm+Guest&email=firm-guest%40test.com&notes=&firm=++Acme++Tax+&additional_guests=colleague%40test.com",
+        csrf,
+        far_future_monday()
+    );
+    let response = app
+        .clone()
+        .oneshot(post_form_unauthed(
+            "/u/testuser/test-meeting/book",
+            csrf,
+            &form,
+        ))
+        .await
+        .unwrap();
+    assert!(response.status() == 200 || response.status().is_redirection());
+
+    let (firm, token): (Option<String>, String) = sqlx::query_as(
+        "SELECT firm, confirm_token FROM bookings WHERE guest_email = 'firm-guest@test.com'",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(firm.as_deref(), Some("Acme Tax"));
+
+    let approval = mail_to(&mails, "test@example.com").await;
+    assert!(approval.contains("colleague@test.com"), "{approval}");
+    assert!(approval.contains("Additional guests:"), "{approval}");
+    assert!(approval.contains("Acme Tax"), "{approval}");
+
+    let response = app
+        .oneshot(post_bare(&format!("/booking/approve/{token}")))
+        .await
+        .unwrap();
+    assert!(response.status().is_success() || response.status().is_redirection());
+    settle_background().await;
+
+    let guest = settled_mails_to(&mails, "firm-guest@test.com").await;
+    assert!(
+        guest
+            .iter()
+            .any(|m| m.contains("SUMMARY:Cascade <> Acme Tax")),
+        "{guest:?}"
+    );
+    let colleague = settled_mails_to(&mails, "colleague@test.com").await;
+    assert!(
+        colleague
+            .iter()
+            .any(|m| m.contains("SUMMARY:Cascade <> Acme Tax")),
+        "{colleague:?}"
+    );
+}
+
+#[test]
+fn meeting_title_uses_the_firm_only_when_given() {
+    use crate::email::{meeting_title, normalize_firm};
+    assert_eq!(meeting_title("Platform Demo", None), "Platform Demo");
+    assert_eq!(meeting_title("Platform Demo", Some("  ")), "Platform Demo");
+    assert_eq!(
+        meeting_title("Platform Demo", Some("Acme Tax")),
+        "Cascade <> Acme Tax"
+    );
+    assert_eq!(
+        normalize_firm(Some("  Acme \n Tax ")).as_deref(),
+        Some("Acme Tax")
+    );
+    assert_eq!(normalize_firm(Some("   ")), None);
+    assert_eq!(normalize_firm(Some(&"x".repeat(500))).unwrap().len(), 200);
+}

@@ -1431,6 +1431,7 @@ async fn cancel_orphaned_booking(
     let details = crate::email::CancellationDetails {
         utc_times,
         event_title,
+        firm: crate::email::stored_booking_firm(pool, &booking_uid).await,
         date,
         start_time,
         end_time,

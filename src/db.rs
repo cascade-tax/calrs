@@ -300,6 +300,10 @@ const MIGRATIONS: &[(&str, &str)] = &[
         "073_booking_ics_sequence",
         include_str!("../migrations/073_booking_ics_sequence.sql"),
     ),
+    (
+        "074_booking_firm",
+        include_str!("../migrations/074_booking_firm.sql"),
+    ),
 ];
 
 pub async fn migrate(pool: &SqlitePool) -> Result<()> {
@@ -967,7 +971,7 @@ mod tests {
             .fetch_one(&pool)
             .await
             .unwrap();
-        assert_eq!(count.0, 73, "All 73 migrations should be tracked");
+        assert_eq!(count.0, 74, "All 74 migrations should be tracked");
     }
 
     #[tokio::test]
@@ -1168,7 +1172,7 @@ mod tests {
             .fetch_one(&pool)
             .await
             .unwrap();
-        assert_eq!(count.0, 73, "Still 73 migrations after second run");
+        assert_eq!(count.0, 74, "Still 74 migrations after second run");
     }
 
     #[tokio::test]
@@ -1204,7 +1208,7 @@ mod tests {
 
         assert_eq!(legacy, 0, "the legacy migration record must be retired");
         assert_eq!(current, 1, "the renumbered migration must be tracked");
-        assert_eq!(count, 73, "renumbering must not add a duplicate record");
+        assert_eq!(count, 74, "renumbering must not add a duplicate record");
     }
 
     /// Production on 1.18.0-cascade recorded 001–063, `064_microsoft_graph`
@@ -1225,6 +1229,8 @@ mod tests {
             "071_booking_organizer",
             "072_booking_first_confirmed",
             "073_booking_ics_sequence",
+            // Cascade's own booking firm column, after the 1.20.0 port.
+            "074_booking_firm",
         ];
         let baseline_end = MIGRATIONS
             .iter()
@@ -1305,7 +1311,7 @@ mod tests {
                 .fetch_one(&pool)
                 .await
                 .unwrap();
-            assert_eq!(total, 73);
+            assert_eq!(total, 74);
         }
     }
 

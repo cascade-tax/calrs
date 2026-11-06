@@ -673,8 +673,8 @@ pub(super) async fn handle_group_booking(
         None => (None, None, None),
     };
     let insert_result = sqlx::query(
-        "INSERT INTO bookings (time_version, id, event_type_id, uid, guest_name, guest_email, guest_timezone, notes, start_at, end_at, status, cancel_token, reschedule_token, assigned_user_id, confirm_token, language, assigned_resource_id, guest_phone, organizer_user_id, organizer_name, organizer_email)
-         VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO bookings (time_version, id, event_type_id, uid, guest_name, guest_email, guest_timezone, notes, start_at, end_at, status, cancel_token, reschedule_token, assigned_user_id, confirm_token, language, assigned_resource_id, guest_phone, organizer_user_id, organizer_name, organizer_email, firm)
+         VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     )
     .bind(&id)
     .bind(&et_id)
@@ -699,6 +699,7 @@ pub(super) async fn handle_group_booking(
     .bind(&organizer_user_id)
     .bind(&organizer_name)
     .bind(&organizer_email)
+    .bind(crate::email::normalize_firm(form.firm.as_deref()))
     .execute(&mut *tx)
     .await;
 
@@ -778,6 +779,7 @@ pub(super) async fn handle_group_booking(
     let details = crate::email::BookingDetails {
         utc_times: crate::booking_time::ics_times(&start_at, &end_at),
         event_title: et_title.clone(),
+        firm: crate::email::normalize_firm(form.firm.as_deref()),
         date: form.date.clone(),
         start_time: form.time.clone(),
         end_time: guest_end_time.clone(),
@@ -1339,8 +1341,8 @@ async fn handle_dynamic_group_booking(
         .collect::<Vec<_>>()
         .join(" & ");
     let insert_result = sqlx::query(
-        "INSERT INTO bookings (time_version, id, event_type_id, uid, guest_name, guest_email, guest_timezone, notes, start_at, end_at, status, cancel_token, reschedule_token, confirm_token, language, assigned_resource_id, guest_phone, organizer_user_id, organizer_name, organizer_email)
-         VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO bookings (time_version, id, event_type_id, uid, guest_name, guest_email, guest_timezone, notes, start_at, end_at, status, cancel_token, reschedule_token, confirm_token, language, assigned_resource_id, guest_phone, organizer_user_id, organizer_name, organizer_email, firm)
+         VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     )
     .bind(&id)
     .bind(&et_id)
@@ -1364,6 +1366,7 @@ async fn handle_dynamic_group_booking(
     .bind(&dg_users[0].0)
     .bind(&host_name)
     .bind(&owner_email)
+    .bind(crate::email::normalize_firm(form.firm.as_deref()))
     .execute(&mut *tx)
     .await;
 
@@ -1444,6 +1447,7 @@ async fn handle_dynamic_group_booking(
     let details = crate::email::BookingDetails {
         utc_times: crate::booking_time::ics_times(&start_at, &end_at),
         event_title: et_title.clone(),
+        firm: crate::email::normalize_firm(form.firm.as_deref()),
         date: form.date.clone(),
         start_time: form.time.clone(),
         end_time: guest_end_time.clone(),
@@ -1985,8 +1989,8 @@ pub(super) async fn handle_booking_for_user(
         Err(e) => return internal_error_response("booking conflict check", &e),
     }
     let insert_result = sqlx::query(
-        "INSERT INTO bookings (time_version, id, event_type_id, uid, guest_name, guest_email, guest_timezone, notes, start_at, end_at, status, cancel_token, reschedule_token, confirm_token, language, assigned_resource_id, guest_phone)
-         VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO bookings (time_version, id, event_type_id, uid, guest_name, guest_email, guest_timezone, notes, start_at, end_at, status, cancel_token, reschedule_token, confirm_token, language, assigned_resource_id, guest_phone, firm)
+         VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     )
     .bind(&id)
     .bind(&et_id)
@@ -2007,6 +2011,7 @@ pub(super) async fn handle_booking_for_user(
     .bind(lang)
     .bind(&assigned_resource_id)
     .bind(&phone_to_store)
+    .bind(crate::email::normalize_firm(form.firm.as_deref()))
     .execute(&mut *tx)
     .await;
 
@@ -2102,6 +2107,7 @@ pub(super) async fn handle_booking_for_user(
         let details = crate::email::BookingDetails {
             utc_times: crate::booking_time::ics_times(&start_at, &end_at),
             event_title: et_title.clone(),
+            firm: crate::email::normalize_firm(form.firm.as_deref()),
             date: form.date.clone(),
             start_time: form.time.clone(),
             end_time: guest_end_time.clone(),
@@ -2342,6 +2348,9 @@ pub(super) struct BookForm {
     /// `sms_phone_mode` set; ignored otherwise even if posted.
     #[serde(default)]
     phone: Option<String>,
+    /// Cascade: optional firm name; titles the invitation `Cascade <> {firm}`.
+    #[serde(default)]
+    firm: Option<String>,
 }
 
 /// Whether `user` may put an event type into an SMS-sending mode.
@@ -2834,8 +2843,8 @@ pub(super) async fn handle_booking(
         Err(e) => return internal_error_response("booking conflict check", &e),
     }
     let insert_result = sqlx::query(
-        "INSERT INTO bookings (time_version, id, event_type_id, uid, guest_name, guest_email, guest_timezone, notes, start_at, end_at, status, cancel_token, reschedule_token, confirm_token, language, assigned_resource_id, guest_phone)
-         VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO bookings (time_version, id, event_type_id, uid, guest_name, guest_email, guest_timezone, notes, start_at, end_at, status, cancel_token, reschedule_token, confirm_token, language, assigned_resource_id, guest_phone, firm)
+         VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     )
     .bind(&id)
     .bind(&et_id)
@@ -2856,6 +2865,7 @@ pub(super) async fn handle_booking(
     .bind(lang)
     .bind(&assigned_resource_id)
     .bind(&phone_to_store)
+    .bind(crate::email::normalize_firm(form.firm.as_deref()))
     .execute(&mut *tx)
     .await;
 
@@ -2940,6 +2950,7 @@ pub(super) async fn handle_booking(
         let details = crate::email::BookingDetails {
             utc_times: crate::booking_time::ics_times(&start_at, &end_at),
             event_title: et_title.clone(),
+            firm: crate::email::normalize_firm(form.firm.as_deref()),
             date: form.date.clone(),
             start_time: form.time.clone(),
             end_time: guest_end_time.clone(),

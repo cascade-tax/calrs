@@ -600,9 +600,12 @@ fn generate_ics_impl(
     method: &str,
     schedule_agent_client: bool,
 ) -> String {
-    // Cascade: the title is the event name only; attendees are listed on the
-    // invitation itself, not in the calendar title.
-    let summary = sanitize_ics(&details.event_title);
+    // Cascade: the title is the event name only, or `Cascade <> {firm}` when
+    // the guest named a firm; attendees are listed on the invitation itself.
+    let summary = sanitize_ics(&meeting_title(
+        &details.event_title,
+        details.firm.as_deref(),
+    ));
     // CN= is a parameter, not a TEXT value: it needs quoting, not backslashes.
     let host_name = sanitize_ics_param(&details.host_name);
     let guest_name = sanitize_ics_param(&details.guest_name);
@@ -716,9 +719,12 @@ fn generate_ics_impl(
 
 /// Generate an .ics VCALENDAR for cancellation (METHOD:CANCEL)
 pub(super) fn generate_cancel_ics(details: &CancellationDetails) -> String {
-    // Cascade: the title is the event name only; attendees are listed on the
-    // invitation itself, not in the calendar title.
-    let summary = sanitize_ics(&details.event_title);
+    // Cascade: the title is the event name only, or `Cascade <> {firm}` when
+    // the guest named a firm; attendees are listed on the invitation itself.
+    let summary = sanitize_ics(&meeting_title(
+        &details.event_title,
+        details.firm.as_deref(),
+    ));
     // CN= is a parameter, not a TEXT value: it needs quoting, not backslashes.
     let host_name = sanitize_ics_param(&details.host_name);
     let guest_name = sanitize_ics_param(&details.guest_name);
@@ -785,6 +791,17 @@ pub(super) fn row(label: String, value: impl Into<String>) -> EmailRow {
 pub(super) fn push_row(rows: &mut Vec<EmailRow>, lang: &str, key: &str, value: Option<&String>) {
     if let Some(v) = value {
         rows.push(row(t(lang, key), v.clone()));
+    }
+}
+
+/// Cascade: the attendees the guest added, so a host deciding on or reading
+/// about a booking sees everyone who will be invited.
+pub(super) fn push_additional_guests(rows: &mut Vec<EmailRow>, lang: &str, guests: &[String]) {
+    if !guests.is_empty() {
+        rows.push(row(
+            t(lang, "confirmed-detail-additional-guests"),
+            guests.join(", "),
+        ));
     }
 }
 

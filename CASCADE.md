@@ -30,7 +30,9 @@ branch is based on the production release pinned by
   `065_pending_slot_hold` through `072_booking_ics_sequence` are shifted by one
   to `066_pending_slot_hold` through `073_booking_ics_sequence`. A database at
   the 1.18.0-cascade baseline (001–065) applies exactly those eight on upgrade.
-  Upstream 1.20.1–1.20.6 add no migrations; the table stays at 73 rows.
+  Upstream 1.20.1–1.20.6 add no migrations. Cascade's own `074_booking_firm`
+  follows, so the table has 74 rows and an upstream port shifts upstream's
+  074 onward by one more.
 - Windows timezone names in calendar data resolve through upstream's CLDR
   table (`src/windows_zones.rs`), except that India Standard Time keeps the
   canonical `Asia/Kolkata` rather than CLDR's alias `Asia/Calcutta`. Quoted
@@ -41,6 +43,14 @@ branch is based on the production release pinned by
   short non-200 body text is not ported: a refusal can quote credentials.
 - Calendar invitation titles are the event name only (for example `Demo`);
   guest and host names are not appended.
+- The booking form has an optional Firm field (`bookings.firm`). When the
+  guest fills it, the calendar invitation, its updates and its cancellation
+  are titled `Cascade <> {firm}` instead of the event name, and host emails
+  show the firm.
+- Host emails about a booking (new booking, approval request and reminder,
+  approval confirmation, reminder) list the attendees the guest added.
+- The overview's event-type count includes team event types, matching the
+  Event types page.
 - Failures that upstream answers with a bare HTTP 200 text body render the
   styled Cascade error card with a truthful status (404, 409, 429, ...), in
   the page's language on guest-facing pages. This includes every failure of
