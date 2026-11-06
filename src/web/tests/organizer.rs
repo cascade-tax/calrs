@@ -190,6 +190,7 @@ async fn collective_booking_keeps_its_organizer_when_the_roster_changes() {
         .unwrap();
     assert!(response.status().is_success() || response.status().is_redirection());
     assert_eq!(booking_status(&pool, &booking_id).await, "confirmed");
+    settle_background().await;
     assert_eq!(
         last_pushed_organizer(&puts),
         "ORGANIZER;CN=Bob & Test User:mailto:bob@test.com"

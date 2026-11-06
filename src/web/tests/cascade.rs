@@ -631,6 +631,7 @@ async fn approve_collective_booking_and_capture(
         .await
         .unwrap();
     assert_eq!(response.status(), 200);
+    settle_background().await;
 
     let bodies = captured.lock().unwrap();
     assert_eq!(
@@ -1251,4 +1252,169 @@ async fn event_type_list_offers_duplicate_in_the_row_menu() {
     let body = body.replace("&#x2f;", "/");
     assert!(body.contains(r#"action="/dashboard/event-types/test-meeting/duplicate""#));
     assert!(body.contains(">Duplicate</button>"));
+}
+
+/// A meeting webhook that answers only once the test lets it, counting calls.
+async fn held_meeting_webhook() -> (
+    String,
+    std::sync::Arc<tokio::sync::Semaphore>,
+    std::sync::Arc<std::sync::atomic::AtomicUsize>,
+) {
+    let gate = std::sync::Arc::new(tokio::sync::Semaphore::new(0));
+    let calls = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let (g, c) = (gate.clone(), calls.clone());
+    let hook = Router::new().route(
+        "/",
+        axum::routing::post(move || {
+            let (g, c) = (g.clone(), c.clone());
+            async move {
+                c.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                g.acquire().await.unwrap().forget();
+                axum::Json(serde_json::json!({"url": "https://teams.example/join/held"}))
+            }
+        }),
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = format!("http://{}/", listener.local_addr().unwrap());
+    tokio::spawn(async move {
+        let _ = axum::serve(listener, hook).await;
+    });
+    (url, gate, calls)
+}
+
+/// Approving must not wait on the meeting webhook (the Teams bridge took
+/// seven seconds in production). The host clicked again, the browser aborted
+/// the first request, and the dropped handler left a confirmed booking with
+/// no meeting link, calendar event or guest email. The page now answers as
+/// soon as the booking is confirmed and the rest still completes; a second
+/// click says the booking is already approved.
+#[tokio::test]
+async fn approval_answers_before_a_slow_meeting_webhook_and_still_finishes() {
+    for via_dashboard in [false, true] {
+        let (app, pool, session, et_id) = setup_test_app().await;
+        let (hook_url, gate, calls) = held_meeting_webhook().await;
+        sqlx::query("UPDATE auth_config SET meeting_webhook_url = ?, meeting_webhook_auth_mode = 'none' WHERE id = 'singleton'")
+            .bind(&hook_url)
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query("UPDATE event_types SET location_type = 'webhook_auto', requires_confirmation = 1 WHERE id = ?")
+            .bind(&et_id)
+            .execute(&pool)
+            .await
+            .unwrap();
+        let booking_id = uuid::Uuid::new_v4().to_string();
+        sqlx::query("INSERT INTO bookings (id, event_type_id, uid, guest_name, guest_email, guest_timezone, start_at, end_at, status, cancel_token, reschedule_token, confirm_token) VALUES (?, ?, 'uid-held-webhook', 'Guest', 'guest@test.com', 'UTC', '2030-06-20T10:00:00', '2030-06-20T10:30:00', 'pending', ?, ?, 'confirm-held-webhook')")
+            .bind(&booking_id)
+            .bind(&et_id)
+            .bind(uuid::Uuid::new_v4().to_string())
+            .bind(uuid::Uuid::new_v4().to_string())
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        let csrf = "test-csrf-held-webhook";
+        let approve = || {
+            if via_dashboard {
+                post_form(
+                    &format!("/dashboard/bookings/{booking_id}/confirm"),
+                    &session,
+                    csrf,
+                    &format!("_csrf={csrf}"),
+                )
+            } else {
+                post_bare("/booking/approve/confirm-held-webhook")
+            }
+        };
+
+        // The webhook is still holding its answer: the page must not be.
+        let response = tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            app.clone().oneshot(approve()),
+        )
+        .await
+        .expect("approval waited on the meeting webhook")
+        .unwrap();
+        if via_dashboard {
+            assert!(response.status().is_redirection());
+        } else {
+            assert_eq!(response.status(), 200);
+            assert!(body_string(response).await.contains("approved"));
+        }
+        let (status, meeting_url): (String, Option<String>) =
+            sqlx::query_as("SELECT status, meeting_url FROM bookings WHERE id = ?")
+                .bind(&booking_id)
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(status, "confirmed");
+        assert_eq!(meeting_url, None, "the webhook has not answered yet");
+
+        // A second click while the follow-up is still running.
+        let again = app.clone().oneshot(approve()).await.unwrap();
+        if via_dashboard {
+            assert!(again.status().is_redirection());
+        } else {
+            assert!(body_string(again).await.contains("Already approved"));
+        }
+
+        gate.add_permits(1);
+        settle_background().await;
+        let meeting_url: Option<String> =
+            sqlx::query_scalar("SELECT meeting_url FROM bookings WHERE id = ?")
+                .bind(&booking_id)
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(
+            meeting_url.as_deref(),
+            Some("https://teams.example/join/held"),
+            "the approval's follow-up finished after the response"
+        );
+        assert_eq!(
+            calls.load(std::sync::atomic::Ordering::SeqCst),
+            1,
+            "the second click must not call the webhook again"
+        );
+    }
+}
+
+/// A decline link opened or resubmitted after the booking was approved says
+/// so, instead of calling the link invalid.
+#[tokio::test]
+async fn decline_link_after_approval_says_already_approved() {
+    let (app, pool, _, et_id) = setup_test_app().await;
+    sqlx::query("INSERT INTO bookings (id, event_type_id, uid, guest_name, guest_email, guest_timezone, start_at, end_at, status, cancel_token, reschedule_token, confirm_token) VALUES (?, ?, 'uid-decline-after', 'Guest', 'guest@test.com', 'UTC', '2030-06-20T10:00:00', '2030-06-20T10:30:00', 'confirmed', ?, ?, 'confirm-decline-after')")
+        .bind(uuid::Uuid::new_v4().to_string())
+        .bind(&et_id)
+        .bind(uuid::Uuid::new_v4().to_string())
+        .bind(uuid::Uuid::new_v4().to_string())
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let page = app
+        .clone()
+        .oneshot(get("/booking/decline/confirm-decline-after"))
+        .await
+        .unwrap();
+    assert!(body_string(page).await.contains("Already approved"));
+
+    let csrf = "test-csrf-decline-after";
+    let post = app
+        .clone()
+        .oneshot(post_form_unauthed(
+            "/booking/decline/confirm-decline-after",
+            csrf,
+            &format!("_csrf={csrf}"),
+        ))
+        .await
+        .unwrap();
+    assert!(body_string(post).await.contains("Already approved"));
+
+    let unknown = app
+        .oneshot(get("/booking/decline/no-such-token"))
+        .await
+        .unwrap();
+    assert!(body_string(unknown).await.contains("Invalid link"));
 }

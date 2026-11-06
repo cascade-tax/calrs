@@ -648,6 +648,7 @@ async fn dashboard_approval_notifies_watchers() {
         .await
         .unwrap();
     assert!(response.status().is_redirection());
+    settle_background().await;
 
     let tokens: (i64,) = sqlx::query_as(
         "SELECT COUNT(*) FROM booking_claim_tokens WHERE booking_id = ? AND user_id = ?",
@@ -829,6 +830,7 @@ async fn dashboard_approval_texts_the_guest() {
         .await
         .unwrap();
     assert!(response.status().is_redirection());
+    settle_background().await;
 
     let requests = received.lock().unwrap().clone();
     assert_eq!(requests.len(), 1, "expected one SMS: {requests:?}");
@@ -1330,7 +1332,8 @@ async fn approving_a_reschedule_texts_moved_not_confirmed() {
             };
             assert!(response.status().is_success() || response.status().is_redirection());
 
-            // The SMS is sent inline, before the response.
+            // The SMS goes out with the rest of the approval, after the response.
+            settle_background().await;
             let last = received.lock().unwrap().pop().expect("no SMS sent");
             let expected = if rescheduled {
                 "Booking moved"

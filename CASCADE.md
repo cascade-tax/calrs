@@ -54,6 +54,15 @@ branch is based on the production release pinned by
   and every settings table, starts disabled with a `-copy` slug, and leaves
   bookings and invite links behind. A guard test fails when a migration adds
   an `event_type_id` table without deciding whether it is copied.
+- Approving a pending booking (email link or dashboard) answers as soon as
+  the booking is confirmed. The meeting link, calendar write-back, watcher
+  offers, SMS and emails run afterwards as tracked background work that a
+  graceful shutdown waits for, so a slow meeting webhook neither stalls the
+  page nor is cut off when the host clicks again. Cancellations delete the
+  calendar copies the same way. Opening the approve page starts the hosts'
+  calendar refresh that the approval re-check needs. A decline link for a
+  booking that is no longer pending says it was already approved, declined
+  or cancelled, as the approve link does.
 - Meeting-provider webhooks always send explicit UTC start and end times
   (`...Z`), including for bookings stored before 1.18.0; the Teams bridge in
   `cascade-tax/cascade-calendar` reads them as UTC.

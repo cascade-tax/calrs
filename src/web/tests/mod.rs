@@ -699,6 +699,13 @@ async fn mail_to(mails: &std::sync::Mutex<Vec<CapturedMail>>, email: &str) -> St
     }
 }
 
+/// Wait for the work a booking action runs after its response
+/// (`spawn_after_response`): the meeting link, calendar write-back and
+/// deletes, watcher offers and SMS.
+async fn settle_background() {
+    drain_emails(std::time::Duration::from_secs(30)).await;
+}
+
 /// Every email to `email` once the background sends have finished, decoded.
 /// Unlike `mail_to`, which returns at the first one, this sees a second
 /// email that a test must rule out.

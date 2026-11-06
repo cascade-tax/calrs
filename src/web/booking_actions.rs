@@ -92,6 +92,32 @@ fn render_token_error(
     render_booking_action_error_keys_in(state, lang, title_key, message_key)
 }
 
+/// A decline link whose booking is no longer pending says what happened to
+/// it (already approved, declined or cancelled), as the approve page does,
+/// rather than calling a resubmitted decline an invalid link. An unknown
+/// token is still an invalid decline link.
+async fn render_decline_token_error(
+    state: &AppState,
+    lang: &str,
+    token: &str,
+) -> axum::response::Response {
+    let already: Option<(String,)> =
+        sqlx::query_as("SELECT status FROM bookings WHERE confirm_token = ?")
+            .bind(token)
+            .fetch_optional(&state.pool)
+            .await
+            .unwrap_or(None);
+    match already {
+        Some((status,)) if status != "pending" => render_token_error(state, lang, Some((status,))),
+        _ => render_booking_action_error_keys_in(
+            state,
+            lang,
+            "bae-title-invalid-link",
+            "bae-body-decline-link-invalid",
+        ),
+    }
+}
+
 pub(super) async fn approve_booking_form(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
@@ -123,6 +149,27 @@ pub(super) async fn approve_booking_form(
             return render_token_error(&state, lang, already);
         }
     };
+
+    // Approving refreshes the hosts' stale calendars before re-checking them
+    // (`prepare_approval_hosts`), and a slow feed made the Approve click wait
+    // for it. Start that refresh now, while the host reads this page, so the
+    // click usually finds the calendars fresh and skips it.
+    let hosts_of: Option<(String, String)> = sqlx::query_as(
+        "SELECT b.uid, a.user_id FROM bookings b
+         JOIN event_types et ON et.id = b.event_type_id
+         JOIN accounts a ON a.id = et.account_id
+         WHERE b.confirm_token = ? AND b.status = 'pending'",
+    )
+    .bind(&token)
+    .fetch_optional(&state.pool)
+    .await
+    .unwrap_or(None);
+    if let Some((uid, owner_user_id)) = hosts_of {
+        let state = Arc::clone(&state);
+        tokio::spawn(async move {
+            prepare_approval_hosts(&state, &uid, &owner_user_id).await;
+        });
+    }
 
     let (start_at, end_at) =
         crate::booking_time::guest_wall_strings(&state.pool, &token, &start_at, &end_at).await;
@@ -318,171 +365,201 @@ pub(super) async fn approve_booking_by_token(
 
     tracing::info!(booking_id = %bid, "booking approved via token");
 
-    // start_at/end_at are naive in the event type's timezone; convert to the
-    // guest's tz so the email body and the ICS attachment match what the
-    // guest booked. See #101.
+    // The booking is confirmed now. Everything that follows (the meeting link
+    // from a webhook or Google, the calendar write-back with its read-back
+    // verification, watcher offers, SMS and emails) talks to outside services
+    // and used to run before this page was returned: a slow Teams webhook
+    // kept the host waiting, a second click aborted the first request, and
+    // the dropped handler never wrote the calendar event or told the guest.
+    // It runs detached instead, and the page is answered straight away.
+    let page_event_title = event_title.clone();
+    let page_guest_name = guest_name.clone();
+    let page_guest_email = guest_email.clone();
+    let page_times = (
+        start_at.clone(),
+        end_at.clone(),
+        guest_timezone.clone(),
+        event_type_id.clone(),
+    );
+    let follow_up_state = Arc::clone(&state);
+    spawn_after_response(async move {
+        let state = follow_up_state;
+        // start_at/end_at are naive in the event type's timezone; convert to the
+        // guest's tz so the email body and the ICS attachment match what the
+        // guest booked. See #101.
+        let stored_tz = get_host_tz(&state.pool, &event_type_id).await;
+        let guest_tz_parsed = guest_timezone.parse::<Tz>().unwrap_or(Tz::UTC);
+        let (date, start_time, end_time) =
+            booking_strings_in_guest_tz(&start_at, &end_at, stored_tz, guest_tz_parsed);
+
+        // Host side for BookingDetails: resolved from the booking so the ORGANIZER
+        // matches the calendar the event is written to. Approving through the email
+        // token used to stamp the event type owner even for a booking assigned to
+        // another member, which later made Google CalDAV 403 the reschedule PUT.
+        // See `booking_host_identity`.
+        let (host_name, host_email, host_language) = match booking_host_identity(&state.pool, &uid)
+            .await
+        {
+            Some(identity) => identity,
+            None => {
+                tracing::warn!(
+                    uid = %uid,
+                    user_id = %user_id,
+                    "could not resolve the booking's host identity; falling back to the event type owner"
+                );
+                host_contact(&state.pool, &user_id).await.unwrap_or((
+                    host_name,
+                    String::new(),
+                    None,
+                ))
+            }
+        };
+
+        // Status is now 'confirmed' (we just transitioned it). Generate the
+        // auto meeting URL if the event type uses one; otherwise fall back to
+        // the static location_value.
+        let location_display = resolve_booking_location(
+            &state,
+            &bid,
+            &event_type_id,
+            Some(meeting::confirm_host_user_id(
+                assigned_user_id.as_deref(),
+                user_id.as_str(),
+            )),
+            location_value.as_deref(),
+            &guest_name,
+            &guest_email,
+            true,
+        )
+        .await;
+
+        let guest_language = crate::email::stored_booking_language(&state.pool, &bid).await;
+
+        let (guest_notes, guest_phone_shown) = booking_guest_input(&state.pool, &uid).await;
+        let additional_attendees = booking_additional_attendees(&state.pool, &uid).await;
+        let host_attendees = booking_collective_host_attendees(
+            &state.pool,
+            &uid,
+            &host_email,
+            &guest_email,
+            &additional_attendees,
+        )
+        .await;
+        let details = crate::email::BookingDetails {
+            utc_times: crate::booking_time::ics_times(&start_at, &end_at),
+            event_title: event_title.clone(),
+            date: date.clone(),
+            start_time: start_time.clone(),
+            end_time: end_time.clone(),
+            guest_name: guest_name.clone(),
+            guest_email: guest_email.clone(),
+            guest_timezone,
+            host_name: host_name.clone(),
+            host_email,
+            uid: uid.clone(),
+            notes: guest_notes,
+            guest_phone: guest_phone_shown,
+            location: location_display,
+            reminder_minutes: None,
+            additional_attendees,
+            host_attendees,
+            // The guest booked in their own language; the host approving here may
+            // well be browsing in another one, so this comes from the booking row
+            // rather than from the approver's Accept-Language.
+            guest_language,
+            host_language,
+            host_timezone: stored_tz.name().to_string(),
+            resource_name: booking_resource_label(&state.pool, &uid).await,
+            sequence: booking_ics_sequence(&state.pool, &uid).await,
+            attendee_languages: booking_attendee_languages(&state.pool, &uid).await,
+        };
+
+        // Push to CalDAV calendar
+        caldav_push_booking(&state.pool, &state.secret_key, &user_id, &uid, &details).await;
+        resource_push_booking(&state.pool, &state.secret_key, &uid, &details).await;
+
+        // Notify watcher teams. An approved reschedule was offered to them when
+        // it was first confirmed: no second offer.
+        if !reschedule_approval {
+            notify_watchers(
+                &state.pool,
+                &state.secret_key,
+                &bid,
+                &event_type_id,
+                &host_name,
+                &details,
+            )
+            .await;
+        }
+
+        // Send confirmation email to guest
+        if let Ok(Some(smtp_config)) =
+            crate::email::load_smtp_config(&state.pool, &state.secret_key).await
+        {
+            let base_url = crate::settings::base_url();
+            let guest_cancel_url = cancel_token.as_ref().and_then(|t| {
+                base_url
+                    .as_ref()
+                    .map(|base| format!("{}/booking/cancel/{}", base.trim_end_matches('/'), t))
+            });
+            let guest_reschedule_url = reschedule_token.as_ref().and_then(|t| {
+                base_url
+                    .as_ref()
+                    .map(|base| format!("{}/booking/reschedule/{}", base.trim_end_matches('/'), t))
+            });
+            let (cancel_notice_min, reschedule_notice_min) =
+                fetch_event_type_notice_minutes(&state.pool, &event_type_id).await;
+            let details = details.clone();
+            spawn_emails(async move {
+                send_approval_guest_emails(
+                    &smtp_config,
+                    &details,
+                    guest_cancel_url.as_deref(),
+                    guest_reschedule_url.as_deref(),
+                    (cancel_notice_min, reschedule_notice_min),
+                    reschedule_approval,
+                )
+                .await;
+
+                // Also send host a confirmation email (no ICS, event pushed via CalDAV)
+                log_email_result(
+                    crate::email::send_host_booking_confirmed(&smtp_config, &details).await,
+                    "host_booking_confirmed",
+                    &details.uid,
+                );
+            });
+        }
+
+        // Confirmation SMS to the guest, now that the booking is confirmed. This
+        // is the deferred half of the booking flow: a pending booking stays silent
+        // until the host approves it here. An approved reschedule says "moved".
+        if let Some(ctx) = crate::sms::SmsContext::for_booking(
+            &details,
+            guest_phone.as_deref(),
+            crate::sms::collects_phone(&sms_phone_mode),
+        ) {
+            crate::sms::notify_guest(
+                &state.pool,
+                &state.secret_key,
+                if reschedule_approval {
+                    crate::sms::SmsEvent::Rescheduled
+                } else {
+                    crate::sms::SmsEvent::Confirmed
+                },
+                ctx,
+            )
+            .await;
+        }
+    });
+
+    let (start_at, end_at, guest_timezone, event_type_id) = page_times;
+    let (event_title, guest_name, guest_email) =
+        (page_event_title, page_guest_name, page_guest_email);
     let stored_tz = get_host_tz(&state.pool, &event_type_id).await;
     let guest_tz_parsed = guest_timezone.parse::<Tz>().unwrap_or(Tz::UTC);
     let (date, start_time, end_time) =
         booking_strings_in_guest_tz(&start_at, &end_at, stored_tz, guest_tz_parsed);
     let date_label = format_date_label(&date, lang);
-
-    // Host side for BookingDetails: resolved from the booking so the ORGANIZER
-    // matches the calendar the event is written to. Approving through the email
-    // token used to stamp the event type owner even for a booking assigned to
-    // another member, which later made Google CalDAV 403 the reschedule PUT.
-    // See `booking_host_identity`.
-    let (host_name, host_email, host_language) = match booking_host_identity(&state.pool, &uid)
-        .await
-    {
-        Some(identity) => identity,
-        None => {
-            tracing::warn!(
-                uid = %uid,
-                user_id = %user_id,
-                "could not resolve the booking's host identity; falling back to the event type owner"
-            );
-            host_contact(&state.pool, &user_id)
-                .await
-                .unwrap_or((host_name, String::new(), None))
-        }
-    };
-
-    // Status is now 'confirmed' (we just transitioned it). Generate the
-    // auto meeting URL if the event type uses one; otherwise fall back to
-    // the static location_value.
-    let location_display = resolve_booking_location(
-        &state,
-        &bid,
-        &event_type_id,
-        Some(meeting::confirm_host_user_id(
-            assigned_user_id.as_deref(),
-            user_id.as_str(),
-        )),
-        location_value.as_deref(),
-        &guest_name,
-        &guest_email,
-        true,
-    )
-    .await;
-
-    let guest_language = crate::email::stored_booking_language(&state.pool, &bid).await;
-
-    let (guest_notes, guest_phone_shown) = booking_guest_input(&state.pool, &uid).await;
-    let additional_attendees = booking_additional_attendees(&state.pool, &uid).await;
-    let host_attendees = booking_collective_host_attendees(
-        &state.pool,
-        &uid,
-        &host_email,
-        &guest_email,
-        &additional_attendees,
-    )
-    .await;
-    let details = crate::email::BookingDetails {
-        utc_times: crate::booking_time::ics_times(&start_at, &end_at),
-        event_title: event_title.clone(),
-        date: date.clone(),
-        start_time: start_time.clone(),
-        end_time: end_time.clone(),
-        guest_name: guest_name.clone(),
-        guest_email: guest_email.clone(),
-        guest_timezone,
-        host_name: host_name.clone(),
-        host_email,
-        uid: uid.clone(),
-        notes: guest_notes,
-        guest_phone: guest_phone_shown,
-        location: location_display,
-        reminder_minutes: None,
-        additional_attendees,
-        host_attendees,
-        // The guest booked in their own language; the host approving here may
-        // well be browsing in another one, so this comes from the booking row
-        // rather than from the approver's Accept-Language.
-        guest_language,
-        host_language,
-        host_timezone: stored_tz.name().to_string(),
-        resource_name: booking_resource_label(&state.pool, &uid).await,
-        sequence: booking_ics_sequence(&state.pool, &uid).await,
-        attendee_languages: booking_attendee_languages(&state.pool, &uid).await,
-    };
-
-    // Push to CalDAV calendar
-    caldav_push_booking(&state.pool, &state.secret_key, &user_id, &uid, &details).await;
-    resource_push_booking(&state.pool, &state.secret_key, &uid, &details).await;
-
-    // Notify watcher teams. An approved reschedule was offered to them when
-    // it was first confirmed: no second offer.
-    if !reschedule_approval {
-        notify_watchers(
-            &state.pool,
-            &state.secret_key,
-            &bid,
-            &event_type_id,
-            &host_name,
-            &details,
-        )
-        .await;
-    }
-
-    // Send confirmation email to guest
-    if let Ok(Some(smtp_config)) =
-        crate::email::load_smtp_config(&state.pool, &state.secret_key).await
-    {
-        let base_url = crate::settings::base_url();
-        let guest_cancel_url = cancel_token.as_ref().and_then(|t| {
-            base_url
-                .as_ref()
-                .map(|base| format!("{}/booking/cancel/{}", base.trim_end_matches('/'), t))
-        });
-        let guest_reschedule_url = reschedule_token.as_ref().and_then(|t| {
-            base_url
-                .as_ref()
-                .map(|base| format!("{}/booking/reschedule/{}", base.trim_end_matches('/'), t))
-        });
-        let (cancel_notice_min, reschedule_notice_min) =
-            fetch_event_type_notice_minutes(&state.pool, &event_type_id).await;
-        let details = details.clone();
-        spawn_emails(async move {
-            send_approval_guest_emails(
-                &smtp_config,
-                &details,
-                guest_cancel_url.as_deref(),
-                guest_reschedule_url.as_deref(),
-                (cancel_notice_min, reschedule_notice_min),
-                reschedule_approval,
-            )
-            .await;
-
-            // Also send host a confirmation email (no ICS, event pushed via CalDAV)
-            log_email_result(
-                crate::email::send_host_booking_confirmed(&smtp_config, &details).await,
-                "host_booking_confirmed",
-                &details.uid,
-            );
-        });
-    }
-
-    // Confirmation SMS to the guest, now that the booking is confirmed. This
-    // is the deferred half of the booking flow: a pending booking stays silent
-    // until the host approves it here. An approved reschedule says "moved".
-    if let Some(ctx) = crate::sms::SmsContext::for_booking(
-        &details,
-        guest_phone.as_deref(),
-        crate::sms::collects_phone(&sms_phone_mode),
-    ) {
-        crate::sms::notify_guest(
-            &state.pool,
-            &state.secret_key,
-            if reschedule_approval {
-                crate::sms::SmsEvent::Rescheduled
-            } else {
-                crate::sms::SmsEvent::Confirmed
-            },
-            ctx,
-        )
-        .await;
-    }
 
     let tmpl = match state.templates.get_template("booking_approved.html") {
         Ok(t) => t,
@@ -526,14 +603,7 @@ pub(super) async fn decline_booking_form(
 
     let (guest_name, guest_email, start_at, end_at, event_title) = match booking {
         Some(b) => b,
-        None => {
-            return render_booking_action_error_keys_in(
-                &state,
-                lang,
-                "bae-title-invalid-link",
-                "bae-body-decline-link-invalid",
-            );
-        }
+        None => return render_decline_token_error(&state, lang, &token).await,
     };
 
     let (start_at, end_at) =
@@ -611,14 +681,7 @@ pub(super) async fn decline_booking_by_token(
         et_id,
     ) = match booking {
         Some(b) => b,
-        None => {
-            return render_booking_action_error_keys_in(
-                &state,
-                lang,
-                "bae-title-invalid-link",
-                "bae-body-decline-link-invalid",
-            );
-        }
+        None => return render_decline_token_error(&state, lang, &token).await,
     };
 
     // Decline the booking, guarded like approval: if a concurrent approve or
@@ -1198,10 +1261,15 @@ pub(super) async fn guest_cancel_booking(
     .await
     .unwrap_or(None);
 
-    // Delete from CalDAV calendar
-    if let Some(user_id) = &host_user_id {
-        caldav_delete_booking(&state.pool, &state.secret_key, user_id, &uid).await;
-        resource_delete_booking(&state.pool, &state.secret_key, &uid).await;
+    // Delete from CalDAV calendar, after the response: these call outside
+    // services (`spawn_after_response`).
+    if let Some(user_id) = host_user_id.clone() {
+        let state = Arc::clone(&state);
+        let uid = uid.clone();
+        spawn_after_response(async move {
+            caldav_delete_booking(&state.pool, &state.secret_key, &user_id, &uid).await;
+            resource_delete_booking(&state.pool, &state.secret_key, &uid).await;
+        });
     }
 
     // Convert event-type-local stored times into the guest's tz; see #101.

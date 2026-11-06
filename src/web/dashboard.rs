@@ -1205,9 +1205,16 @@ pub(super) async fn cancel_booking(
 
     tracing::info!(booking_id = %bid, status = new_status, "booking {}", new_status);
 
+    // The calendar deletes call outside services: they run after the
+    // redirect, as the approval's write-back does (`spawn_after_response`).
     if !was_pending {
-        caldav_delete_booking(&state.pool, &state.secret_key, &user.id, &uid).await;
-        resource_delete_booking(&state.pool, &state.secret_key, &uid).await;
+        let state = Arc::clone(&state);
+        let user_id = user.id.clone();
+        let uid = uid.clone();
+        spawn_after_response(async move {
+            caldav_delete_booking(&state.pool, &state.secret_key, &user_id, &uid).await;
+            resource_delete_booking(&state.pool, &state.secret_key, &uid).await;
+        });
     }
 
     // Convert event-type-local stored times into the guest's tz; see #101.
@@ -1476,167 +1483,176 @@ pub(super) async fn confirm_booking(
 
     tracing::info!(booking_id = %bid, "booking confirmed by host");
 
-    // Mirror the email-token approve path: now that the booking is confirmed,
-    // generate (or load via idempotency) the auto meeting URL so the host
-    // notification email, ICS attachment, and CalDAV push all carry the link
-    // for jitsi_auto/webhook_auto event types. Falls back to location_value
-    // for static providers.
-    let location_display = resolve_booking_location(
-        &state,
-        &bid,
-        &et_id,
-        Some(meeting::confirm_host_user_id(
-            assigned_user_id.as_deref(),
-            user.id.as_str(),
-        )),
-        location_value.as_deref(),
-        &guest_name,
-        &guest_email,
-        true,
-    )
-    .await;
-
-    // start_at/end_at are naive in the event type's timezone; convert to the
-    // guest's tz so the confirmation email body and the ICS attachment match
-    // what the guest booked. See #101.
-    let stored_tz = get_host_tz(&state.pool, &et_id).await;
-    let guest_tz_parsed = guest_timezone.parse::<Tz>().unwrap_or(Tz::UTC);
-    let (date, start_time, end_time) =
-        booking_strings_in_guest_tz(&start_at, &end_at, stored_tz, guest_tz_parsed);
-
-    // The organizer belongs to the booking, not to whoever clicked approve:
-    // on a team event type the approver is often the owner while the event
-    // lives on the assigned member's calendar. Writing the approver here would
-    // pin the wrong ORGANIZER and make every later reschedule 403 against
-    // Google CalDAV. See `booking_host_identity`.
-    // The host email goes to the booking's host, who is not always the
-    // approver, so it is written in that host's own saved language.
-    let (host_name, host_email, host_language) = booking_host_identity(&state.pool, &uid)
-        .await
-        .unwrap_or_else(|| {
-            (
-                user.name.clone(),
-                user.booking_email
-                    .clone()
-                    .unwrap_or_else(|| user.email.clone()),
-                crate::email::supported_language(user.language.clone()),
-            )
-        });
-
-    let (guest_notes, guest_phone_shown) = booking_guest_input(&state.pool, &uid).await;
-    let additional_attendees = booking_additional_attendees(&state.pool, &uid).await;
-    let host_attendees = booking_collective_host_attendees(
-        &state.pool,
-        &uid,
-        &host_email,
-        &guest_email,
-        &additional_attendees,
-    )
-    .await;
-    let details = crate::email::BookingDetails {
-        utc_times: crate::booking_time::ics_times(&start_at, &end_at),
-        event_title,
-        date,
-        start_time,
-        end_time,
-        guest_name,
-        guest_email,
-        guest_timezone,
-        host_name,
-        host_email,
-        uid: uid.clone(),
-        notes: guest_notes,
-        guest_phone: guest_phone_shown,
-        location: location_display,
-        reminder_minutes: None,
-        additional_attendees,
-        host_attendees,
-        // The host clicked approve, so the request carries the host's
-        // language; the guest's is the one stored with the booking (#209).
-        guest_language,
-        host_language,
-        host_timezone: stored_tz.name().to_string(),
-        resource_name: booking_resource_label(&state.pool, &uid).await,
-        sequence: booking_ics_sequence(&state.pool, &uid).await,
-        attendee_languages: booking_attendee_languages(&state.pool, &uid).await,
-    };
-
-    // Push to CalDAV calendar
-    caldav_push_booking(&state.pool, &state.secret_key, &user.id, &uid, &details).await;
-    resource_push_booking(&state.pool, &state.secret_key, &uid, &details).await;
-
-    // Notify watcher teams, as the token approve path does: a booking that
-    // needed approval only becomes claimable once it is confirmed. An
-    // approved reschedule was offered when first confirmed: no second offer.
-    if !reschedule_approval {
-        notify_watchers(
-            &state.pool,
-            &state.secret_key,
+    // The booking is confirmed now; the rest calls outside services (meeting
+    // webhook, calendar write-back, SMS) and runs after the redirect, so a
+    // slow provider neither stalls the page nor gets cut off when the host
+    // clicks again. See `spawn_after_response`.
+    let state = Arc::clone(&state);
+    let user = auth_user.user.clone();
+    spawn_after_response(async move {
+        let user = &user;
+        // Mirror the email-token approve path: now that the booking is confirmed,
+        // generate (or load via idempotency) the auto meeting URL so the host
+        // notification email, ICS attachment, and CalDAV push all carry the link
+        // for jitsi_auto/webhook_auto event types. Falls back to location_value
+        // for static providers.
+        let location_display = resolve_booking_location(
+            &state,
             &bid,
             &et_id,
-            &details.host_name,
-            &details,
+            Some(meeting::confirm_host_user_id(
+                assigned_user_id.as_deref(),
+                user.id.as_str(),
+            )),
+            location_value.as_deref(),
+            &guest_name,
+            &guest_email,
+            true,
         )
         .await;
-    }
 
-    // Confirmation SMS to the guest, the same deferred send as the token
-    // approve path: a pending booking stays silent until the host approves.
-    // An approved reschedule says "moved".
-    if let Some(ctx) = crate::sms::SmsContext::for_booking(
-        &details,
-        guest_phone.as_deref(),
-        crate::sms::collects_phone(&sms_phone_mode),
-    ) {
-        crate::sms::notify_guest(
+        // start_at/end_at are naive in the event type's timezone; convert to the
+        // guest's tz so the confirmation email body and the ICS attachment match
+        // what the guest booked. See #101.
+        let stored_tz = get_host_tz(&state.pool, &et_id).await;
+        let guest_tz_parsed = guest_timezone.parse::<Tz>().unwrap_or(Tz::UTC);
+        let (date, start_time, end_time) =
+            booking_strings_in_guest_tz(&start_at, &end_at, stored_tz, guest_tz_parsed);
+
+        // The organizer belongs to the booking, not to whoever clicked approve:
+        // on a team event type the approver is often the owner while the event
+        // lives on the assigned member's calendar. Writing the approver here would
+        // pin the wrong ORGANIZER and make every later reschedule 403 against
+        // Google CalDAV. See `booking_host_identity`.
+        // The host email goes to the booking's host, who is not always the
+        // approver, so it is written in that host's own saved language.
+        let (host_name, host_email, host_language) = booking_host_identity(&state.pool, &uid)
+            .await
+            .unwrap_or_else(|| {
+                (
+                    user.name.clone(),
+                    user.booking_email
+                        .clone()
+                        .unwrap_or_else(|| user.email.clone()),
+                    crate::email::supported_language(user.language.clone()),
+                )
+            });
+
+        let (guest_notes, guest_phone_shown) = booking_guest_input(&state.pool, &uid).await;
+        let additional_attendees = booking_additional_attendees(&state.pool, &uid).await;
+        let host_attendees = booking_collective_host_attendees(
             &state.pool,
-            &state.secret_key,
-            if reschedule_approval {
-                crate::sms::SmsEvent::Rescheduled
-            } else {
-                crate::sms::SmsEvent::Confirmed
-            },
-            ctx,
+            &uid,
+            &host_email,
+            &guest_email,
+            &additional_attendees,
         )
         .await;
-    }
+        let details = crate::email::BookingDetails {
+            utc_times: crate::booking_time::ics_times(&start_at, &end_at),
+            event_title,
+            date,
+            start_time,
+            end_time,
+            guest_name,
+            guest_email,
+            guest_timezone,
+            host_name,
+            host_email,
+            uid: uid.clone(),
+            notes: guest_notes,
+            guest_phone: guest_phone_shown,
+            location: location_display,
+            reminder_minutes: None,
+            additional_attendees,
+            host_attendees,
+            // The host clicked approve, so the request carries the host's
+            // language; the guest's is the one stored with the booking (#209).
+            guest_language,
+            host_language,
+            host_timezone: stored_tz.name().to_string(),
+            resource_name: booking_resource_label(&state.pool, &uid).await,
+            sequence: booking_ics_sequence(&state.pool, &uid).await,
+            attendee_languages: booking_attendee_languages(&state.pool, &uid).await,
+        };
 
-    // Send confirmation emails
-    if let Ok(Some(smtp_config)) =
-        crate::email::load_smtp_config(&state.pool, &state.secret_key).await
-    {
-        let base_url = crate::settings::base_url();
-        let guest_cancel_url = cancel_token.as_ref().and_then(|t| {
-            base_url
-                .as_ref()
-                .map(|base| format!("{}/booking/cancel/{}", base.trim_end_matches('/'), t))
-        });
-        let guest_reschedule_url = reschedule_token.as_ref().and_then(|t| {
-            base_url
-                .as_ref()
-                .map(|base| format!("{}/booking/reschedule/{}", base.trim_end_matches('/'), t))
-        });
-        let (cancel_notice_min, reschedule_notice_min) =
-            fetch_event_type_notice_minutes(&state.pool, &et_id).await;
-        spawn_emails(async move {
-            send_approval_guest_emails(
-                &smtp_config,
+        // Push to CalDAV calendar
+        caldav_push_booking(&state.pool, &state.secret_key, &user.id, &uid, &details).await;
+        resource_push_booking(&state.pool, &state.secret_key, &uid, &details).await;
+
+        // Notify watcher teams, as the token approve path does: a booking that
+        // needed approval only becomes claimable once it is confirmed. An
+        // approved reschedule was offered when first confirmed: no second offer.
+        if !reschedule_approval {
+            notify_watchers(
+                &state.pool,
+                &state.secret_key,
+                &bid,
+                &et_id,
+                &details.host_name,
                 &details,
-                guest_cancel_url.as_deref(),
-                guest_reschedule_url.as_deref(),
-                (cancel_notice_min, reschedule_notice_min),
-                reschedule_approval,
             )
             .await;
+        }
 
-            // Also send host a confirmation email (no ICS, event pushed via CalDAV)
-            log_email_result(
-                crate::email::send_host_booking_confirmed(&smtp_config, &details).await,
-                "host_booking_confirmed",
-                &details.uid,
-            );
-        });
-    }
+        // Confirmation SMS to the guest, the same deferred send as the token
+        // approve path: a pending booking stays silent until the host approves.
+        // An approved reschedule says "moved".
+        if let Some(ctx) = crate::sms::SmsContext::for_booking(
+            &details,
+            guest_phone.as_deref(),
+            crate::sms::collects_phone(&sms_phone_mode),
+        ) {
+            crate::sms::notify_guest(
+                &state.pool,
+                &state.secret_key,
+                if reschedule_approval {
+                    crate::sms::SmsEvent::Rescheduled
+                } else {
+                    crate::sms::SmsEvent::Confirmed
+                },
+                ctx,
+            )
+            .await;
+        }
+
+        // Send confirmation emails
+        if let Ok(Some(smtp_config)) =
+            crate::email::load_smtp_config(&state.pool, &state.secret_key).await
+        {
+            let base_url = crate::settings::base_url();
+            let guest_cancel_url = cancel_token.as_ref().and_then(|t| {
+                base_url
+                    .as_ref()
+                    .map(|base| format!("{}/booking/cancel/{}", base.trim_end_matches('/'), t))
+            });
+            let guest_reschedule_url = reschedule_token.as_ref().and_then(|t| {
+                base_url
+                    .as_ref()
+                    .map(|base| format!("{}/booking/reschedule/{}", base.trim_end_matches('/'), t))
+            });
+            let (cancel_notice_min, reschedule_notice_min) =
+                fetch_event_type_notice_minutes(&state.pool, &et_id).await;
+            spawn_emails(async move {
+                send_approval_guest_emails(
+                    &smtp_config,
+                    &details,
+                    guest_cancel_url.as_deref(),
+                    guest_reschedule_url.as_deref(),
+                    (cancel_notice_min, reschedule_notice_min),
+                    reschedule_approval,
+                )
+                .await;
+
+                // Also send host a confirmation email (no ICS, event pushed via CalDAV)
+                log_email_result(
+                    crate::email::send_host_booking_confirmed(&smtp_config, &details).await,
+                    "host_booking_confirmed",
+                    &details.uid,
+                );
+            });
+        }
+    });
 
     Redirect::to("/dashboard/bookings").into_response()
 }

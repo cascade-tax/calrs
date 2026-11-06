@@ -62,6 +62,22 @@ where
     EMAIL_TASKS.spawn(task);
 }
 
+/// Run the rest of a committed booking action after the HTTP response: the
+/// meeting link, calendar write-back, watcher offers and SMS of an approval,
+/// or the calendar deletes of a cancellation. These call outside services
+/// (a meeting webhook, Google, CalDAV servers) and together took long enough
+/// that hosts clicked Approve again; the browser then aborted the first
+/// request and the dropped handler left a confirmed booking with no calendar
+/// event, meeting link or guest email. Detached, they finish whatever the
+/// client does. Tracked with the emails, so a graceful shutdown waits for
+/// them too (`drain_emails`).
+pub(crate) fn spawn_after_response<F>(task: F)
+where
+    F: std::future::Future<Output = ()> + Send + 'static,
+{
+    EMAIL_TASKS.spawn(task);
+}
+
 /// Background email sends still in flight, so a graceful shutdown can wait
 /// for them instead of dropping them with the runtime (see `drain_emails`).
 static EMAIL_TASKS: TaskTracker = TaskTracker::new();
