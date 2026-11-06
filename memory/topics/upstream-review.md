@@ -1,5 +1,18 @@
 # Cal.rs upstream review and production baseline
 
+## November 5, 2026 — approval follow-up detached; baseline 1.20.6-cascade.2
+
+Production moved to `1.20.6-cascade.2` (fork revision `4578242`), a fork
+patch with no migration; the deployment record is in
+`cascade-tax/cascade-calendar` `memory/topics/calrs-upstream-review.md`.
+Approvals (email link and dashboard) now answer once the guarded status
+flip commits; the meeting link, write-back, watcher offers, SMS and emails
+run through `spawn_after_response`, tracked with the email tasks. Host and
+guest cancellations delete calendar copies the same way. Upstream `main`
+(through `c18f088`) still runs this work inline in `approve_booking_by_token`
+and `confirm_booking`: a port must keep the detached follow-up and the
+`settle_background` waits in tests that read approval side effects.
+
 ## November 3, 2026 — week-start preferences reviewed; retain custom fork
 
 Reviewed the 15-commit, 37-file delta from
