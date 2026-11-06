@@ -1,5 +1,15 @@
 # Cal.rs upstream review and production baseline
 
+## November 6, 2026 — Firm field and approval attendees; baseline 1.20.6-cascade.3
+
+Production moved to `1.20.6-cascade.3` (fork revision `2c425d1`). It adds
+Cascade migration `074_booking_firm`, so an upstream port shifts upstream's
+074 onward by one more than previously recorded. The booking form's Firm
+field titles invitations `Cascade <> {firm}`; host emails list guest-added
+attendees and the firm; the overview count includes team event types. The
+deployment record is in `cascade-tax/cascade-calendar`
+`memory/topics/calrs-upstream-review.md`.
+
 ## November 5, 2026 — approval follow-up detached; baseline 1.20.6-cascade.2
 
 Production moved to `1.20.6-cascade.2` (fork revision `4578242`), a fork
