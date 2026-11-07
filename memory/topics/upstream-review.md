@@ -1,5 +1,57 @@
 # Cal.rs upstream review and production baseline
 
+## November 7, 2026 — 1.23.0 reviewed; retain custom fork
+
+Reviewed all substantive source changes in the 16-commit, 46-file range from
+`c18f088076cfeab488e6c652858bf9d84bba74a6` through
+[`37f8f378ed3e126fcbaf18744f169e61751007e0`](https://github.com/olivierlambert/calrs/commit/37f8f378ed3e126fcbaf18744f169e61751007e0).
+This includes the 1.23.0 release and the subsequent Docker-tag correction.
+
+- [#337](https://github.com/olivierlambert/calrs/pull/337) adds a booking
+  directory and per-user favorites. Discovery and saves recheck visibility,
+  enabled state and expiry; private-team host searches are membership scoped.
+  Internal meetings on private teams remain discoverable by authenticated
+  colleagues under upstream's documented internal-meeting semantics. Favorite
+  writes require CSRF and are idempotent; internal invites remain single use.
+  A port must review this discovery behavior and preserve Cascade branding.
+- [#339](https://github.com/olivierlambert/calrs/pull/339) adds per-source
+  calendar selection in the UI and CLI. Disabled calendars retain discovery
+  metadata but lose cached events and stop contributing busy time. If an event
+  type's selected conflict calendars are all disabled, it falls back to the
+  remaining synced calendars. All-disabled sources intentionally have none.
+  Re-enabling invalidates sync state; a generation check rejects stale sync
+  markers. The orphan-booking sweep skips disabled write calendars.
+- The source-selection route checks ownership and CSRF. Source colors are
+  restricted to hex before rendering. CLI source prefixes reject ambiguity.
+  Preserve the fork's Microsoft read-only/write-back and cancellation guards;
+  upstream's statement that any calendar can receive bookings must not replace
+  Cascade's provider restrictions.
+- Migrations 078 (favorites) and 079 (sync flags/generation) are registered in
+  `src/db.rs`. Cascade now occupies 074 with Firm: a future port must place
+  upstream 077/078/079 at 079/080/081, after reconciling earlier migrations.
+  This supersedes the November 3 proposed 077-to-078 mapping. Include the new
+  favorites table in the duplication guard's explicit exclusion decision;
+  personal favorites must not be blindly copied with event types.
+- [#329](https://github.com/olivierlambert/calrs/pull/329) adds a Baikal preset;
+  [#338](https://github.com/olivierlambert/calrs/pull/338) removes external DNS
+  from source-edit test fixtures. [#342](https://github.com/olivierlambert/calrs/pull/342)
+  makes Docker `latest` follow stable tags and `next` follow prerelease tags.
+  Cargo changes only the application version, with no dependency delta.
+
+Verification: all 79 registered upstream migration scripts applied in memory.
+Populated fixtures verified preserved/default-on existing calendars, default-on
+new calendars, favorite deduplication and cascading removal on event deletion.
+The new browser-test script passes Node syntax checking; diff whitespace checks
+pass. Rust compilation, HTTP/provider tests, browser tests and production-shaped
+migration rehearsal were not run. Translation wiring was reviewed, not linguistic
+accuracy. This is maintenance review, not deployment or full security clearance.
+
+Disposition: retain `1.20.6-cascade.3` and all custom behavior in `CASCADE.md`,
+including Firm, detached approval follow-up, attendee emails, team counts,
+12-hour times and Sunday-first weeks. Carry forward the earlier slug-collision
+and port constraints. No source integration, dependency installation, service
+restart, configuration change or deployment occurred.
+
 ## November 6, 2026 — Firm field and approval attendees; baseline 1.20.6-cascade.3
 
 Production moved to `1.20.6-cascade.3` (fork revision `2c425d1`). It adds
