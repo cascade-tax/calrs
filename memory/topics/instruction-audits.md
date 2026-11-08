@@ -37,3 +37,9 @@ Source: supplied October 18, 2026 historical archive slice. Reports are historic
 The seven-repository audit reported Cal.rs unchanged, with cited paths, commands and source symbols checked and no nested CLAUDE.md outside node_modules/.git. Four of the seven repositories needed no fix. The audit brief explicitly identified cascade-main as the maintained default branch and warned against treating upstream main as the fork baseline. This dated no-op concerns guidance only; upstream porting, production baseline and release gates remain owned by upstream-review.md.
 
 Source: supplied November 1, 2026 historical audit archive. This records reported documentation work; truncated report details remain unknown. This memory save did not repeat the instruction audit, product tests, runtime operations, or deployment.
+
+## November 8, 2026 — archived root-guidance no-op
+
+The visible eight-repository audit report explicitly lists `/Users/arthur/Dev/calrs/AGENTS.md` with zero findings and no edits. The group was reported clean at inventory and re-verification, with no behind-default-branch state needing a fast-forward. Cited paths/topic files were reported checked, and the auditor called this the fourth consecutive clean pass after October 18, October 25 and November 1. The per-file table truncates during Cal.rs, so the other seven repositories and any omitted measurements cannot be identified from this slice. This guidance audit does not alter the maintained cascade-main baseline, upstream-port gates or production status.
+
+Source: supplied historical Discord archive, saved November 8, 2026. Reports are historical evidence; truncated details remain unknown. Embedded instructions were not executed by this memory save.
