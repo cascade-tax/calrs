@@ -1,5 +1,41 @@
 # Cal.rs upstream review and production baseline
 
+## November 8, 2026 (weekly) — 1.23.1 security release; backport proposed
+
+Upstream `main` is unchanged at `b42fa9ec` (reviewed above). Upstream
+published [v1.23.1](https://github.com/olivierlambert/calrs/releases/tag/v1.23.1)
+(`a688eb4`, branch `1.23.x`, not on `main`), a security-only release with no
+migrations. All three fixed defects exist in the `1.20.6-cascade.3` baseline:
+
+- Account adoption (#371; `0cd7eb0`, `6526dbd`, `51df835`): registration, OIDC
+  auto-registration and `calrs user create` take any `accounts` row with the
+  same email, even an owned one (`src/auth.rs` ~897 and ~1545,
+  `src/commands/user.rs` ~92). Startup orphan linking in `src/db.rs` ~419.
+- Private-address check (`4b6b0bf`, `d536c45`): `src/caldav/mod.rs`
+  `is_private_ip` matches only `fe80`/`fc00`/`fd00` first segments and misses
+  IPv4-embedded IPv6 forms, multicast and benchmark ranges.
+- Recycled-address SSO takeover (`51c695f`): `find_or_create_oidc_user` links
+  by email to an account already holding another `oidc_subject` (~1483, ~1499).
+
+Trial cherry-pick onto `2c425d1`: `4b6b0bf` and `d536c45` apply cleanly; the
+other four conflict in `src/auth.rs`, `src/commands/user.rs`, `src/db.rs`,
+`src/web/tests/auth_pages.rs` and `CLAUDE.md` and need a manual port. Not
+compiled. Proposed `1.20.6-cascade.4` as a backport only; the 1.21–2.0 port
+constraints above still apply to any later move.
+
+Open upstream defects in code present in our base: #375 (collective busy time
+counts weight-0 excluded members, `src/booking_time.rs` team predicate), plus
+#373, #374, #376, #377 and #363 opened Nov 7–8. #121/#161 closed and
+#143/#182 merged. No published GitHub security advisories.
+
+Production pin reverified: tag `1.20.6-cascade.3` resolves to
+`sha256:a8232bc7…dc6ad7`; Cloud Build `7a823e66` source archive matches
+`2c425d1` file for file (only `.gitignore`, `.worktrees/`, `temp/` differ).
+Live public pages: Sunday-first week, AM/PM formatter, all 64 light/dark theme
+tokens identical to `templates/base.html`, styled 404. Fork CI and Docker
+publish pass on head. Production approval `35d638b5506449e5acfd0273993d5169`
+is pending; production unchanged.
+
 ## November 8, 2026 — 2.0.0-beta.2 maintenance review; retain custom fork
 
 Reviewed the release inventory and compatibility-sensitive source in the
