@@ -77,6 +77,14 @@ branch is based on the production release pinned by
   (`...Z`), including for bookings stored before 1.18.0; the Teams bridge in
   `cascade-tax/cascade-calendar` reads them as UTC.
 
+- Upstream 1.23.1's security fixes are backported onto the 1.20.6 base: a
+  new user (registration, OIDC auto-registration, `calrs user create`) always
+  gets an account of its own; startup links an orphaned account only to a
+  same-address user who has none; OIDC email linking refuses an account
+  already linked to another identity; and the private-address check covers
+  every IPv6 private range and IPv4-embedded form. An upstream port drops
+  these as already present.
+
 The deployment repository's weekly upstream review compares this branch with
 `olivierlambert/calrs`, reviews new releases and security changes, and reports
 whether these commits apply cleanly before any production update.
