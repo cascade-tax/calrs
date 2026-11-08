@@ -34,7 +34,10 @@ Production pin reverified: tag `1.20.6-cascade.3` resolves to
 Live public pages: Sunday-first week, AM/PM formatter, all 64 light/dark theme
 tokens identical to `templates/base.html`, styled 404. Fork CI and Docker
 publish pass on head. Production approval `35d638b5506449e5acfd0273993d5169`
-is pending; production unchanged.
+was approved and `1.20.6-cascade.4` (revision `782350c`, digest
+`sha256:a99232cd…c302e8`) deployed the same day; the four conflicting commits
+were hand-ported. Deployment record: `cascade-tax/cascade-calendar`
+`memory/topics/calrs-upstream-review.md`.
 
 ## November 8, 2026 — 2.0.0-beta.2 maintenance review; retain custom fork
 
