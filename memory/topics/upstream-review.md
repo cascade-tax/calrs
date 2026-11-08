@@ -1,5 +1,76 @@
 # Cal.rs upstream review and production baseline
 
+## November 8, 2026 — 2.0.0-beta.2 maintenance review; retain custom fork
+
+Reviewed the release inventory and compatibility-sensitive source in the
+50-commit, 86-file range from `37f8f378ed3e126fcbaf18744f169e61751007e0` through
+[`b42fa9ecf22549f9f86e8e18b42608b6925cab6f`](https://github.com/olivierlambert/calrs/commit/b42fa9ecf22549f9f86e8e18b42608b6925cab6f).
+This covers the 2.0.0 beta dashboard redesign, migration discovery, CLI input
+handling, Markdown links, and fixed-timezone embeds. It is a maintenance and
+portability assessment, not an exhaustive security or visual audit.
+
+- [Beta 1 / #348](https://github.com/olivierlambert/calrs/pull/348) replaces
+  the dashboard/admin presentation, adds week/usage views, sidebar hints,
+  search, keyboard shortcuts and unsaved-form guards. Archivo is bundled and
+  served locally. The overview scopes booking reads to hosts and renders
+  synced calendar events as anonymous busy blocks; admin statistics remain
+  behind `AdminUser`. New formatting in `web/format.rs` and
+  `overview_stats.rs` uses 24-hour times. A port must restore Cascade's
+  12-hour display and Sunday-first behavior throughout these new surfaces,
+  retain its exact themes/branding, and preserve the team-inclusive event
+  count: upstream's new overview still counts only personal event types.
+- Migrations 080 and 081 add last-login tracking and dashboard indexes.
+  Login triggers defer new MFA-required local sign-ins until verification;
+  the initial backfill takes the newest retained session without that filter.
+  Admin upcoming-booking statistics intentionally approximate legacy local
+  timestamps as UTC; source comments acknowledge an offset-sized boundary
+  error. Do not treat those figures as exact booking-time reconciliation.
+- [#351](https://github.com/olivierlambert/calrs/pull/351) replaces the manual
+  migration array with `build.rs` discovery. Existing names stay fixed; new
+  names use UTC timestamps. SQL and tracking rows still commit together.
+  **Confirmed port blocker:** Cascade's previously planned offset puts
+  upstream 080/081 at 082/083, but the unchanged builder rejects numbered
+  migrations above 081. Adapt the legacy ceiling and name-pinning tests, or
+  deliberately map these not-yet-shipped scripts to timestamp names. Preserve
+  all shipped Cascade names and the legacy `062_microsoft_graph` adoption
+  before applying migrations; merely replacing `src/db.rs` would lose it.
+- [#352](https://github.com/olivierlambert/calrs/pull/352) and
+  [#353](https://github.com/olivierlambert/calrs/pull/353) restrict server and
+  preview Markdown links to HTTP, HTTPS, mailto and relative destinations;
+  the preview also escapes quotes before constructing attributes. The current
+  fork lacks these new checks. Carry these fixes explicitly into a separately
+  authorized update; this review did not reproduce browser exploitation or
+  apply a security patch.
+- [#354](https://github.com/olivierlambert/calrs/pull/354) adds stdin password
+  input, refuses failed terminal reads and empty source passwords, and makes
+  source IDs literal, unambiguous prefixes. Booking cancellation gains the
+  same literal-prefix selection. No credentials were read or changed here.
+- [#355](https://github.com/olivierlambert/calrs/pull/355) and
+  [#357](https://github.com/olivierlambert/calrs/pull/357) add fixed-format and
+  fixed-event-timezone embeds, including booking POST handling. Normal links
+  ignore these options without embed mode. Rescheduling still uses the normal
+  visitor-zone page. The 12-hour formatter moves into the page head so the
+  initial slot rendering can call it. Keep Cascade's forced 12-hour behavior,
+  Firm field and invitation titles when reconciling these paths.
+
+Verification: all 81 upstream SQL scripts applied to in-memory SQLite.
+Populated checks passed for login backfill, ordinary login, MFA completion,
+required-MFA deferral, OIDC, foreign keys and database integrity. The actual
+upstream `build.rs` compiled and generated all 81 ordered names; adding a
+synthetic 082 script reproduced its rejection. Three unchanged upstream
+build-script unit tests passed in a dependency-free Rust harness. Embed
+JavaScript, both migration shell scripts and diff whitespace checks passed.
+Temporary fixtures were removed. Full application compilation, HTTP/provider
+tests, browser tests, translation accuracy, fork integration and a production
+backup migration rehearsal were not verified. Cargo changes only the app
+version; no dependency changes occur in this range.
+
+Disposition: retain the recorded `1.20.6-cascade.3` baseline and all
+`CASCADE.md` customizations. Carry forward prior slug-collision, Microsoft
+read-only/cancellation, migration, and detached approval-follow-up constraints.
+Only maintenance records changed; no source integration, dependency install,
+restart, application configuration change or deployment occurred.
+
 ## November 7, 2026 — 1.23.0 reviewed; retain custom fork
 
 Reviewed all substantive source changes in the 16-commit, 46-file range from
