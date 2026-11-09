@@ -1,5 +1,52 @@
 # Cal.rs upstream review and production baseline
 
+## November 9, 2026 — beta.3 initial assessment; full review outstanding
+
+Inspected the release inventory and selected compatibility-sensitive source at
+[`35b2d221d56a82c43bc8513e69149d53ea25afb1`](https://github.com/olivierlambert/calrs/commit/35b2d221d56a82c43bc8513e69149d53ea25afb1),
+upstream `2.0.0-beta.3`. The delta since the completed November 8 watermark
+`b42fa9ecf22549f9f86e8e18b42608b6925cab6f` is 245 commits, 200 files,
+66,574 added lines and 4,528 removed lines, including 23 new migrations.
+This is an initial compatibility assessment, **not a completed release review**.
+The assistant repository's reviewed-upstream watermark remains unchanged.
+
+Confirmed integration constraints:
+
+- Upstream `migrations/20261108100216_microsoft_oauth.sql` adds the same
+  three authentication configuration columns already shipped in Cascade's
+  `064_microsoft_graph.sql`. Applying the upstream script after the Cascade
+  script fails with `duplicate column name: microsoft_oauth2_client_id`.
+  A port needs deliberate schema adoption preserving existing encrypted
+  settings, migration identities and Cascade's legacy adoption path.
+- Upstream `src/microsoft_oauth.rs` requests `Calendars.ReadWrite`; Cascade's
+  `CASCADE.md` requires delegated read-only Microsoft access. Upstream's Graph
+  provider also implements event writes/deletes and cross-calendar orphan
+  checks. These paths require explicit reconciliation with Cascade's ban on
+  Microsoft write-back and booking cancellation from read-only sync sweeps.
+- The release inventory adds an OAuth authorization server, HTTP MCP, REST
+  API, outgoing booking webhooks, global Exchange impersonation, booking
+  questions/notes, time off, per-event-type write targets and Google absence
+  reads. Booking serialization and fail-closed availability also change.
+  The new permission, data-disclosure, provider and concurrency paths have
+  **not** received a full source or behavioral review in this hygiene run.
+- `Cargo.toml` adds quick-xml, encoding_rs and utoipa, plus parser support for
+  tests. Dependency provenance and vendored Swagger UI remain unreviewed.
+  Prior migration-builder, presentation, Firm/attendee and detached-approval
+  constraints continue to apply.
+
+Verification: all 104 upstream SQL scripts applied to an empty in-memory
+SQLite database with foreign keys enabled; foreign-key checks and integrity
+passed. A separate minimal fixture reproduced the Microsoft-column collision
+using the actual two migration scripts. These checks do not validate populated
+Cascade migration, provider behavior, compilation, browser behavior or release
+security. No dependencies were installed and no application source was changed.
+
+Disposition: retain the current custom fork; the preceding November 8 weekly
+record reports deployment of `1.20.6-cascade.4`. No runtime or deployment state
+was reverified here. Full beta.3 review remains an outstanding hygiene finding;
+no integration, restart, credential/authorization change or deployment occurred.
+
+
 ## November 8, 2026 (weekly) — 1.23.1 security release; backport proposed
 
 Upstream `main` is unchanged at `b42fa9ec` (reviewed above). Upstream
