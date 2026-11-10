@@ -1,5 +1,59 @@
 # Cal.rs upstream review and production baseline
 
+## November 10, 2026 — beta.4 incremental assessment; full review outstanding
+
+Inspected the release inventory, all eight additional migrations, and selected
+network, proxy, credential, resource-feed and Microsoft compatibility source at
+[`a37c6d50e120b064372f02af9a6bc5eb32a3d5fe`](https://github.com/olivierlambert/calrs/commit/a37c6d50e120b064372f02af9a6bc5eb32a3d5fe),
+upstream `2.0.0-beta.4`. Since yesterday's beta.3 assessment this adds 104
+commits and changes 223 files (25,918 insertions, 5,148 deletions). The total
+range from the completed beta.2 watermark is 349 commits and 301 files.
+This is a partial assessment; the assistant repository's reviewed-upstream
+watermark remains `b42fa9ecf22549f9f86e8e18b42608b6925cab6f`.
+
+- The Microsoft migration collision remains reproducible against Cascade's
+  actual `064_microsoft_graph.sql`. Upstream `src/microsoft_oauth.rs` still
+  requests and validates `Calendars.ReadWrite`. Preserve Cascade's schema
+  adoption and read-only provider contract; the beta.3 constraints below remain.
+- `src/net_guard.rs` supplies a checked DNS resolver for calendar/feed clients,
+  checks private literals and redirect targets, and refuses requests naming an
+  outbound proxy's own host unless allowlisted. Proxied destinations rely on
+  the proxy's filtering; fixed provider/admin endpoints use `plain_builder`.
+  `src/resources.rs` now uses the guarded client. A port needs direct and
+  proxied request checks, including existing private calendar sources.
+- `src/trusted_proxies.rs` adds configurable trusted peers, defaulting to
+  loopback/private/link-local ranges; invalid environment configuration trusts
+  no proxy. `src/web/mod.rs` adds persistent booking-rate counters with
+  in-memory fallback on database-write failure. These are new behavior and
+  deployment assumptions, not verification of Cascade's live network boundary.
+- The manifest upgrades reqwest from 0.11 to 0.12 and enables AES zeroization.
+  `src/crypto.rs` wraps key material and decrypted strings in `Zeroizing`.
+  No dependency provenance, full credential-lifetime or runtime validation was
+  completed; no packages were installed.
+- The eight migrations add background full-sync attempt time, recurring-event
+  RDATE flags, API consent attribution, SMS delivery status, trusted proxies,
+  persisted rate counters, and landing-page ordering/profile fields. The
+  `rename_next_free_slugs` migration is deliberately a no-op (`SELECT 1`).
+  The release inventory also changes recurrence, booking concurrency, Exchange
+  parsing, SMS accounting, pagination and public/dashboard presentation. Those
+  broader implementations and the unfinished beta.3 API/OAuth/MCP permission
+  paths still need full review; release notes alone do not establish correctness.
+
+Verification: all 112 actual upstream SQL scripts applied to an empty in-memory
+SQLite database with foreign keys enabled; integrity and foreign-key checks
+passed. Populated minimal fixtures verified RDATE backfill for series masters,
+overrides and ordinary events in both caches, and preservation of existing SMS
+usage as `sent`. The actual Microsoft scripts reproduced
+`duplicate column name: microsoft_oauth2_client_id`. These disposable in-memory
+checks do not validate a populated Cascade upgrade, the migration runner,
+application compilation, HTTP/provider behavior, browser behavior or security.
+
+Disposition: retain the custom fork and the previously recorded
+`1.20.6-cascade.4` deployment; live deployment was not reverified. Full beta.3/4
+review remains an outstanding hygiene finding. Only this maintenance record
+changed; no application integration, install, restart, permission change or
+deployment occurred.
+
 ## November 9, 2026 — beta.3 initial assessment; full review outstanding
 
 Inspected the release inventory and selected compatibility-sensitive source at
