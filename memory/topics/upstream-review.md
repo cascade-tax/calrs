@@ -1,5 +1,60 @@
 # Cal.rs upstream review and production baseline
 
+## November 13, 2026 — release-candidate assessment; full review outstanding
+
+Inspected the release inventory and selected booking, OIDC, availability and
+timezone source at
+[`27a4918cea677ffacc95302f29193c4d52cbbadb`](https://github.com/olivierlambert/calrs/commit/27a4918cea677ffacc95302f29193c4d52cbbadb),
+upstream `2.0.0-rc.2`. Since the November 10 beta.4 assessment the range adds
+58 commits across 156 files (7,838 insertions, 1,764 deletions). The full gap
+from the completed beta.2 watermark is 407 commits and 403 changed files.
+This remains a partial assessment, not a completed release or security review;
+the assistant policy's reviewed-upstream watermark stays at
+`b42fa9ecf22549f9f86e8e18b42608b6925cab6f`.
+
+- Booking queries widen calendar-event windows before timezone conversion;
+  bookings retain their own event-type buffers. `booking_time.rs` pads UTC
+  instants before conversion and preserves legacy meeting-zone timestamps,
+  including spring gaps. CLI booking now shares date-override selection with
+  the web path. These changes overlap Cascade's booking/approval customizations
+  and require integration tests before a port.
+- Guest rescheduling rereads status, token and stored times under the booking
+  lock, then repeats those conditions in its UPDATE. A zero-row update refuses
+  the move before notifications. Source inspection is not a concurrency test.
+- OIDC requests UserInfo only when the ID token lacks email, passes the verified
+  subject to the client check, and retains email-verification requirements.
+  Intentional refusals render HTTP 403; an explicitly empty groups array clears
+  old memberships. Provider HTTP requests gain a 30-second timeout. The
+  network flow, error disclosure and broader beta.3 permission paths have not
+  received full behavioral/security validation here.
+- The vendored timezone files move from 2026b to 2026f. Upstream adds currentness
+  and transition cross-check tooling, with wall-time adjustments for the old
+  parser's Alaska and Dublin suffix handling. The Cargo dependency list and
+  versions do not change in this incremental range; the package version and
+  vendoring comments do. Timezone data provenance and the Rust parser's full
+  transition comparison were not independently verified.
+- There are no migration changes since beta.4. The actual Microsoft scripts
+  still collide on `microsoft_oauth2_client_id`, and upstream continues to
+  request and require `Calendars.ReadWrite`. Cascade's read-only permission,
+  schema adoption, booking customization, branding and display constraints
+  therefore remain unresolved for a full upgrade.
+
+Verification: the unchanged upstream `availability_rules.rs` ran directly
+with `rustc --test`: all five tests passed. Eight selected offset fixtures
+passed with the actual vendored data compiled by the system `zic` and read by
+Python `zoneinfo`; this does not test chrono-tz's parser. Python compilation,
+shell syntax and incremental diff whitespace checks passed. An in-memory
+SQLite fixture using the actual Cascade and upstream Microsoft scripts again
+reproduced the duplicate-column failure. All temporary fixtures were removed.
+No full application build, HTTP/OIDC/provider/concurrency test, populated
+Cascade migration rehearsal or independent timezone-source check ran.
+
+Disposition: retain the custom fork and the previously recorded deployment.
+Full review of the API/OAuth/MCP, provider, security and compatibility changes
+since beta.2 remains an outstanding hygiene finding. Only this maintenance
+record changed; no source integration, dependency install, restart, permission
+change or deployment occurred, and live production was not reverified.
+
 ## November 10, 2026 — beta.4 incremental assessment; full review outstanding
 
 Inspected the release inventory, all eight additional migrations, and selected
