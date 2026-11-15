@@ -11,3 +11,7 @@ or SMTP services are contacted. Set `CALRS_BINARY` to test another binary.
 
 Temporary databases and logs are retained under the printed `/tmp` path; the
 script shuts down its servers on success or failure.
+
+# Bundled tz database
+
+`scripts/check-tzdata.sh` compares the bundled IANA version with the official latest release. CI runs it on pushes and pull requests. See `vendor/chrono-tz/CALRS.md` for refresh and cross-check instructions.

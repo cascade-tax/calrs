@@ -21,6 +21,7 @@ use chrono_tz::Tz;
 use sqlx::SqlitePool;
 use uuid::Uuid;
 
+use crate::booking_time::read_or_default;
 use crate::utils::{convert_event_to_tz, extract_vevent_field, parse_ical_datetime, split_vevents};
 
 /// Re-sync a resource feed when older than this many minutes.
@@ -66,11 +67,15 @@ pub async fn fetch_feed(feed_url: &str) -> anyhow::Result<String> {
     // stored URL's host may have started resolving to an internal address
     // since (and background re-syncs are triggered from public pages).
     crate::caldav::validate_caldav_url(feed_url)?;
+    if reqwest::Url::parse(feed_url).is_ok_and(|u| crate::net_guard::url_refused(&u)) {
+        anyhow::bail!(crate::net_guard::REFUSED);
+    }
     // No redirects: following one would let a validated public URL bounce
-    // the request to an internal host (SSRF).
-    let client = reqwest::Client::builder()
+    // the request to an internal host (SSRF). The guarded resolver connects
+    // only to addresses it checked, so a second DNS answer cannot either
+    // (#363).
+    let client = crate::net_guard::client_builder()
         .timeout(std::time::Duration::from_secs(30))
-        .redirect(reqwest::redirect::Policy::none())
         .build()?;
     let mut resp = client.get(feed_url).send().await?;
     if !resp.status().is_success() {
@@ -306,6 +311,17 @@ pub async fn sync_if_stale(pool: &SqlitePool, resource_ids: &[String]) {
 
 /// Resources attached to an event type (empty = feature unused).
 pub async fn resources_for_event_type(pool: &SqlitePool, event_type_id: &str) -> Vec<ResourceRef> {
+    try_resources_for_event_type(pool, event_type_id)
+        .await
+        .unwrap_or_default()
+}
+
+/// [`resources_for_event_type`] for booking-time checks: a failed read is an
+/// error, not "no resources attached".
+pub async fn try_resources_for_event_type(
+    pool: &SqlitePool,
+    event_type_id: &str,
+) -> Result<Vec<ResourceRef>, sqlx::Error> {
     let rows: Vec<(String, String)> = sqlx::query_as(
         "SELECT r.id, r.name FROM resources r
          JOIN event_type_resources etr ON etr.resource_id = r.id
@@ -313,11 +329,11 @@ pub async fn resources_for_event_type(pool: &SqlitePool, event_type_id: &str) ->
     )
     .bind(event_type_id)
     .fetch_all(pool)
-    .await
-    .unwrap_or_default();
-    rows.into_iter()
+    .await?;
+    Ok(rows
+        .into_iter()
         .map(|(id, name)| ResourceRef { id, name })
-        .collect()
+        .collect())
 }
 
 /// Busy intervals for one resource in `[window_start, window_end]`,
@@ -331,6 +347,28 @@ pub async fn busy_for_resource(
     host_tz: Tz,
     exclude_booking_id: Option<&str>,
 ) -> Vec<(NaiveDateTime, NaiveDateTime)> {
+    resource_busy(
+        pool,
+        resource_id,
+        window_start,
+        window_end,
+        host_tz,
+        exclude_booking_id,
+        false,
+    )
+    .await
+    .unwrap_or_default()
+}
+
+async fn resource_busy(
+    pool: &SqlitePool,
+    resource_id: &str,
+    window_start: NaiveDateTime,
+    window_end: NaiveDateTime,
+    host_tz: Tz,
+    exclude_booking_id: Option<&str>,
+    strict: bool,
+) -> Result<Vec<(NaiveDateTime, NaiveDateTime)>, sqlx::Error> {
     let end_compact = window_end.format("%Y%m%dT%H%M%S").to_string();
     let start_compact = window_start.format("%Y%m%dT%H%M%S").to_string();
     let end_iso = window_end.format("%Y-%m-%dT%H:%M:%S").to_string();
@@ -342,8 +380,9 @@ pub async fn busy_for_resource(
     // booking was cancelled (release may have failed) must not keep
     // blocking until someone cleans the remote calendar by hand.
     let exclude_id = exclude_booking_id.unwrap_or("");
-    let events: Vec<(String, String, Option<String>)> = sqlx::query_as(
-        "SELECT start_at, end_at, timezone FROM resource_events
+    let events: Vec<(String, String, Option<String>)> = read_or_default(
+        sqlx::query_as(
+            "SELECT start_at, end_at, timezone FROM resource_events
          WHERE resource_id = ?
            AND (rrule IS NULL OR rrule = '')
            AND (status IS NULL OR status != 'CANCELLED')
@@ -351,15 +390,17 @@ pub async fn busy_for_resource(
            AND (? = '' OR uid NOT IN (SELECT uid FROM bookings WHERE id = ?))
            AND uid NOT IN (SELECT uid FROM bookings WHERE status IN ('cancelled', 'declined'))
            AND start_at <= ? AND end_at >= ?",
-    )
-    .bind(resource_id)
-    .bind(exclude_id)
-    .bind(exclude_id)
-    .bind(&end_compact)
-    .bind(&start_compact)
-    .fetch_all(pool)
-    .await
-    .unwrap_or_default();
+        )
+        .bind(resource_id)
+        .bind(exclude_id)
+        .bind(exclude_id)
+        .bind(&end_compact)
+        .bind(&start_compact)
+        .fetch_all(pool)
+        .await,
+        strict,
+        "resource events",
+    )?;
 
     let mut busy: Vec<(NaiveDateTime, NaiveDateTime)> = events
         .iter()
@@ -370,22 +411,25 @@ pub async fn busy_for_resource(
         })
         .collect();
 
-    let recurring: Vec<(String, String, String, Option<String>, Option<String>)> = sqlx::query_as(
-        "SELECT start_at, end_at, rrule, raw_ical, timezone FROM resource_events
+    let recurring: Vec<(String, String, String, Option<String>, Option<String>)> = read_or_default(
+        sqlx::query_as(
+            "SELECT start_at, end_at, rrule, raw_ical, timezone FROM resource_events
          WHERE resource_id = ?
            AND (status IS NULL OR status != 'CANCELLED')
            AND (transp IS NULL OR transp != 'TRANSPARENT')
            AND (? = '' OR uid NOT IN (SELECT uid FROM bookings WHERE id = ?))
            AND uid NOT IN (SELECT uid FROM bookings WHERE status IN ('cancelled', 'declined'))
            AND rrule IS NOT NULL AND rrule != '' AND start_at <= ?",
-    )
-    .bind(resource_id)
-    .bind(exclude_id)
-    .bind(exclude_id)
-    .bind(&end_compact)
-    .fetch_all(pool)
-    .await
-    .unwrap_or_default();
+        )
+        .bind(resource_id)
+        .bind(exclude_id)
+        .bind(exclude_id)
+        .bind(&end_compact)
+        .fetch_all(pool)
+        .await,
+        strict,
+        "recurring resource events",
+    )?;
 
     busy.extend(crate::web::expand_recurring_into_busy(
         &recurring,
@@ -397,7 +441,7 @@ pub async fn busy_for_resource(
     // calrs' own bookings: an assigned booking always blocks its resource;
     // in `all` mode every confirmed booking of an event type using this
     // resource blocks it.
-    let bookings: Vec<(String, String)> = sqlx::query_as(
+    let bookings: Vec<(String, String)> = read_or_default(sqlx::query_as(
         "SELECT CASE b.time_version WHEN 1 THEN b.start_at ELSE rtrim(b.start_at, 'Z') END AS start_at, CASE b.time_version WHEN 1 THEN b.end_at ELSE rtrim(b.end_at, 'Z') END AS end_at FROM bookings b
          JOIN event_types et ON et.id = b.event_type_id
          WHERE b.status = 'confirmed'
@@ -415,15 +459,14 @@ pub async fn busy_for_resource(
     .bind(exclude_id)
     .bind(exclude_id)
     .fetch_all(pool)
-    .await
-    .unwrap_or_default();
+    .await, strict, "resource bookings")?;
     for (s, e) in &bookings {
         if let Some((start, end)) = crate::booking_time::busy_range(s, e, host_tz) {
             busy.push((start, end));
         }
     }
 
-    busy
+    Ok(busy)
 }
 
 /// Sort intervals and merge overlapping/adjacent ones.
@@ -538,6 +581,8 @@ pub async fn blocking_intervals_for_event_type(
 /// Booking-time check: verify resource availability for `[start, end)` and,
 /// in round-robin mode, pick the free resource with the fewest upcoming
 /// assignments (stable tie-break by name via the resource listing order).
+/// A failed read of the attached resources or their busy times is an error,
+/// so the caller refuses the booking instead of treating them as free.
 pub async fn check_and_pick(
     pool: &SqlitePool,
     event_type_id: &str,
@@ -545,10 +590,10 @@ pub async fn check_and_pick(
     end: NaiveDateTime,
     host_tz: Tz,
     exclude_booking_id: Option<&str>,
-) -> ResourceCheck {
-    let refs = resources_for_event_type(pool, event_type_id).await;
+) -> Result<ResourceCheck, sqlx::Error> {
+    let refs = try_resources_for_event_type(pool, event_type_id).await?;
     if refs.is_empty() {
-        return ResourceCheck::NoResources;
+        return Ok(ResourceCheck::NoResources);
     }
     let mode: String =
         sqlx::query_scalar("SELECT resource_scheduling_mode FROM event_types WHERE id = ?")
@@ -560,18 +605,19 @@ pub async fn check_and_pick(
 
     let mut free: Vec<&ResourceRef> = Vec::new();
     for r in &refs {
-        let busy = busy_for_resource(pool, &r.id, start, end, host_tz, exclude_booking_id).await;
+        let busy =
+            resource_busy(pool, &r.id, start, end, host_tz, exclude_booking_id, true).await?;
         let overlaps = busy.iter().any(|(bs, be)| *bs < end && *be > start);
         if !overlaps {
             free.push(r);
         } else if mode != "round_robin" {
-            return ResourceCheck::Busy;
+            return Ok(ResourceCheck::Busy);
         }
     }
 
     if mode == "round_robin" {
         if free.is_empty() {
-            return ResourceCheck::Busy;
+            return Ok(ResourceCheck::Busy);
         }
         // Least-loaded pick: fewest upcoming confirmed assignments.
         let mut best: Option<(i64, &ResourceRef)> = None;
@@ -593,11 +639,11 @@ pub async fn check_and_pick(
                 best = Some((load, r));
             }
         }
-        ResourceCheck::Free {
+        Ok(ResourceCheck::Free {
             assigned: best.map(|(_, r)| r.id.clone()),
-        }
+        })
     } else {
-        ResourceCheck::Free { assigned: None }
+        Ok(ResourceCheck::Free { assigned: None })
     }
 }
 

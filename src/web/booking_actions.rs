@@ -167,7 +167,7 @@ pub(super) async fn approve_booking_form(
     if let Some((uid, owner_user_id)) = hosts_of {
         let state = Arc::clone(&state);
         tokio::spawn(async move {
-            prepare_approval_hosts(&state, &uid, &owner_user_id).await;
+            let _ = prepare_approval_hosts(&state, &uid, &owner_user_id).await;
         });
     }
 
@@ -264,30 +264,31 @@ pub(super) async fn approve_booking_by_token(
 
     // Refresh the hosts' calendars before taking the lock below (bounded,
     // see `prepare_approval_hosts`).
-    let approval_hosts = prepare_approval_hosts(&state, &uid, &user_id).await;
+    let approval_hosts = match prepare_approval_hosts(&state, &uid, &user_id).await {
+        Ok(hosts) => hosts,
+        Err(e) => return internal_error_response("booking availability check", &e),
+    };
 
     // Pending bookings do not block shared resources, so re-verify them at
     // approval time under the process-wide lock taken below; in round-robin
     // mode the resource is re-picked (the original pick may be long stale).
     // The feeds are refreshed first, outside the lock.
-    let has_resources = {
-        let ids: Vec<String> =
-            crate::resources::resources_for_event_type(&state.pool, &event_type_id)
-                .await
-                .into_iter()
-                .map(|r| r.id)
-                .collect();
-        if ids.is_empty() {
-            false
-        } else {
-            crate::resources::sync_if_stale(&state.pool, &ids).await;
-            true
-        }
+    let resources =
+        match crate::resources::try_resources_for_event_type(&state.pool, &event_type_id).await {
+            Ok(resources) => resources,
+            Err(e) => return internal_error_response("resource availability check", &e),
+        };
+    let has_resources = if resources.is_empty() {
+        false
+    } else {
+        let ids: Vec<String> = resources.into_iter().map(|r| r.id).collect();
+        crate::resources::sync_if_stale(&state.pool, &ids).await;
+        true
     };
 
     // Same lock and host re-check as the dashboard approval (#234).
     let booking_guard = crate::resources::booking_lock().await;
-    if !approval_hosts_free(
+    let hosts_free = match approval_hosts_free(
         &state.pool,
         &approval_hosts,
         &bid,
@@ -298,6 +299,10 @@ pub(super) async fn approve_booking_by_token(
     )
     .await
     {
+        Ok(free) => free,
+        Err(e) => return internal_error_response("booking availability check", &e),
+    };
+    if !hosts_free {
         tracing::warn!(booking_id = %bid, "approval refused: host no longer free");
         return render_booking_action_error_keys_in(
             &state,
@@ -309,7 +314,11 @@ pub(super) async fn approve_booking_by_token(
 
     if has_resources {
         if let (Some(s), Some(e)) = (parse_ical_datetime(&start_at), parse_ical_datetime(&end_at)) {
-            let tz_check = get_host_tz(&state.pool, &event_type_id).await;
+            let tz_check =
+                match crate::booking_time::event_timezone(&state.pool, &event_type_id).await {
+                    Ok(tz) => tz,
+                    Err(e) => return internal_error_response("booking timezone check", &e),
+                };
             let (s, e) =
                 crate::booking_time::busy_range(&start_at, &end_at, tz_check).unwrap_or((s, e));
             match crate::resources::check_and_pick(
@@ -322,7 +331,7 @@ pub(super) async fn approve_booking_by_token(
             )
             .await
             {
-                crate::resources::ResourceCheck::Busy => {
+                Ok(crate::resources::ResourceCheck::Busy) => {
                     tracing::warn!(booking_id = %bid, "approval refused: required resource no longer available");
                     return render_booking_action_error_keys_in(
                         &state,
@@ -331,7 +340,7 @@ pub(super) async fn approve_booking_by_token(
                         "bae-body-resource-gone",
                     );
                 }
-                crate::resources::ResourceCheck::Free { assigned } => {
+                Ok(crate::resources::ResourceCheck::Free { assigned }) => {
                     let _ =
                         sqlx::query("UPDATE bookings SET assigned_resource_id = ? WHERE id = ?")
                             .bind(&assigned)
@@ -339,7 +348,8 @@ pub(super) async fn approve_booking_by_token(
                             .execute(&state.pool)
                             .await;
                 }
-                crate::resources::ResourceCheck::NoResources => {}
+                Ok(crate::resources::ResourceCheck::NoResources) => {}
+                Err(err) => return internal_error_response("resource availability check", &err),
             }
         }
     }
@@ -1928,7 +1938,10 @@ pub(super) async fn guest_reschedule_booking(
 
     let guest_tz = parse_guest_tz(form.tz.as_deref());
     let new_guest_timezone = guest_tz.name().to_string();
-    let host_tz = get_host_tz(&state.pool, &et_id).await;
+    let host_tz = match crate::booking_time::event_timezone(&state.pool, &et_id).await {
+        Ok(tz) => tz,
+        Err(e) => return internal_error_response("booking timezone check", &e),
+    };
 
     // The URL carries guest-local date/time; convert to host-local for storage
     // and availability checks (existing semantics).
@@ -1985,8 +1998,11 @@ pub(super) async fn guest_reschedule_booking(
     // every eligible member for collective, the owner for personal event types.
     // Resolving through the event type owner let a guest move a team booking
     // onto a slot the assigned member was already busy for (#166).
-    let hosts = reschedule_hosts(&state.pool, &uid, &host_user_id).await;
-    let busy = reschedule_busy_source(
+    let hosts = match try_reschedule_hosts(&state.pool, &uid, &host_user_id).await {
+        Ok(hosts) => hosts,
+        Err(e) => return internal_error_response("booking availability check", &e),
+    };
+    let busy = match try_reschedule_busy_source(
         &state.pool,
         &hosts,
         &et_id,
@@ -1996,7 +2012,11 @@ pub(super) async fn guest_reschedule_booking(
         &booking_id,
         &uid,
     )
-    .await;
+    .await
+    {
+        Ok(busy) => busy,
+        Err(e) => return internal_error_response("booking availability check", &e),
+    };
     if !busy_source_is_free(&busy, check_start, check_end) {
         return render_error_page_keys_in(
             &state,
@@ -2014,14 +2034,15 @@ pub(super) async fn guest_reschedule_booking(
     // common refusals their own message.
     let window = offered_slot_window(host_tz, slot_start);
     let (buffer_before, buffer_after): (i32, i32) =
-        sqlx::query_as("SELECT buffer_before, buffer_after FROM event_types WHERE id = ?")
+        match sqlx::query_as("SELECT buffer_before, buffer_after FROM event_types WHERE id = ?")
             .bind(&et_id)
             .fetch_optional(&state.pool)
             .await
-            .ok()
-            .flatten()
-            .unwrap_or((0, 0));
-    let offered_busy = reschedule_busy_source(
+        {
+            Ok(buffers) => buffers.unwrap_or((0, 0)),
+            Err(e) => return internal_error_response("booking availability check", &e),
+        };
+    let offered_busy = match try_reschedule_busy_source(
         &state.pool,
         &hosts,
         &et_id,
@@ -2031,8 +2052,12 @@ pub(super) async fn guest_reschedule_booking(
         &booking_id,
         &uid,
     )
-    .await;
-    if !is_offered_slot(
+    .await
+    {
+        Ok(busy) => busy,
+        Err(e) => return internal_error_response("booking availability check", &e),
+    };
+    let offered = match is_offered_slot(
         &state.pool,
         &et_id,
         duration,
@@ -2048,6 +2073,10 @@ pub(super) async fn guest_reschedule_booking(
     )
     .await
     {
+        Ok(offered) => offered,
+        Err(e) => return internal_error_response("booking availability check", &e),
+    };
+    if !offered {
         return render_error_page_keys_in(
             &state,
             lang,
@@ -2083,7 +2112,7 @@ pub(super) async fn guest_reschedule_booking(
     )
     .await
     {
-        crate::resources::ResourceCheck::Busy => {
+        Ok(crate::resources::ResourceCheck::Busy) => {
             return render_error_page_keys_in(
                 &state,
                 lang,
@@ -2093,8 +2122,9 @@ pub(super) async fn guest_reschedule_booking(
             )
             .into_response();
         }
-        crate::resources::ResourceCheck::Free { assigned } => assigned,
-        crate::resources::ResourceCheck::NoResources => None,
+        Ok(crate::resources::ResourceCheck::Free { assigned }) => assigned,
+        Ok(crate::resources::ResourceCheck::NoResources) => None,
+        Err(e) => return internal_error_response("resource availability check", &e),
     };
     // If the assigned resource changes, the old reservation must be
     // released, but that is network I/O and must NOT run under the

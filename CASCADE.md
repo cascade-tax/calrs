@@ -37,7 +37,7 @@ branch is based on the production release pinned by
   table (`src/windows_zones.rs`), except that India Standard Time keeps the
   canonical `Asia/Kolkata` rather than CLDR's alias `Asia/Calcutta`. Quoted
   TZID parameters are unquoted before the lookup. The vendored chrono-tz
-  (IANA 2026b) and its Dockerfile copy are kept exactly as upstream ships them.
+  (IANA 2026f) and its Dockerfile copy are kept exactly as upstream ships them.
 - A token endpoint reply that fails to parse during OIDC sign-in logs its
   status, media type and value-free body shape only. Upstream 1.20.3's echo of
   short non-200 body text is not ported: a refusal can quote credentials.
@@ -85,6 +85,22 @@ branch is based on the production release pinned by
   every IPv6 private range and IPv4-embedded form. An upstream port drops
   these as already present.
 
+- Stable 1.23.2's availability reads fail closed at booking, rescheduling and
+  approval time; a failed database read never means an empty/free calendar.
+  Slot-page reads retain upstream's lenient rendering. Remote refresh timeouts
+  still use cached events; this patch does not promise live-provider freshness.
+- Stable 1.23.3's trusted-peer rate limits, connection-time outbound address
+  checks and captcha/meeting-webhook no-redirect policy are backported.
+  Published ICS sources share the guarded resource-feed fetch path. Only
+  explicitly allowlisted calendar hosts can resolve to private addresses.
+  Scheme-less proxy hostnames (including credential-bearing forms) retain
+  reqwest compatibility. Booking/approval timezone SQL reads also fail closed
+  through the existing event_timezone helper; preserve these corrections
+  when moving onto upstream versions that still lack them.
+- Stable 1.23.4's IANA 2026f data, timezone regression tests and CI currentness
+  check are backported without adding any feature migrations. The full
+  upstream timezone cross-check is retained as opt-in tooling.
+
 The deployment repository's weekly upstream review compares this branch with
 `olivierlambert/calrs`, reviews new releases and security changes, and reports
 whether these commits apply cleanly before any production update.
@@ -99,7 +115,7 @@ builder layers across Cloud Build workers. Build release images with:
 gcloud builds submit . \
   --project cascade-calendar-prod \
   --config cloudbuild.yaml \
-  --substitutions _TAG=1.20.6-cascade.1
+  --substitutions _TAG=1.20.6-cascade.5
 ```
 
 The `build-cache` tag is build infrastructure, not a deployable release. Pin

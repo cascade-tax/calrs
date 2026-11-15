@@ -15,6 +15,7 @@ mod cascade;
 mod dashboard;
 mod emails;
 mod event_types;
+mod fail_closed;
 mod format;
 mod guards;
 mod hosts;
@@ -327,8 +328,17 @@ async fn setup_test_app() -> (Router, SqlitePool, String, String) {
     let data_dir = std::env::temp_dir().join(format!("calrs_test_{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(&data_dir).unwrap();
 
-    let router = create_router(pool.clone(), data_dir, [0u8; 32]).await;
+    let router = create_router(pool.clone(), data_dir, [0u8; 32])
+        .await
+        .layer(local_proxy_peer());
     (router, pool, session_token, et_id)
+}
+
+fn local_proxy_peer() -> axum::extract::connect_info::MockConnectInfo<std::net::SocketAddr> {
+    axum::extract::connect_info::MockConnectInfo(std::net::SocketAddr::from((
+        [127, 0, 0, 1],
+        40_000,
+    )))
 }
 
 async fn insert_test_user_with_session(

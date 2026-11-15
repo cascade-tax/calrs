@@ -1,5 +1,49 @@
 # Cal.rs upstream review and production baseline
 
+## November 15, 2026 — approved stable security/availability patch
+
+Arthur approved the weekly proposal at 15:39 PST: “yeah okay go for it”.
+The release label is `1.20.6-cascade.5`; the binary retains the 1.20.6 base.
+Deployment approval `f8caeee8d9394e29967287f93c8c7193` belongs to the private
+deployment repository. This entry records the source candidate, not deployment.
+
+Ported stable commits ae370a94/98661355 (strict availability SQL reads),
+2728ca2c/8e4e0578 (trusted peers, outbound checked-address resolution, literal
+and redirect guards, captcha/meeting no-redirect policy), and the complete
+v1.23.3→v1.23.4 timezone-data/test/currentness delta. Hyper 0.14 becomes a direct
+dependency naming an already-locked type; no dependency version changes.
+No migrations, templates, Graph scopes, read-only orphan guards, Firm fields,
+invitation naming or detached approval follow-up were removed or replaced.
+The existing horizon-only schema uses a strict horizon lookup instead of
+upstream's newer fixed-date window fields.
+
+One independent security-boundary investigation and one candidate review ran.
+The review found two defects in the upstream backports: failed timezone SQL
+reads could still be accepted at approval, and opaque parsed scheme-less proxy
+URLs lost their hostname exemption. Reused the existing strict event_timezone
+helper for mutating availability checks and require a parsed proxy hostname
+before accepting the URL form. Regression coverage includes both approval
+routes and actual proxied requests with scheme-less names and credentials.
+No additional concrete review findings were reported.
+
+Verification: formatting and all-target clippy with warnings denied passed;
+full suite 1377 passed, zero failed, two opt-in tests ignored. The ignored
+IANA cross-check was run separately: 1,092,840 offsets across 597 zones agree
+except 141 documented historic parser differences. Seven failure-injection
+cases and 17 outbound-guard cases pass. Temporarily restoring old redirect
+behavior fails both captcha/meeting tests; restoring empty-on-error reads
+accepts the booking (200 instead of 500). The approval timezone regression
+and scheme-less proxy parser test also failed before their corrections.
+The imported allowlist test now pins its initial environment policy under
+the existing lock so another test's DB cache cannot supply it. No production
+allowlist or proxy policy was changed to make tests pass. The IANA currentness
+check reports both bundled/latest as 2026f. Private deployment tests pass.
+
+This patch does not promise provider freshness after a refresh timeout and
+does not add 1.21–1.23 features or 2.0 prerelease fixes. The wider upstream
+review gap remains; the assistant hygiene watermark is not advanced.
+
+
 ## November 15, 2026 — rc.3 incremental review; full review outstanding
 
 Reviewed the complete 22-commit, 13-file incremental diff from
