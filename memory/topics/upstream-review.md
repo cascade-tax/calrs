@@ -1,5 +1,53 @@
 # Cal.rs upstream review and production baseline
 
+## November 15, 2026 — rc.3 incremental review; full review outstanding
+
+Reviewed the complete 22-commit, 13-file incremental diff from
+`27a4918cea677ffacc95302f29193c4d52cbbadb` through
+[`67b25c8427db2311d14e1261c533f3a8ad402d72`](https://github.com/olivierlambert/calrs/commit/67b25c8427db2311d14e1261c533f3a8ad402d72),
+upstream `2.0.0-rc.3`. The gap from the completed beta.2 watermark is now
+429 commits across 404 files. This incremental review does not complete the
+outstanding beta.3–rc.2 API/OAuth/MCP, provider, security and compatibility
+review; the assistant policy's completed-review watermark remains unchanged.
+
+- Calendar/provider sync and resource feeds now resolve DTEND's own timezone,
+  including VTIMEZONE definitions, and convert it to DTSTART's stored zone.
+  A converted end in the second occurrence of a repeated hour advances to
+  the first wall time that readers interpret at or after that instant. This
+  deliberately may block through the repeated hour's end. Unknown/floating
+  zones remain unchanged. Cascade's current helper returns explicit DTEND
+  unchanged, so it does not contain this correction.
+- Orphan cancellation now interprets legacy booking times in the event's
+  timezone, falling back to its owner's timezone rather than the assigned
+  host's. Cascade retains the older UTC-only ended check. A later port must
+  preserve Cascade's prohibition on cancelling bookings from read-only
+  Microsoft/feed sync, plus its detached notification/cancellation work.
+- MiniJinja enables its existing `urlencode` feature to fix private-team
+  invite rendering. Cargo.lock adds percent-encoding to that package's
+  dependency list; no package version changes beyond Cal.rs occur. Upstream
+  adds an HTTP regression test; it was inspected but not executed here.
+- Troubleshoot changes available/busy colours, and documentation updates the
+  edit URL and image examples. Preserve Cascade's exact theme requirements
+  when considering that presentation change.
+- No migrations or Microsoft OAuth source changed in this incremental range.
+  The previously reproduced schema collision and upstream ReadWrite versus
+  Cascade read-only permission mismatch remain unresolved.
+
+Verification: compiled unchanged upstream `utils`, `tzid` and `windows_zones`
+modules in a disposable Rust test harness against existing cached dependencies.
+All three focused upstream end-time tests passed (mixed zones, repeated-hour
+ends and unresolved zones). The cached timezone dependency is not a validation
+of upstream's new vendored timezone data. Incremental diff whitespace checks
+passed. Temporary files were removed. Full app, sync/database integration,
+private-invite HTTP rendering, provider behaviour and populated Cascade
+migration were not tested.
+
+Disposition: retain the custom fork and previously recorded deployment.
+Only this maintenance record changed; no source integration, dependency
+installation, service restart, permission change or production deployment.
+The broader upstream review remains an unresolved hygiene finding. Live
+production was not reverified.
+
 ## November 13, 2026 — release-candidate assessment; full review outstanding
 
 Inspected the release inventory and selected booking, OIDC, availability and
