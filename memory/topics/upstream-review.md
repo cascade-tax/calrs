@@ -1,5 +1,32 @@
 # Cal.rs upstream review and production baseline
 
+## November 15, 2026 — 1.20.6-cascade.5 deployed
+
+The private deployment repository now pins source
+`ba43c2a89732af82f03a7e829d09713930e3767f` and immutable Artifact Registry
+digest `sha256:33c36947846348b96d19a54389f1278d74adddc2b660b02037f72c428ce8cf5e`.
+Cloud Build `bcf61417-8fb5-4946-8760-c4a2e7386ac9` succeeded; its source archive
+matches the commit except upload-filtered `.gitignore`, with the archive hash
+verified against build metadata. Arthur's 15:39 PST approval (“yeah okay go
+for it”) is resolved against those artifacts and the pre-deploy backup in
+the private repository.
+
+The real image migration/startup path passed on an isolated copy of the live
+database without changing schema, 74 migration identities or booking/account
+hashes. Production is healthy on the new digest, with the same hashes and
+integrity ok. Public full slots and Firm form work; Sunday-first month/week,
+forced 12-hour display, exact light/dark CSS and styled 404 remain. Teams
+meeting creation and deletion succeeded, unsigned bridge requests return 401,
+and no application warnings/errors were observed after restart. No real
+booking, approval, guest email or sign-in was exercised. Source CI and CodeQL
+passed. The complete verification and rollback receipt lives in the private
+`cascade-tax/cascade-calendar` review topic and execution plan.
+
+No additional source change, database migration, feature adoption, Graph write
+permission or policy setting was introduced during deployment. The wider
+beta.3–rc.3 review gap and assistant hygiene watermark remain unchanged.
+
+
 ## November 15, 2026 — approved stable security/availability patch
 
 Arthur approved the weekly proposal at 15:39 PST: “yeah okay go for it”.
