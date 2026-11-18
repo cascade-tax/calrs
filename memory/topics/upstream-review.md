@@ -1,5 +1,69 @@
 # Cal.rs upstream review and production baseline
 
+## November 18, 2026 — retain the stable fork through upstream 2.0.0-rc.3
+
+Retain `1.20.6-cascade.5`. The maintenance review covered the five upstream
+release merges from beta.2 through [rc.3 at 67b25c8427db2311d14e1261c533f3a8ad402d72](https://github.com/olivierlambert/calrs/commit/67b25c8427db2311d14e1261c533f3a8ad402d72).
+I checked the commit inventory (429 commits, 277 excluding merges), the
+earlier release assessments below, the permission and provider paths, package
+changes and migration compatibility against fork revision
+`08c7b7a378e08fb7d81852580d9768494c371eb4`.
+
+- **Database.** All 74 fork SQL files and all 112 upstream SQL files applied
+  separately to empty SQLite databases with clean integrity and foreign-key
+  checks. I populated the fork schema with a synthetic account, event type
+  and booking with a Firm value. Selecting pending files by migration name,
+  as upstream does, first tries `064_booking_time_version`, whose column
+  already exists under Cascade's `065` identity. Independently, upstream's
+  timestamped Microsoft migration tries to add the existing client ID column.
+  Both transactions rolled back with the schema, all migration identities
+  and the booking intact. A future port needs explicit adoption for both
+  histories and preservation of the Firm data.
+- **Provider access.** Cascade requests Microsoft `Calendars.Read`. The rc.3
+  authorization request and token check both require `Calendars.ReadWrite`.
+  Upstream selects writable calendars per host and reconciles vanished
+  provider copies. Cascade must preserve its read-only Microsoft and feed
+  behavior, including the prohibition on cancelling a booking from such a
+  sweep. Managed Exchange adds a service-account impersonation path that
+  rechecks the enabled user, trusted address and derived mailbox. Google
+  adds absence reads and guest-copy handling. These provider behaviors
+  require separate adoption decisions if a port is undertaken.
+- **Application permissions and disclosure.** The OAuth server binds grants
+  to the REST or MCP resource, enforces PKCE, and rechecks the user, scopes
+  and grant on use. REST accepts personal tokens as well, checks the
+  operation's scope and reduces a write-only booking response to ID and
+  status. MCP exposes event-type lookup, the caller's busy intervals and
+  invite-link creation, gated by separate scopes. Booking webhooks can send
+  guest contact details, answers and attendees to a configured receiver.
+  Signing, checked destinations and management permissions govern delivery.
+  Host notes have a separate recipient check. Retain the fork's existing
+  exposure. [OAuth](https://github.com/olivierlambert/calrs/blob/67b25c8427db2311d14e1261c533f3a8ad402d72/src/oauth.rs),
+  [MCP](https://github.com/olivierlambert/calrs/blob/67b25c8427db2311d14e1261c533f3a8ad402d72/src/web/mcp.rs),
+  [REST](https://github.com/olivierlambert/calrs/blob/67b25c8427db2311d14e1261c533f3a8ad402d72/src/web/api.rs)
+  and [webhook payloads](https://github.com/olivierlambert/calrs/blob/67b25c8427db2311d14e1261c533f3a8ad402d72/src/web/webhooks.rs).
+- **Scheduling and presentation.** Upstream spends limited invitations
+  inside the booking transaction, blocks unreadable recurrence conservatively,
+  adds per-server background scheduling and reserves SMS usage by segment.
+  Dashboard and guest templates changed throughout the range. Carry the
+  existing Cascade booking follow-up behavior, guest-facing times, week
+  start, branding and invitation rules into any future candidate. The older
+  release assessments below identify individual booking and timezone fixes.
+- **Dependencies.** All four new or changed registry package/version/checksum
+  entries in Cargo.lock matched the crates.io index. Swagger UI's JavaScript,
+  CSS and three license/notice files matched the integrity-verified
+  `swagger-ui-dist@5.34.1` npm archive byte for byte. The viewer disables
+  the external validator and persistent authorization and omits cookies on
+  requests. Diff whitespace warnings were confined to two vendored license
+  files.
+
+Upstream's [exact-revision CI](https://github.com/olivierlambert/calrs/actions/runs/43702292902/job/132775836362)
+reported 2,479 passing tests and two ignored. Its log includes OAuth, MCP,
+REST, Exchange, webhook, concurrency and write-destination suites. Locally,
+all 25 Cascade behavior tests and the Microsoft read-only sync regression
+passed against the fork. This closes the decision to retain the fork at
+this upstream revision. Integration, a production-data migration rehearsal,
+live-provider tests and deployment remain outside this review.
+
 ## November 15, 2026 — 1.20.6-cascade.5 deployed
 
 The private deployment repository now pins source
