@@ -1,5 +1,22 @@
 # Cal.rs upstream review and production baseline
 
+## November 22, 2026 — upstream 2.0.0 final; narrow backport proposed
+
+Upstream released [2.0.0](https://github.com/olivierlambert/calrs/releases/tag/v2.0.0)
+(eac29735) on November 20 after [rc.4](https://github.com/olivierlambert/calrs/releases/tag/v2.0.0-rc.4);
+rc.3 to 2.0.0 adds no migrations. The fork stays on `1.20.6-cascade.5`. The weekly
+review proposes `1.20.6-cascade.6`, pending approval, with two hand ports:
+
+- [#460](https://github.com/olivierlambert/calrs/issues/460)/[#461](https://github.com/olivierlambert/calrs/pull/461):
+  percent-decode CalDAV deletion hrefs in `delete_events_by_href` and the
+  provider `sync_delta`. Production logged 13 missed Google deletions in six days.
+- [#462](https://github.com/olivierlambert/calrs/issues/462)/[#464](https://github.com/olivierlambert/calrs/pull/464):
+  host new-booking and cancellation emails attach a METHOD:PUBLISH copy
+  without ATTENDEE instead of REQUEST/CANCEL.
+
+Neither applies cleanly to this branch. The rc.4 month-navigation redesign and
+#468's delta memo are not proposed. Details are in the deployment repository.
+
 ## November 18, 2026 — retain the stable fork through upstream 2.0.0-rc.3
 
 Retain `1.20.6-cascade.5`. The maintenance review covered the five upstream
