@@ -100,6 +100,13 @@ branch is based on the production release pinned by
 - Stable 1.23.4's IANA 2026f data, timezone regression tests and CI currentness
   check are backported without adding any feature migrations. The full
   upstream timezone cross-check is retained as opt-in tooling.
+- 2.0.0-rc.4's #460/#461 and #462/#464 fixes are backported. CalDAV
+  sync-collection deletions match the percent-decoded resource name (Google
+  writes `@` as `%40`), fall back to the name as written, and delete neither
+  when both match. The host's new-booking and cancellation emails attach a
+  `METHOD:PUBLISH` copy without ATTENDEE lines; guest mail, the guest's
+  calendar download and CalDAV write-back keep their attendees. An upstream
+  port drops these as already present.
 
 The deployment repository's weekly upstream review compares this branch with
 `olivierlambert/calrs`, reviews new releases and security changes, and reports
@@ -115,7 +122,7 @@ builder layers across Cloud Build workers. Build release images with:
 gcloud builds submit . \
   --project cascade-calendar-prod \
   --config cloudbuild.yaml \
-  --substitutions _TAG=1.20.6-cascade.5
+  --substitutions _TAG=1.20.6-cascade.6
 ```
 
 The `build-cache` tag is build infrastructure, not a deployable release. Pin

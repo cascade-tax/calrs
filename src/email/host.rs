@@ -5,13 +5,15 @@ use super::*;
 /// Send booking notification to the host
 pub async fn send_host_notification(config: &SmtpConfig, details: &BookingDetails) -> Result<()> {
     let to = named_mailbox(&details.host_name, &details.host_email)?;
-    let ics = generate_ics(details, "REQUEST");
+    // The host organizes the event: an informational copy, never an
+    // invitation to answer (upstream #462).
+    let ics = generate_host_ics(details);
     send_composed(
         config,
         Sender::Instance,
         to,
         compose_host_notification(details),
-        Some(("invite.ics", ics, "REQUEST")),
+        Some(("booking.ics", ics, "PUBLISH")),
     )
     .await
 }
@@ -448,13 +450,15 @@ pub async fn send_host_cancellation(
     details: &CancellationDetails,
 ) -> Result<()> {
     let to = named_mailbox(&details.host_name, &details.host_email)?;
-    let ics = generate_cancel_ics(details);
+    // To the organizer, not an attendee: PUBLISH, as for the new booking
+    // (upstream #462).
+    let ics = generate_host_cancel_ics(details);
     send_composed(
         config,
         Sender::Instance,
         to,
         compose_host_cancellation(details),
-        Some(("cancel.ics", ics, "CANCEL")),
+        Some(("cancel.ics", ics, "PUBLISH")),
     )
     .await
 }

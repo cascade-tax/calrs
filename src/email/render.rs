@@ -582,7 +582,17 @@ pub(super) fn host_time_display_exact(
 
 /// Generate an .ics VCALENDAR string for a booking
 pub fn generate_ics(details: &BookingDetails, method: &str) -> String {
-    generate_ics_impl(details, method, false)
+    generate_ics_impl(details, method, false, true)
+}
+
+/// The host's copy of a new booking (upstream #462). The host is the
+/// ORGANIZER, so a `METHOD:REQUEST` (which asks its recipient to answer as an
+/// attendee) has nothing to show them: Gmail renders "Unable to load event".
+/// `PUBLISH` is an informational copy the host can import, under the same UID
+/// and SEQUENCE as the invitation and the calendar write-back. It lists no
+/// ATTENDEE (RFC 5546 3.2.1); the host email body still lists the attendees.
+pub(super) fn generate_host_ics(details: &BookingDetails) -> String {
+    generate_ics_impl(details, "PUBLISH", false, false)
 }
 
 /// ICS for CalDAV write-back (RFC 4791: no METHOD). ATTENDEE lines carry
@@ -592,13 +602,14 @@ pub fn generate_ics(details: &BookingDetails, method: &str) -> String {
 /// (in UTC) for every written booking. Email .ics attachments keep plain
 /// ATTENDEE;RSVP=TRUE so mail clients still offer "Add to calendar".
 pub fn generate_ics_caldav(details: &BookingDetails) -> String {
-    generate_ics_impl(details, "", true)
+    generate_ics_impl(details, "", true, true)
 }
 
 fn generate_ics_impl(
     details: &BookingDetails,
     method: &str,
     schedule_agent_client: bool,
+    list_attendees: bool,
 ) -> String {
     // Cascade: the title is the event name only, or `Cascade <> {firm}` when
     // the guest named a firm; attendees are listed on the invitation itself.
@@ -665,6 +676,16 @@ fn generate_ics_impl(
         .chain(details.host_attendees.iter())
         .map(|email| format!("ATTENDEE{sa};RSVP=TRUE:mailto:{}\r\n", sanitize_ics(email)))
         .collect();
+    // RFC 5546 3.2.1: a PUBLISH carries no ATTENDEE. Only the host's copy
+    // follows it (upstream #462): the guest's calendar download, also a
+    // PUBLISH, keeps the lines it has always had.
+    let attendee_lines = if list_attendees {
+        format!(
+            "ATTENDEE{sa};CN={guest_name};RSVP=TRUE:mailto:{guest_email}\r\n{additional_attendee_lines}"
+        )
+    } else {
+        String::new()
+    };
     let dtstamp = chrono::Utc::now().format("%Y%m%dT%H%M%SZ").to_string();
     // Convert guest-timezone times to UTC for the ICS
     let (dtstart, dtend) = details.utc_times.clone().unwrap_or_else(|| {
@@ -690,8 +711,7 @@ fn generate_ics_impl(
          {description_line}\
          {location_line}\
          ORGANIZER;CN={host_name}:mailto:{host_email}\r\n\
-         ATTENDEE{sa};CN={guest_name};RSVP=TRUE:mailto:{guest_email}\r\n\
-         {additional_attendee_lines}\
+         {attendee_lines}\
          STATUS:CONFIRMED\r\n\
          {valarm}\
          END:VEVENT\r\n\
@@ -711,14 +731,24 @@ fn generate_ics_impl(
         location_line = location_line,
         host_name = host_name,
         host_email = host_email,
-        guest_name = guest_name,
-        guest_email = guest_email,
-        additional_attendee_lines = additional_attendee_lines,
+        attendee_lines = attendee_lines,
     ))
 }
 
 /// Generate an .ics VCALENDAR for cancellation (METHOD:CANCEL)
 pub(super) fn generate_cancel_ics(details: &CancellationDetails) -> String {
+    generate_cancel_ics_impl(details, "CANCEL")
+}
+
+/// The cancellation as the host's informational copy (upstream #462):
+/// `METHOD:PUBLISH` with `STATUS:CANCELLED` and the cancellation's SEQUENCE, so
+/// a copy the host imported from the new-booking email is updated, while a
+/// mail client never treats the organizer as an attendee being uninvited.
+pub(super) fn generate_host_cancel_ics(details: &CancellationDetails) -> String {
+    generate_cancel_ics_impl(details, "PUBLISH")
+}
+
+fn generate_cancel_ics_impl(details: &CancellationDetails, method: &str) -> String {
     // Cascade: the title is the event name only, or `Cascade <> {firm}` when
     // the guest named a firm; attendees are listed on the invitation itself.
     let summary = sanitize_ics(&meeting_title(
@@ -737,6 +767,13 @@ pub(super) fn generate_cancel_ics(details: &CancellationDetails) -> String {
         .iter()
         .map(|email| format!("ATTENDEE:mailto:{}\r\n", sanitize_ics(email)))
         .collect();
+    // RFC 5546 3.2.1: a PUBLISH, here always the host's copy (upstream #462),
+    // carries no ATTENDEE.
+    let attendee_lines = if method == "PUBLISH" {
+        String::new()
+    } else {
+        format!("ATTENDEE;CN={guest_name}:mailto:{guest_email}\r\n{additional_attendee_lines}")
+    };
     let dtstamp = chrono::Utc::now().format("%Y%m%dT%H%M%SZ").to_string();
     let (dtstart, dtend) = details.utc_times.clone().unwrap_or_else(|| {
         convert_to_utc(
@@ -750,7 +787,7 @@ pub(super) fn generate_cancel_ics(details: &CancellationDetails) -> String {
         "BEGIN:VCALENDAR\r\n\
          VERSION:2.0\r\n\
          PRODID:-//Cascade//Calendar//EN\r\n\
-         METHOD:CANCEL\r\n\
+         METHOD:{method}\r\n\
          BEGIN:VEVENT\r\n\
          UID:{uid}\r\n\
          DTSTAMP:{dtstamp}\r\n\
@@ -759,8 +796,7 @@ pub(super) fn generate_cancel_ics(details: &CancellationDetails) -> String {
          DTEND:{dtend}\r\n\
          SUMMARY:{summary}\r\n\
          ORGANIZER;CN={host_name}:mailto:{host_email}\r\n\
-         ATTENDEE;CN={guest_name}:mailto:{guest_email}\r\n\
-         {additional_attendee_lines}\
+         {attendee_lines}\
          STATUS:CANCELLED\r\n\
          END:VEVENT\r\n\
          END:VCALENDAR\r\n",
@@ -772,9 +808,7 @@ pub(super) fn generate_cancel_ics(details: &CancellationDetails) -> String {
         summary = summary,
         host_name = host_name,
         host_email = host_email,
-        guest_name = guest_name,
-        guest_email = guest_email,
-        additional_attendee_lines = additional_attendee_lines,
+        attendee_lines = attendee_lines,
     ))
 }
 

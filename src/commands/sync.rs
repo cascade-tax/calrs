@@ -1113,15 +1113,33 @@ async fn delete_events_by_href(
 ) -> u32 {
     let mut deleted = 0u32;
     for href in hrefs {
-        // Extract UID from href: /calendars/alice/default/abc123.ics -> abc123
-        let uid = href
-            .rsplit('/')
-            .next()
-            .unwrap_or("")
-            .trim_end_matches(".ics");
-        if uid.is_empty() {
+        let Some((raw, decoded)) = crate::caldav::href_uid(href) else {
             continue;
-        }
+        };
+        // The decoded name is the UID (Google writes `@` as `%40`), unless only
+        // the name as written matches, for a server that puts a literal `%` in
+        // a path. When both match, the href cannot say which event went:
+        // delete neither, and let the next full resync reconcile them.
+        let uid = if decoded == raw {
+            raw
+        } else {
+            let decoded_known = has_caldav_event(pool, cal_id, &decoded).await;
+            let raw_known = has_caldav_event(pool, cal_id, raw).await;
+            if decoded_known && raw_known {
+                tracing::warn!(
+                    href = %href,
+                    calendar_id = %cal_id,
+                    "sync-collection deletion matches two local events, as written and \
+                     decoded; keeping both until the next full sync"
+                );
+                continue;
+            }
+            if raw_known {
+                raw
+            } else {
+                decoded.as_str()
+            }
+        };
         let rows = sqlx::query("DELETE FROM events WHERE calendar_id = ? AND uid = ?")
             .bind(cal_id)
             .bind(uid)
@@ -1150,6 +1168,19 @@ async fn delete_events_by_href(
         }
     }
     deleted
+}
+
+/// Whether a cached CalDAV event has this UID on the calendar. A failed read
+/// counts as known, so an ambiguous deletion is left to the next full sync.
+async fn has_caldav_event(pool: &SqlitePool, cal_id: &str, uid: &str) -> bool {
+    sqlx::query_scalar::<_, i64>(
+        "SELECT EXISTS(SELECT 1 FROM events WHERE calendar_id = ? AND uid = ?)",
+    )
+    .bind(cal_id)
+    .bind(uid)
+    .fetch_one(pool)
+    .await
+    .map_or(true, |found| found != 0)
 }
 
 /// Remove local events that no longer exist on the server (full sync orphan cleanup).
@@ -1865,6 +1896,130 @@ mod tests {
         );
     }
 
+    /// Google percent-encodes `@` in CalDAV resource hrefs. The decoded resource
+    /// name still matches the iCalendar UID stored in `events`.
+    #[tokio::test]
+    async fn delete_events_by_href_decodes_percent_encoded_uid() {
+        let pool = setup_test_db().await;
+        let (source_id, _) = seed_fixtures(&pool).await;
+        let key = [0u8; 32];
+
+        let cal_id = Uuid::new_v4().to_string();
+        sqlx::query(
+            "INSERT INTO calendars (id, source_id, href, display_name) \
+             VALUES (?, ?, '/caldav/v2/host/events/', 'Google')",
+        )
+        .bind(&cal_id)
+        .bind(&source_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        let uid = "google-event-id@google.com";
+        sqlx::query(
+            "INSERT INTO events (id, calendar_id, uid, summary, start_at, end_at) \
+             VALUES (?, ?, ?, 'Demo', '2030-06-15T10:00:00', '2030-06-15T10:30:00')",
+        )
+        .bind(Uuid::new_v4().to_string())
+        .bind(&cal_id)
+        .bind(uid)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        let href = "/caldav/v2/host/events/google-event-id%40google.com.ics".to_string();
+        let deleted = delete_events_by_href(&pool, &key, None, &source_id, &cal_id, &[href]).await;
+
+        assert_eq!(deleted, 1, "URL-encoded UID should match the local event");
+        let remaining: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM events WHERE calendar_id = ? AND uid = ?")
+                .bind(&cal_id)
+                .bind(uid)
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(remaining, 0);
+    }
+
+    /// A server that writes a literal `%` in a resource name: decoding it
+    /// names another UID, so the name as written still matches (#460).
+    #[tokio::test]
+    async fn delete_events_by_href_falls_back_to_the_name_as_written() {
+        let pool = setup_test_db().await;
+        let (source_id, _) = seed_fixtures(&pool).await;
+        let key = [0u8; 32];
+        let cal_id = Uuid::new_v4().to_string();
+        sqlx::query("INSERT INTO calendars (id, source_id, href) VALUES (?, ?, '/cal/')")
+            .bind(&cal_id)
+            .bind(&source_id)
+            .execute(&pool)
+            .await
+            .unwrap();
+        for uid in ["a%40b", "kept@b"] {
+            sqlx::query(
+                "INSERT INTO events (id, calendar_id, uid, start_at, end_at) \
+                 VALUES (?, ?, ?, '2030-06-15T10:00:00', '2030-06-15T10:30:00')",
+            )
+            .bind(Uuid::new_v4().to_string())
+            .bind(&cal_id)
+            .bind(uid)
+            .execute(&pool)
+            .await
+            .unwrap();
+        }
+
+        let href = "/cal/a%40b.ics".to_string();
+        let deleted = delete_events_by_href(&pool, &key, None, &source_id, &cal_id, &[href]).await;
+
+        assert_eq!(deleted, 1);
+        let left: Vec<String> =
+            sqlx::query_scalar("SELECT uid FROM events WHERE calendar_id = ? ORDER BY uid")
+                .bind(&cal_id)
+                .fetch_all(&pool)
+                .await
+                .unwrap();
+        assert_eq!(left, vec!["kept@b"]);
+    }
+
+    /// Both the name as written and its decoded form are cached: the href
+    /// cannot tell which event was deleted, so neither is (#461 review).
+    #[tokio::test]
+    async fn delete_events_by_href_keeps_both_when_both_names_match() {
+        let pool = setup_test_db().await;
+        let (source_id, _) = seed_fixtures(&pool).await;
+        let key = [0u8; 32];
+        let cal_id = Uuid::new_v4().to_string();
+        sqlx::query("INSERT INTO calendars (id, source_id, href) VALUES (?, ?, '/cal/')")
+            .bind(&cal_id)
+            .bind(&source_id)
+            .execute(&pool)
+            .await
+            .unwrap();
+        for uid in ["a%40b", "a@b"] {
+            sqlx::query(
+                "INSERT INTO events (id, calendar_id, uid, start_at, end_at) \
+                 VALUES (?, ?, ?, '2030-06-15T10:00:00', '2030-06-15T10:30:00')",
+            )
+            .bind(Uuid::new_v4().to_string())
+            .bind(&cal_id)
+            .bind(uid)
+            .execute(&pool)
+            .await
+            .unwrap();
+        }
+
+        let href = "/cal/a%40b.ics".to_string();
+        let deleted = delete_events_by_href(&pool, &key, None, &source_id, &cal_id, &[href]).await;
+
+        assert_eq!(deleted, 0);
+        let left: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM events WHERE calendar_id = ?")
+            .bind(&cal_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(left, 2);
+    }
+
     /// Regression test for production incident 2026-05-14: a sync-collection delta
     /// reported an href as deleted, but the local `events` table had no matching row
     /// (the event lived on a different calendar — the booking's write calendar).
@@ -2159,6 +2314,87 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(status, "cancelled");
+    }
+
+    /// Seed a calendar, one cached event per UID, and a confirmed booking whose
+    /// write calendar is that calendar. Returns (source, calendar, booking).
+    async fn seed_booking_with_events(
+        pool: &SqlitePool,
+        event_uids: &[&str],
+        booking_uid: &str,
+    ) -> (String, String, String) {
+        let (source_id, et_id) = seed_fixtures(pool).await;
+        let cal_id = Uuid::new_v4().to_string();
+        sqlx::query(
+            "INSERT INTO calendars (id, source_id, href, display_name) \
+             VALUES (?, ?, '/calendars/host/default/', 'Google')",
+        )
+        .bind(&cal_id)
+        .bind(&source_id)
+        .execute(pool)
+        .await
+        .unwrap();
+        for uid in event_uids {
+            sqlx::query(
+                "INSERT INTO events (id, calendar_id, uid, summary, start_at, end_at) \
+                 VALUES (?, ?, ?, 'Demo', '2030-06-15T10:00:00', '2030-06-15T10:30:00')",
+            )
+            .bind(Uuid::new_v4().to_string())
+            .bind(&cal_id)
+            .bind(uid)
+            .execute(pool)
+            .await
+            .unwrap();
+        }
+        let booking_id = Uuid::new_v4().to_string();
+        sqlx::query(
+            "INSERT INTO bookings (id, event_type_id, uid, guest_name, guest_email, guest_timezone,
+                start_at, end_at, status, cancel_token, reschedule_token, caldav_calendar_href)
+             VALUES (?, ?, ?, 'Guest', 'guest@example.com', 'UTC',
+                '2030-06-15T10:00:00', '2030-06-15T10:30:00', 'confirmed', 'ctok', 'rtok',
+                '/calendars/host/default/')",
+        )
+        .bind(&booking_id)
+        .bind(&et_id)
+        .bind(booking_uid)
+        .execute(pool)
+        .await
+        .unwrap();
+        (source_id, cal_id, booking_id)
+    }
+
+    /// Upstream #460 on a Cascade booking: Google reports the deleted copy of
+    /// a written-back booking as `…%40calrs.ics`. The decoded name matches the
+    /// cached event and the booking stored under `…@calrs`, which reaches the
+    /// existing confirm-before-cancel path (bypassed here with no client).
+    #[tokio::test]
+    async fn delete_events_by_href_cancels_booking_from_percent_encoded_href() {
+        let pool = setup_test_db().await;
+        let key = [0u8; 32];
+        let uid = "b0c2f1e4@calrs";
+        let (source_id, cal_id, booking_id) = seed_booking_with_events(&pool, &[uid], uid).await;
+
+        let href = "/calendars/host/default/b0c2f1e4%40calrs.ics".to_string();
+        let deleted = delete_events_by_href(&pool, &key, None, &source_id, &cal_id, &[href]).await;
+
+        assert_eq!(deleted, 1);
+        assert_eq!(booking_status(&pool, &booking_id).await, "cancelled");
+    }
+
+    /// When the written and decoded names both match cached events, nothing is
+    /// deleted and no booking is cancelled: the next full sync reconciles them.
+    #[tokio::test]
+    async fn delete_events_by_href_ambiguous_match_cancels_no_booking() {
+        let pool = setup_test_db().await;
+        let key = [0u8; 32];
+        let (source_id, cal_id, booking_id) =
+            seed_booking_with_events(&pool, &["a%40calrs", "a@calrs"], "a@calrs").await;
+
+        let href = "/calendars/host/default/a%40calrs.ics".to_string();
+        let deleted = delete_events_by_href(&pool, &key, None, &source_id, &cal_id, &[href]).await;
+
+        assert_eq!(deleted, 0);
+        assert_eq!(booking_status(&pool, &booking_id).await, "confirmed");
     }
 
     /// Confirm-before-cancel (issue #105): when the verification HTTP call can't
