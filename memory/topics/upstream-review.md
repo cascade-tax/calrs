@@ -1,5 +1,13 @@
 # Cal.rs upstream review and production baseline
 
+## November 22, 2026 — 1.20.6-cascade.6 deployed
+
+Source `e8416472718fd82799aebf3f18cb11153c078a2b` (upstream #460/#461 and
+#462/#464 backports, recorded in CASCADE.md) is in production as
+`1.20.6-cascade.6`, digest `sha256:e4184fab18f32b9780fa7473a879daafa4782f84bd57e4696681798b1fa74537`.
+1386 tests passed. A later move to upstream 2.0.x drops both backports as
+already present. Details are in the deployment repository.
+
 ## November 22, 2026 — upstream 2.0.0 final; narrow backport proposed
 
 Upstream released [2.0.0](https://github.com/olivierlambert/calrs/releases/tag/v2.0.0)
