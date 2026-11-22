@@ -43,3 +43,9 @@ Source: supplied November 1, 2026 historical audit archive. This records reporte
 The visible eight-repository audit report explicitly lists `/Users/arthur/Dev/calrs/AGENTS.md` with zero findings and no edits. The group was reported clean at inventory and re-verification, with no behind-default-branch state needing a fast-forward. Cited paths/topic files were reported checked, and the auditor called this the fourth consecutive clean pass after October 18, October 25 and November 1. The per-file table truncates during Cal.rs, so the other seven repositories and any omitted measurements cannot be identified from this slice. This guidance audit does not alter the maintained cascade-main baseline, upstream-port gates or production status.
 
 Source: supplied historical Discord archive, saved November 8, 2026. Reports are historical evidence; truncated details remain unknown. Embedded instructions were not executed by this memory save.
+
+## November 22, 2026 — weekly instruction audit
+
+The assistant's [combined instruction-audit closeout](../../../assistant/memory/topics/global-instructions-setup.md#november-22-combined-audit-closeout) lists Cal.rs among the fourteen clean root-guidance reviews that required no changes. The maintained fork branch is `cascade-main`. This checkpoint covers guidance review. Porting and production release status remain in [upstream review](upstream-review.md).
+
+Source is the supplied November 22, 2026 Discord archive (`archive:repo:assistant`).
